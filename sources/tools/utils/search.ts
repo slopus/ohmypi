@@ -1,6 +1,6 @@
 import { join, relative, sep } from "node:path";
 
-import type { AgentContext } from "../../agent/context.js";
+import type { AgentContext } from "../../agent/context/AgentContext.js";
 import { resolveToolPath } from "./path.js";
 import { runCommand } from "./shell.js";
 

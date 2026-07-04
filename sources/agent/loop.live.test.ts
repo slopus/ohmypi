@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { runAgentLoop } from "./loop.js";
 import { defineTool } from "./types.js";
-import { createJustBashToolHarness } from "../tools/testing/harness.js";
+import { createJustBashToolHarness } from "../tools/testing/createJustBashToolHarness.js";
 import {
   defineModel,
   defineProvider,

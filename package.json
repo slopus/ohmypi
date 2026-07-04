@@ -32,6 +32,7 @@
   },
   "dependencies": {
     "@mariozechner/pi-ai": "^0.73.1",
+    "@paralleldrive/cuid2": "^3.3.0",
     "@sinclair/typebox": "^0.34.49"
   }
 }

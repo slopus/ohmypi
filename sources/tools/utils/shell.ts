@@ -1,6 +1,6 @@
 import { Type, type Static } from "@sinclair/typebox";
 
-import type { AgentContext } from "../../agent/context.js";
+import type { AgentContext } from "../../agent/context/AgentContext.js";
 import type { ContentBlock } from "../../agent/types.js";
 
 export const shellToolOutputSchema = Type.Object({

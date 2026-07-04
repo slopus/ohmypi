@@ -1,8 +1,7 @@
-import { randomUUID } from "node:crypto";
-
+import { createId } from "@paralleldrive/cuid2";
 import { Value } from "@sinclair/typebox/value";
 
-import type { AgentContext } from "./context.js";
+import type { AgentContext } from "./context/AgentContext.js";
 import type {
   AgentBlock,
   AgentMessage,
@@ -57,7 +56,7 @@ export async function runAgentLoop(
   options: RunAgentLoopOptions,
 ): Promise<AgentLoopResult> {
   const model = findModel(options.provider, options.modelId);
-  const idFactory = options.idFactory ?? randomUUID;
+  const idFactory = options.idFactory ?? createId;
   const now = options.now ?? Date.now;
   const transcript: Message[] = [...options.messages];
   const providerMessages = toProviderMessages(options.messages, {

@@ -2,7 +2,7 @@ import { dirname } from "node:path";
 
 import { Type } from "@sinclair/typebox";
 
-import type { AgentContext } from "../../agent/context.js";
+import type { AgentContext } from "../../agent/context/AgentContext.js";
 import { resolveToolPath, splitLines } from "./path.js";
 
 export const readFileReturnSchema = Type.Object({

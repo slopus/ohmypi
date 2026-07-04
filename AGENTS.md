@@ -4,6 +4,14 @@
 
 Always use `pnpm` for this project. Do not use `npm`, `npx`, or `yarn` for installs, scripts, dependency changes, or lockfile updates unless the user explicitly asks for a different package manager.
 
+## Code organization
+
+Favor one function per file when adding or reshaping source code.
+
+## Remote pushes
+
+Never push to any remote unless the user explicitly requests a push or sync in the current task. Do not infer push permission from completed local work.
+
 ## Sync to main
 
 When the user says `sync to main`, treat it as an explicit instruction to upstream the current work directly to `main`.

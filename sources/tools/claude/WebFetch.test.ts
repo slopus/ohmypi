@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createJustBashToolHarness } from "../testing/harness.js";
+import { createJustBashToolHarness } from "../testing/createJustBashToolHarness.js";
 import { claudeWebFetchTool } from "./WebFetch.js";
 
 describe("Claude Code WebFetch tool", () => {

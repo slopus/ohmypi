@@ -1,6 +1,6 @@
 import { dirname } from "node:path";
 
-import type { AgentContext } from "../../agent/context.js";
+import type { AgentContext } from "../../agent/context/AgentContext.js";
 import { resolveToolPath } from "./path.js";
 
 export interface ApplyPatchResult {

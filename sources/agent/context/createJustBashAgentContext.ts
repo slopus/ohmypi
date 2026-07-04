@@ -1,0 +1,15 @@
+import type { Bash } from "just-bash";
+
+import type { AgentContext } from "./AgentContext.js";
+import { createJustBashBashContext } from "./createJustBashBashContext.js";
+import { createJustBashFileSystemContext } from "./createJustBashFileSystemContext.js";
+
+export function createJustBashAgentContext(
+  bash: Bash,
+  cwd: string,
+): AgentContext {
+  return {
+    fs: createJustBashFileSystemContext(bash, cwd),
+    bash: createJustBashBashContext(bash, cwd),
+  };
+}

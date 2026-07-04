@@ -4,7 +4,7 @@
 
 import type { Static, TSchema } from "@sinclair/typebox";
 
-import type { AgentContext } from "./context.js";
+import type { AgentContext } from "./context/AgentContext.js";
 
 /** Plain text content. */
 export interface TextBlock {

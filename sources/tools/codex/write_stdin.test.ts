@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createJustBashToolHarness } from "../testing/harness.js";
+import { createJustBashToolHarness } from "../testing/createJustBashToolHarness.js";
 import { codexWriteStdinTool } from "./write_stdin.js";
 
 describe("codex write_stdin tool", () => {
