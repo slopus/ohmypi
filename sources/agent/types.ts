@@ -20,6 +20,14 @@ export interface ImageBlock {
 /** Blocks allowed on system and user messages. */
 export type ContentBlock = TextBlock | ImageBlock;
 
+/** Model reasoning content returned by providers that expose thinking blocks. */
+export interface ThinkingBlock {
+  type: "thinking";
+  thinking: string;
+  encrypted?: string;
+  redacted?: boolean;
+}
+
 /** A model-requested tool invocation embedded in a message. */
 export interface ToolCallBlock {
   type: "tool_call";
@@ -32,12 +40,18 @@ export interface ToolCallBlock {
 export interface ToolResultBlock {
   type: "tool_result";
   toolCallId: string;
-  blocks: readonly ContentBlock[];
+  toolName: string;
+  /** Rendered tool answer produced by the tool's `toLLM` serializer. */
+  rendered: readonly ContentBlock[];
   isError?: boolean;
 }
 
 /** Blocks allowed on agent messages. */
-export type AgentBlock = ContentBlock | ToolCallBlock | ToolResultBlock;
+export type AgentBlock =
+  | ContentBlock
+  | ThinkingBlock
+  | ToolCallBlock
+  | ToolResultBlock;
 
 export interface SystemMessage {
   role: "system";
@@ -86,7 +100,16 @@ export interface DefinedTool<
   locks: readonly Lock<Static<TArgsSchema>>[];
 }
 
-export type AnyDefinedTool = DefinedTool<TSchema, TSchema>;
+export interface AnyDefinedTool {
+  name: string;
+  label: string;
+  description: string;
+  arguments: TSchema;
+  returnType: TSchema;
+  execute: (args: never) => Promise<unknown> | unknown;
+  toLLM: (result: never) => readonly ContentBlock[];
+  locks: readonly Lock<never>[];
+}
 
 export type InferToolArgs<T extends AnyDefinedTool> =
   T extends DefinedTool<infer TArgsSchema extends TSchema, TSchema>

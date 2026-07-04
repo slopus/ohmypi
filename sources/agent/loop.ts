@@ -1,0 +1,486 @@
+import { randomUUID } from "node:crypto";
+
+import { Value } from "@sinclair/typebox/value";
+
+import type {
+  AgentBlock,
+  AgentMessage,
+  AnyDefinedTool,
+  ContentBlock,
+  Message,
+  SystemMessage,
+  ToolCallBlock,
+  ToolResultBlock,
+  UserMessage,
+} from "./types.js";
+import type {
+  AssistantContent as ProviderAssistantContent,
+  AssistantMessage as ProviderAssistantMessage,
+  AssistantMessageEvent,
+  Context as ProviderContext,
+  Message as ProviderMessage,
+  Model,
+  Provider,
+  StopReason,
+  StreamOptions,
+  Tool as ProviderTool,
+  ToolCall as ProviderToolCall,
+  ToolResultContent as ProviderToolResultContent,
+  ToolResultMessage as ProviderToolResultMessage,
+  Usage,
+  UserContent as ProviderUserContent,
+} from "../providers/types.js";
+
+export interface RunAgentLoopOptions {
+  provider: Provider;
+  modelId: string;
+  effort?: string;
+  tools: readonly AnyDefinedTool[];
+  instructions?: string;
+  messages: readonly Message[];
+  signal?: AbortSignal;
+  sessionId?: string;
+  idFactory?: () => string;
+  now?: () => number;
+  onEvent?: (event: AssistantMessageEvent) => void | Promise<void>;
+  onMessage?: (message: Message) => void | Promise<void>;
+}
+
+export interface AgentLoopResult {
+  messages: readonly Message[];
+  stopReason: StopReason;
+}
+
+export async function runAgentLoop(
+  options: RunAgentLoopOptions,
+): Promise<AgentLoopResult> {
+  const model = findModel(options.provider, options.modelId);
+  const idFactory = options.idFactory ?? randomUUID;
+  const now = options.now ?? Date.now;
+  const transcript: Message[] = [...options.messages];
+  const providerMessages = toProviderMessages(options.messages, {
+    model,
+    now,
+    providerId: options.provider.id,
+  });
+  const systemPrompt = buildSystemPrompt(options.instructions, options.messages);
+  const providerTools = options.tools.map(toProviderTool);
+  const toolsByName = new Map(options.tools.map((tool) => [tool.name, tool]));
+
+  for (;;) {
+    if (options.signal?.aborted) {
+      return { messages: transcript, stopReason: "aborted" };
+    }
+
+    let assistantMessage: ProviderAssistantMessage;
+    try {
+      const stream = options.provider.stream(
+        model,
+        toProviderContext(systemPrompt, providerMessages, providerTools),
+        toStreamOptions(options),
+      );
+
+      for await (const event of stream) {
+        await options.onEvent?.(event);
+      }
+
+      assistantMessage = await stream.result();
+    } catch (error) {
+      if (options.signal?.aborted) {
+        return { messages: transcript, stopReason: "aborted" };
+      }
+
+      throw error;
+    }
+
+    providerMessages.push(assistantMessage);
+
+    const agentMessage = fromProviderAssistantMessage(
+      assistantMessage,
+      idFactory,
+    );
+    transcript.push(agentMessage);
+    await options.onMessage?.(agentMessage);
+
+    if (
+      assistantMessage.stopReason === "aborted" ||
+      assistantMessage.stopReason === "error" ||
+      assistantMessage.stopReason !== "toolUse"
+    ) {
+      return {
+        messages: transcript,
+        stopReason: assistantMessage.stopReason,
+      };
+    }
+
+    const toolCalls = assistantMessage.content.filter(isProviderToolCall);
+    if (toolCalls.length === 0) {
+      return { messages: transcript, stopReason: assistantMessage.stopReason };
+    }
+
+    const toolResultBlocks: ToolResultBlock[] = [];
+    for (const toolCall of toolCalls) {
+      if (options.signal?.aborted) {
+        return { messages: transcript, stopReason: "aborted" };
+      }
+
+      const resultBlock = await executeToolCall(toolCall, toolsByName);
+      toolResultBlocks.push(resultBlock);
+      providerMessages.push(toProviderToolResultMessage(resultBlock, now));
+    }
+
+    const toolResultMessage: AgentMessage = {
+      role: "agent",
+      id: idFactory(),
+      blocks: toolResultBlocks,
+    };
+    transcript.push(toolResultMessage);
+    await options.onMessage?.(toolResultMessage);
+  }
+}
+
+function findModel(provider: Provider, modelId: string): Model {
+  const model = provider.models.find((candidate) => candidate.id === modelId);
+  if (!model) {
+    throw new Error(`Unknown model '${modelId}' for provider '${provider.id}'`);
+  }
+
+  return model;
+}
+
+function toStreamOptions(options: RunAgentLoopOptions): StreamOptions {
+  return {
+    ...(options.signal !== undefined ? { signal: options.signal } : {}),
+    ...(options.sessionId !== undefined ? { sessionId: options.sessionId } : {}),
+    ...(options.effort !== undefined ? { thinking: options.effort } : {}),
+  };
+}
+
+function toProviderContext(
+  systemPrompt: string | undefined,
+  messages: readonly ProviderMessage[],
+  tools: readonly ProviderTool[],
+): ProviderContext {
+  return {
+    ...(systemPrompt !== undefined ? { systemPrompt } : {}),
+    messages: [...messages],
+    ...(tools.length > 0 ? { tools: [...tools] } : {}),
+  };
+}
+
+function buildSystemPrompt(
+  instructions: string | undefined,
+  messages: readonly Message[],
+): string | undefined {
+  const parts: string[] = [];
+  if (instructions !== undefined && instructions.length > 0) {
+    parts.push(instructions);
+  }
+
+  for (const message of messages) {
+    if (message.role === "system") {
+      parts.push(systemMessageToText(message));
+    }
+  }
+
+  return parts.length > 0 ? parts.join("\n\n") : undefined;
+}
+
+function systemMessageToText(message: SystemMessage): string {
+  return message.blocks.map(systemBlockToText).join("");
+}
+
+function systemBlockToText(block: ContentBlock): string {
+  if (block.type === "text") {
+    return block.text;
+  }
+
+  throw new Error("System image blocks are not supported by providers");
+}
+
+function toProviderMessages(
+  messages: readonly Message[],
+  options: {
+    model: Model;
+    now: () => number;
+    providerId: string;
+  },
+): ProviderMessage[] {
+  const providerMessages: ProviderMessage[] = [];
+
+  for (const message of messages) {
+    if (message.role === "system") {
+      continue;
+    }
+
+    if (message.role === "user") {
+      providerMessages.push(toProviderUserMessage(message, options.now));
+      continue;
+    }
+
+    providerMessages.push(
+      ...toProviderMessagesFromAgentMessage(message, options),
+    );
+  }
+
+  return providerMessages;
+}
+
+function toProviderUserMessage(
+  message: UserMessage,
+  now: () => number,
+): ProviderMessage {
+  return {
+    role: "user",
+    content: message.blocks.map(toProviderUserContent),
+    timestamp: now(),
+  };
+}
+
+function toProviderMessagesFromAgentMessage(
+  message: AgentMessage,
+  options: {
+    model: Model;
+    now: () => number;
+    providerId: string;
+  },
+): ProviderMessage[] {
+  const assistantContent: ProviderAssistantContent[] = [];
+  const toolResults: ProviderToolResultMessage[] = [];
+
+  for (const block of message.blocks) {
+    if (block.type === "tool_result") {
+      toolResults.push(toProviderToolResultMessage(block, options.now));
+      continue;
+    }
+
+    assistantContent.push(toProviderAssistantContent(block));
+  }
+
+  const stopReason: StopReason = assistantContent.some(isProviderToolCall)
+    ? "toolUse"
+    : "stop";
+
+  return [
+    ...(assistantContent.length > 0
+      ? [
+          {
+            role: "assistant" as const,
+            content: assistantContent,
+            api: "ohmypi",
+            provider: options.providerId,
+            model: options.model.id,
+            usage: zeroUsage(),
+            stopReason,
+            timestamp: options.now(),
+          },
+        ]
+      : []),
+    ...toolResults,
+  ];
+}
+
+function toProviderUserContent(block: ContentBlock): ProviderUserContent {
+  if (block.type === "text") {
+    return {
+      type: "text",
+      text: block.text,
+    };
+  }
+
+  return {
+    type: "image",
+    data: block.data,
+    mimeType: block.mediaType,
+  };
+}
+
+function toProviderToolResultContent(
+  block: ContentBlock,
+): ProviderToolResultContent {
+  return toProviderUserContent(block);
+}
+
+function toProviderAssistantContent(
+  block: Exclude<AgentBlock, ToolResultBlock>,
+): ProviderAssistantContent {
+  if (block.type === "text") {
+    return {
+      type: "text",
+      text: block.text,
+    };
+  }
+
+  if (block.type === "thinking") {
+    return {
+      type: "thinking",
+      thinking: block.thinking,
+      ...(block.encrypted !== undefined ? { encrypted: block.encrypted } : {}),
+      ...(block.redacted !== undefined ? { redacted: block.redacted } : {}),
+    };
+  }
+
+  if (block.type === "tool_call") {
+    return {
+      type: "toolCall",
+      id: block.id,
+      name: block.name,
+      arguments: block.arguments as Record<string, unknown>,
+    };
+  }
+
+  throw new Error("Assistant image blocks are not supported by providers");
+}
+
+function toProviderTool(tool: AnyDefinedTool): ProviderTool {
+  return {
+    name: tool.name,
+    description: tool.description,
+    parameters: tool.arguments,
+  };
+}
+
+function toProviderToolResultMessage(
+  block: ToolResultBlock,
+  now: () => number,
+): ProviderToolResultMessage {
+  return {
+    role: "toolResult",
+    toolCallId: block.toolCallId,
+    toolName: block.toolName,
+    content: block.rendered.map(toProviderToolResultContent),
+    isError: block.isError ?? false,
+    timestamp: now(),
+  };
+}
+
+function fromProviderAssistantMessage(
+  message: ProviderAssistantMessage,
+  idFactory: () => string,
+): AgentMessage {
+  return {
+    role: "agent",
+    id: message.responseId ?? idFactory(),
+    blocks: message.content.map(fromProviderAssistantContent),
+  };
+}
+
+function fromProviderAssistantContent(
+  content: ProviderAssistantContent,
+): AgentBlock {
+  if (content.type === "text") {
+    return {
+      type: "text",
+      text: content.text,
+    };
+  }
+
+  if (content.type === "thinking") {
+    return {
+      type: "thinking",
+      thinking: content.thinking,
+      ...(content.encrypted !== undefined ? { encrypted: content.encrypted } : {}),
+      ...(content.redacted !== undefined ? { redacted: content.redacted } : {}),
+    };
+  }
+
+  return fromProviderToolCall(content);
+}
+
+function fromProviderToolCall(toolCall: ProviderToolCall): ToolCallBlock {
+  return {
+    type: "tool_call",
+    id: toolCall.id,
+    name: toolCall.name,
+    arguments: toolCall.arguments,
+  };
+}
+
+async function executeToolCall(
+  toolCall: ProviderToolCall,
+  toolsByName: ReadonlyMap<string, AnyDefinedTool>,
+): Promise<ToolResultBlock> {
+  const tool = toolsByName.get(toolCall.name);
+  if (!tool) {
+    return errorToolResultBlock(
+      toolCall,
+      `Unknown tool '${toolCall.name}' requested by model`,
+    );
+  }
+
+  if (!Value.Check(tool.arguments, toolCall.arguments)) {
+    return errorToolResultBlock(
+      toolCall,
+      `Invalid arguments for tool '${tool.name}'`,
+    );
+  }
+
+  try {
+    const execute = tool.execute as (
+      args: unknown,
+    ) => Promise<unknown> | unknown;
+    const toLLM = tool.toLLM as (result: unknown) => readonly ContentBlock[];
+    const result = await execute(toolCall.arguments);
+
+    return {
+      type: "tool_result",
+      toolCallId: toolCall.id,
+      toolName: tool.name,
+      rendered: toLLM(result),
+    };
+  } catch (error) {
+    return errorToolResultBlock(
+      toolCall,
+      `Tool '${tool.name}' failed: ${errorToMessage(error)}`,
+    );
+  }
+}
+
+function errorToolResultBlock(
+  toolCall: ProviderToolCall,
+  message: string,
+): ToolResultBlock {
+  return {
+    type: "tool_result",
+    toolCallId: toolCall.id,
+    toolName: toolCall.name,
+    rendered: [
+      {
+        type: "text",
+        text: message,
+      },
+    ],
+    isError: true,
+  };
+}
+
+function errorToMessage(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  return String(error);
+}
+
+function isProviderToolCall(
+  content: ProviderAssistantContent,
+): content is ProviderToolCall {
+  return content.type === "toolCall";
+}
+
+function zeroUsage(): Usage {
+  return {
+    input: 0,
+    output: 0,
+    cacheRead: 0,
+    cacheWrite: 0,
+    totalTokens: 0,
+    cost: {
+      input: 0,
+      output: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+      total: 0,
+    },
+  };
+}
