@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { runAgentLoop } from "./loop.js";
 import { defineTool } from "./types.js";
+import { createJustBashToolHarness } from "../tools/testing/harness.js";
 import {
   defineModel,
   defineProvider,
@@ -122,6 +123,7 @@ describe("agent loop live", () => {
 
     let nextId = 0;
     let timestamp = 1_000;
+    const harness = createJustBashToolHarness();
     const result = await runAgentLoop({
       provider,
       modelId: "mock/model",
@@ -142,6 +144,7 @@ describe("agent loop live", () => {
       ],
       idFactory: () => `generated-${++nextId}`,
       now: () => timestamp++,
+      context: harness.context,
     });
 
     expect(result.stopReason).toBe("stop");
@@ -155,12 +158,24 @@ describe("agent loop live", () => {
       "shout",
     ]);
 
-    expect(addExecute).toHaveBeenCalledExactlyOnceWith({
-      left: 2,
-      right: 5,
-    });
+    expect(addExecute).toHaveBeenCalledExactlyOnceWith(
+      {
+        left: 2,
+        right: 5,
+      },
+      expect.objectContaining({
+        fs: expect.objectContaining({ cwd: "/workspace" }),
+        bash: expect.objectContaining({ cwd: "/workspace" }),
+      }),
+    );
     expect(addToLLM).toHaveBeenCalledExactlyOnceWith({ total: 7 });
-    expect(shoutExecute).toHaveBeenCalledExactlyOnceWith({ value: "dublin" });
+    expect(shoutExecute).toHaveBeenCalledExactlyOnceWith(
+      { value: "dublin" },
+      expect.objectContaining({
+        fs: expect.objectContaining({ cwd: "/workspace" }),
+        bash: expect.objectContaining({ cwd: "/workspace" }),
+      }),
+    );
     expect(shoutToLLM).toHaveBeenCalledExactlyOnceWith({
       shouted: "DUBLIN",
     });

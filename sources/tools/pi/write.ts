@@ -1,0 +1,24 @@
+import { Type } from "@sinclair/typebox";
+
+import { defineTool } from "../../agent/types.js";
+import { writeFileReturnSchema, writeTextFile } from "../utils/index.js";
+
+export const piWriteTool = defineTool({
+  name: "write",
+  label: "write",
+  description:
+    "Write content to a file. Creates the file if it doesn't exist, overwrites if it does. Automatically creates parent directories.",
+  arguments: Type.Object({
+    path: Type.String({ description: "Path to the file to write (relative or absolute)" }),
+    content: Type.String({ description: "Content to write to the file" }),
+  }),
+  returnType: writeFileReturnSchema,
+  execute: async ({ path, content }, context) => writeTextFile({ path, content }, context),
+  toLLM: (result) => [
+    {
+      type: "text",
+      text: `Successfully wrote ${result.bytes} bytes to ${result.path}`,
+    },
+  ],
+  locks: [(args) => args.path],
+});

@@ -4,6 +4,8 @@
 
 import type { Static, TSchema } from "@sinclair/typebox";
 
+import type { AgentContext } from "./context.js";
+
 /** Plain text content. */
 export interface TextBlock {
   type: "text";
@@ -94,6 +96,7 @@ export interface DefinedTool<
   returnType: TReturnSchema;
   execute: (
     args: Static<TArgsSchema>,
+    context: AgentContext,
   ) => Promise<Static<TReturnSchema>> | Static<TReturnSchema>;
   toLLM: (result: Static<TReturnSchema>) => readonly ContentBlock[];
   /** Locks acquired for each invocation; constants or argument-derived keys. */
@@ -106,7 +109,7 @@ export interface AnyDefinedTool {
   description: string;
   arguments: TSchema;
   returnType: TSchema;
-  execute: (args: never) => Promise<unknown> | unknown;
+  execute: (args: never, context: AgentContext) => Promise<unknown> | unknown;
   toLLM: (result: never) => readonly ContentBlock[];
   locks: readonly Lock<never>[];
 }
@@ -133,6 +136,7 @@ export function defineTool<
   returnType: TReturnSchema;
   execute: (
     args: Static<TArgsSchema>,
+    context: AgentContext,
   ) => Promise<Static<TReturnSchema>> | Static<TReturnSchema>;
   toLLM: (result: Static<TReturnSchema>) => readonly ContentBlock[];
   locks: readonly Lock<Static<TArgsSchema>>[];

@@ -1,0 +1,33 @@
+import { Type } from "@sinclair/typebox";
+
+import { defineTool } from "../../agent/types.js";
+import { runShellCommand, shellOutputToText, shellToolOutputSchema } from "../utils/index.js";
+
+export const claudeBashTool = defineTool({
+  name: "Bash",
+  label: "Bash",
+  description: "Run shell command",
+  arguments: Type.Object({
+    command: Type.String({ description: "The command to execute" }),
+    timeout: Type.Optional(Type.Number({ description: "Optional timeout in milliseconds" })),
+    description: Type.Optional(
+      Type.String({
+        description:
+          'Clear, concise description of what this command does in active voice. Never use words like "complex" or "risk" in the description - just describe what it does.',
+      }),
+    ),
+    run_in_background: Type.Optional(
+      Type.Boolean({
+        description: "Set to true to run this command in the background. Use Read to read the output later.",
+      }),
+    ),
+  }),
+  returnType: shellToolOutputSchema,
+  execute: async ({ command, timeout }, context) => {
+    const options: Parameters<typeof runShellCommand>[1] = {};
+    if (timeout !== undefined) options.timeoutMs = timeout;
+    return runShellCommand(command, options, context);
+  },
+  toLLM: shellOutputToText,
+  locks: [],
+});

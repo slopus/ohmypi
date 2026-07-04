@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { Value } from "@sinclair/typebox/value";
 
+import type { AgentContext } from "./context.js";
 import type {
   AgentBlock,
   AgentMessage,
@@ -44,6 +45,7 @@ export interface RunAgentLoopOptions {
   now?: () => number;
   onEvent?: (event: AssistantMessageEvent) => void | Promise<void>;
   onMessage?: (message: Message) => void | Promise<void>;
+  context: AgentContext;
 }
 
 export interface AgentLoopResult {
@@ -66,6 +68,7 @@ export async function runAgentLoop(
   const systemPrompt = buildSystemPrompt(options.instructions, options.messages);
   const providerTools = options.tools.map(toProviderTool);
   const toolsByName = new Map(options.tools.map((tool) => [tool.name, tool]));
+  const toolContext = options.context;
 
   for (;;) {
     if (options.signal?.aborted) {
@@ -124,7 +127,7 @@ export async function runAgentLoop(
         return { messages: transcript, stopReason: "aborted" };
       }
 
-      const resultBlock = await executeToolCall(toolCall, toolsByName);
+      const resultBlock = await executeToolCall(toolCall, toolsByName, toolContext);
       toolResultBlocks.push(resultBlock);
       providerMessages.push(toProviderToolResultMessage(resultBlock, now));
     }
@@ -399,6 +402,7 @@ function fromProviderToolCall(toolCall: ProviderToolCall): ToolCallBlock {
 async function executeToolCall(
   toolCall: ProviderToolCall,
   toolsByName: ReadonlyMap<string, AnyDefinedTool>,
+  context: AgentContext,
 ): Promise<ToolResultBlock> {
   const tool = toolsByName.get(toolCall.name);
   if (!tool) {
@@ -418,9 +422,10 @@ async function executeToolCall(
   try {
     const execute = tool.execute as (
       args: unknown,
+      context: AgentContext,
     ) => Promise<unknown> | unknown;
     const toLLM = tool.toLLM as (result: unknown) => readonly ContentBlock[];
-    const result = await execute(toolCall.arguments);
+    const result = await execute(toolCall.arguments, context);
 
     return {
       type: "tool_result",
