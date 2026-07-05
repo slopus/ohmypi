@@ -29,11 +29,15 @@
         "test:watch": "vitest"
     },
     "dependencies": {
+        "@anthropic-ai/claude-agent-sdk": "^0.3.201",
+        "@anthropic-ai/sdk": "^0.110.0",
         "@earendil-works/pi-tui": "^0.80.3",
         "@mariozechner/pi-ai": "^0.73.1",
+        "@modelcontextprotocol/sdk": "^1.29.0",
         "@paralleldrive/cuid2": "^3.3.0",
         "@sinclair/typebox": "^0.34.49",
-        "smol-toml": "^1.7.0"
+        "smol-toml": "^1.7.0",
+        "zod": "^4.4.3"
     },
     "devDependencies": {
         "@types/node": "^24.0.10",

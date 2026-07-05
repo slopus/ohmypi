@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { NativeProxessManager } from "../processes/index.js";
-import { modelOpenaiGpt55 } from "../providers/models.js";
+import { modelAnthropicFable5, modelOpenaiGpt55 } from "../providers/models.js";
 import { createCodingAssistantAgent } from "./createCodingAssistantAgent.js";
 
 describe("createCodingAssistantAgent", () => {
@@ -23,5 +23,30 @@ describe("createCodingAssistantAgent", () => {
         expect(runtime.context.bash.cwd).toBe(cwd);
         expect(runtime.agent.snapshot().instructions).toContain(cwd);
         expect(runtime.agent.snapshot().effort).toBe("medium");
+    });
+
+    it("creates a Claude SDK agent for Anthropic models", () => {
+        const cwd = "/tmp/ohmypi-app-test";
+        const processManager = new NativeProxessManager();
+
+        const runtime = createCodingAssistantAgent({
+            cwd,
+            modelId: modelAnthropicFable5.id,
+            processManager,
+        });
+
+        expect(runtime.provider.id).toBe("claude-sdk");
+        expect(runtime.agent.model.id).toBe(modelAnthropicFable5.id);
+        expect(runtime.agent.tools.map((tool) => tool.name)).toEqual([
+            "Bash",
+            "Read",
+            "Edit",
+            "Write",
+            "Glob",
+            "Grep",
+            "TodoWrite",
+            "WebFetch",
+            "WebSearch",
+        ]);
     });
 });

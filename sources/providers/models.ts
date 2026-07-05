@@ -34,6 +34,13 @@ export const modelAnthropicOpus46 = defineModel({
     defaultThinkingLevel: "medium",
 });
 
+export const modelAnthropicSonnet5 = defineModel({
+    id: "anthropic/sonnet-5",
+    name: "Sonnet 5",
+    thinkingLevels: ["off", "low", "medium", "high", "xhigh", "max"],
+    defaultThinkingLevel: "medium",
+});
+
 export const modelAnthropicSonnet461m = defineModel({
     id: "anthropic/sonnet-4-6-1m",
     name: "Sonnet 4.6 1M",

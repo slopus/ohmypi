@@ -1,7 +1,9 @@
 import { Agent, createNodeAgentContext, type AgentOptions } from "../agent/index.js";
 import { NativeProxessManager } from "../processes/index.js";
+import { createClaudeSdkProvider } from "../providers/claude-sdk.js";
 import { createCodexProvider, type CodexProviderOptions } from "../providers/codex.js";
 import { modelOpenaiGpt55 } from "../providers/models.js";
+import { claudeCodeTools } from "../tools/claude/index.js";
 import type { CodingAssistantRuntime } from "./CodingAssistantRuntime.js";
 import { createDefaultInstructions } from "./createDefaultInstructions.js";
 
@@ -22,15 +24,16 @@ export function createCodingAssistantAgent(
         cwd: options.cwd,
         processManager,
     });
-    const providerOptions: CodexProviderOptions = {};
-    if (options.apiKey !== undefined) {
-        providerOptions.apiKey = options.apiKey;
-    }
-
-    const provider = createCodexProvider(providerOptions);
+    const modelId = options.modelId ?? modelOpenaiGpt55.id;
+    const provider = modelId.startsWith("anthropic/")
+        ? createClaudeSdkProvider({
+              agentContext: context,
+              tools: claudeCodeTools,
+          })
+        : createCodexProvider(toCodexProviderOptions(options));
     const agentOptions: AgentOptions = {
         provider,
-        modelId: options.modelId ?? modelOpenaiGpt55.id,
+        modelId,
         context,
         instructions: options.instructions ?? createDefaultInstructions(options.cwd),
         printToConsole: false,
@@ -46,4 +49,13 @@ export function createCodingAssistantAgent(
         processManager,
         provider,
     };
+}
+
+function toCodexProviderOptions(options: CreateCodingAssistantAgentOptions): CodexProviderOptions {
+    const providerOptions: CodexProviderOptions = {};
+    if (options.apiKey !== undefined) {
+        providerOptions.apiKey = options.apiKey;
+    }
+
+    return providerOptions;
 }

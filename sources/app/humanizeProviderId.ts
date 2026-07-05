@@ -2,6 +2,9 @@ export function humanizeProviderId(providerId: string): string {
     if (providerId === "codex") {
         return "Codex";
     }
+    if (providerId === "claude-sdk") {
+        return "Claude SDK";
+    }
     if (providerId === "anthropic") {
         return "Anthropic";
     }
