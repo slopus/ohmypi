@@ -4,18 +4,18 @@ import { createJustBashToolHarness } from "../testing/createJustBashToolHarness.
 import { piReadTool } from "./read.js";
 
 describe("pi read tool", () => {
-  it("reads text from the agent context fs", async () => {
-    const harness = createJustBashToolHarness({
-      files: { "/workspace/note.txt": "hello\nworld" },
-    });
+    it("reads text from the agent context fs", async () => {
+        const harness = createJustBashToolHarness({
+            files: { "/workspace/note.txt": "hello\nworld" },
+        });
 
-    const result = await harness.runTool(piReadTool, {
-      path: "/workspace/note.txt",
-      limit: 1,
-    });
+        const result = await harness.runTool(piReadTool, {
+            path: "/workspace/note.txt",
+            limit: 1,
+        });
 
-    expect(result.content).toBe("hello");
-    expect(result.returnedLines).toBe(1);
-    expect(result.truncated).toBe(true);
-  });
+        expect(result.content).toBe("hello");
+        expect(result.returnedLines).toBe(1);
+        expect(result.truncated).toBe(true);
+    });
 });

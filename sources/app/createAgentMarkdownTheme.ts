@@ -20,26 +20,26 @@ const MD_CODE_BLOCK = [181, 189, 104] as const;
 const MD_MUTED = [128, 128, 128] as const;
 
 export function createAgentMarkdownTheme(): MarkdownTheme {
-  return {
-    heading: (text) => fg(MD_HEADING, text),
-    link: (text) => fg(MD_LINK, text),
-    linkUrl: (text) => fg(MD_LINK_URL, text),
-    code: (text) => fg(MD_CODE, text),
-    codeBlock: (text) => fg(MD_CODE_BLOCK, text),
-    codeBlockBorder: (text) => fg(MD_MUTED, text),
-    quote: (text) => fg(MD_MUTED, text),
-    quoteBorder: (text) => fg(MD_MUTED, text),
-    hr: (text) => fg(MD_MUTED, text),
-    listBullet: (text) => fg(MD_CODE, text),
-    bold: (text) => `${BOLD}${text}${NOT_BOLD}`,
-    italic: (text) => `${ITALIC}${text}${NOT_ITALIC}`,
-    strikethrough: (text) => `${STRIKETHROUGH}${text}${NOT_STRIKETHROUGH}`,
-    underline: (text) => `${UNDERLINE}${text}${NOT_UNDERLINE}`,
-    highlightCode: highlightAgentCode,
-    codeBlockIndent: "  ",
-  };
+    return {
+        heading: (text) => fg(MD_HEADING, text),
+        link: (text) => fg(MD_LINK, text),
+        linkUrl: (text) => fg(MD_LINK_URL, text),
+        code: (text) => fg(MD_CODE, text),
+        codeBlock: (text) => fg(MD_CODE_BLOCK, text),
+        codeBlockBorder: (text) => fg(MD_MUTED, text),
+        quote: (text) => fg(MD_MUTED, text),
+        quoteBorder: (text) => fg(MD_MUTED, text),
+        hr: (text) => fg(MD_MUTED, text),
+        listBullet: (text) => fg(MD_CODE, text),
+        bold: (text) => `${BOLD}${text}${NOT_BOLD}`,
+        italic: (text) => `${ITALIC}${text}${NOT_ITALIC}`,
+        strikethrough: (text) => `${STRIKETHROUGH}${text}${NOT_STRIKETHROUGH}`,
+        underline: (text) => `${UNDERLINE}${text}${NOT_UNDERLINE}`,
+        highlightCode: highlightAgentCode,
+        codeBlockIndent: "  ",
+    };
 }
 
 function fg(color: readonly [number, number, number], text: string): string {
-  return `\x1b[38;2;${color[0]};${color[1]};${color[2]}m${text}${FG_RESET}`;
+    return `\x1b[38;2;${color[0]};${color[1]};${color[2]}m${text}${FG_RESET}`;
 }

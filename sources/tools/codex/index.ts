@@ -9,8 +9,8 @@ import { codexViewImageTool } from "./view_image.js";
 import { codexWriteStdinTool } from "./write_stdin.js";
 
 export const codexTools = [
-  codexExecCommandTool,
-  codexWriteStdinTool,
-  codexApplyPatchTool,
-  codexViewImageTool,
+    codexExecCommandTool,
+    codexWriteStdinTool,
+    codexApplyPatchTool,
+    codexViewImageTool,
 ] as const;

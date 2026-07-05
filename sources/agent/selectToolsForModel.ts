@@ -5,36 +5,30 @@ import { codexTools } from "../tools/codex/index.js";
 import { piTools } from "../tools/pi/index.js";
 
 export interface SelectToolsForModelOptions {
-  provider: Provider;
-  model: Model;
+    provider: Provider;
+    model: Model;
 }
 
 export function selectToolsForModel(
-  options: SelectToolsForModelOptions,
+    options: SelectToolsForModelOptions,
 ): readonly AnyDefinedTool[] {
-  const identity = [
-    options.provider.id,
-    options.model.id,
-    options.model.name,
-  ].join(" ").toLowerCase();
+    const identity = [options.provider.id, options.model.id, options.model.name]
+        .join(" ")
+        .toLowerCase();
 
-  if (
-    identity.includes("codex") ||
-    identity.includes("openai") ||
-    identity.includes("gpt")
-  ) {
-    return codexTools;
-  }
+    if (identity.includes("codex") || identity.includes("openai") || identity.includes("gpt")) {
+        return codexTools;
+    }
 
-  if (
-    identity.includes("anthropic") ||
-    identity.includes("claude") ||
-    identity.includes("sonnet") ||
-    identity.includes("opus") ||
-    identity.includes("haiku")
-  ) {
-    return claudeCodeTools;
-  }
+    if (
+        identity.includes("anthropic") ||
+        identity.includes("claude") ||
+        identity.includes("sonnet") ||
+        identity.includes("opus") ||
+        identity.includes("haiku")
+    ) {
+        return claudeCodeTools;
+    }
 
-  return piTools;
+    return piTools;
 }

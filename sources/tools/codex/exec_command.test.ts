@@ -4,14 +4,14 @@ import { createJustBashToolHarness } from "../testing/createJustBashToolHarness.
 import { codexExecCommandTool } from "./exec_command.js";
 
 describe("codex exec_command tool", () => {
-  it("runs a command through the agent context bash", async () => {
-    const harness = createJustBashToolHarness();
+    it("runs a command through the agent context bash", async () => {
+        const harness = createJustBashToolHarness();
 
-    const result = await harness.runTool(codexExecCommandTool, {
-      cmd: "echo codex",
+        const result = await harness.runTool(codexExecCommandTool, {
+            cmd: "echo codex",
+        });
+
+        expect(result.stdout).toBe("codex\n");
+        expect(result.exitCode).toBe(0);
     });
-
-    expect(result.stdout).toBe("codex\n");
-    expect(result.exitCode).toBe(0);
-  });
 });

@@ -4,18 +4,18 @@ import { createJustBashToolHarness } from "../testing/createJustBashToolHarness.
 import { piLsTool } from "./ls.js";
 
 describe("pi ls tool", () => {
-  it("lists directory contents", async () => {
-    const harness = createJustBashToolHarness({
-      files: {
-        "/workspace/a.txt": "a",
-        "/workspace/dir/b.txt": "b",
-      },
-    });
+    it("lists directory contents", async () => {
+        const harness = createJustBashToolHarness({
+            files: {
+                "/workspace/a.txt": "a",
+                "/workspace/dir/b.txt": "b",
+            },
+        });
 
-    const result = await harness.runTool(piLsTool, {
-      path: "/workspace",
-    });
+        const result = await harness.runTool(piLsTool, {
+            path: "/workspace",
+        });
 
-    expect(result.text.split("\n")).toEqual(["a.txt", "dir/"]);
-  });
+        expect(result.text.split("\n")).toEqual(["a.txt", "dir/"]);
+    });
 });

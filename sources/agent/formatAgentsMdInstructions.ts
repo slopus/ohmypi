@@ -1,5 +1,5 @@
 export function formatAgentsMdInstructions(cwd: string, text: string): string {
-  return `# AGENTS.md instructions for ${cwd}
+    return `# AGENTS.md instructions for ${cwd}
 
 <INSTRUCTIONS>
 ${text}

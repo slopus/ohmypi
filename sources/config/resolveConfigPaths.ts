@@ -4,9 +4,9 @@ import { getDefaultRuntimeConfigPath } from "./getDefaultRuntimeConfigPath.js";
 import type { ConfigPaths, LoadConfigOptions } from "./types.js";
 
 export function resolveConfigPaths(options: LoadConfigOptions = {}): ConfigPaths {
-  return {
-    global: getDefaultGlobalConfigPath(options.env, options.homeDirectory),
-    local: getDefaultLocalConfigPath(options.cwd),
-    runtime: getDefaultRuntimeConfigPath(options.env, options.homeDirectory),
-  };
+    return {
+        global: getDefaultGlobalConfigPath(options.env, options.homeDirectory),
+        local: getDefaultLocalConfigPath(options.cwd),
+        runtime: getDefaultRuntimeConfigPath(options.env, options.homeDirectory),
+    };
 }

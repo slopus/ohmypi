@@ -9,12 +9,12 @@ export { parseConfigToml } from "./parseConfigToml.js";
 export { resolveConfigPaths } from "./resolveConfigPaths.js";
 export { writeRuntimeConfigDefaults } from "./writeRuntimeConfigDefaults.js";
 export type {
-  ConfigDefaults,
-  ConfigPaths,
-  ConfigSource,
-  LoadedConfig,
-  LoadConfigOptions,
-  OhMyPiConfig,
-  PartialConfigDefaults,
-  PartialOhMyPiConfig,
+    ConfigDefaults,
+    ConfigPaths,
+    ConfigSource,
+    LoadedConfig,
+    LoadConfigOptions,
+    OhMyPiConfig,
+    PartialConfigDefaults,
+    PartialOhMyPiConfig,
 } from "./types.js";

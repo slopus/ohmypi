@@ -2,10 +2,10 @@ import { Type } from "@sinclair/typebox";
 
 import { defineTool } from "../../agent/types.js";
 import {
-  mediaTypeForPath,
-  readFileReturnSchema,
-  readTextFile,
-  textOutputSchema,
+    mediaTypeForPath,
+    readFileReturnSchema,
+    readTextFile,
+    textOutputSchema,
 } from "../utils/index.js";
 
 const MAX_LINES_TO_READ = 2000;
@@ -25,73 +25,77 @@ Usage:
 - If you read a file that exists but has empty contents you will receive a system reminder warning in place of file contents.`;
 
 const claudeReadReturnSchema = Type.Union([
-  readFileReturnSchema,
-  Type.Object({
-    image_url: Type.String(),
-    mediaType: Type.String(),
-  }),
-  textOutputSchema,
+    readFileReturnSchema,
+    Type.Object({
+        image_url: Type.String(),
+        mediaType: Type.String(),
+    }),
+    textOutputSchema,
 ]);
 
 export const claudeReadTool = defineTool({
-  name: "Read",
-  label: "Read",
-  description: CLAUDE_READ_DESCRIPTION,
-  arguments: Type.Object({
-    file_path: Type.String({ description: "The absolute path to the file to read" }),
-    offset: Type.Optional(
-      Type.Number({
-        description: "The line number to start reading from. Only provide if the file is too large to read at once",
-      }),
-    ),
-    limit: Type.Optional(
-      Type.Number({
-        description: "The number of lines to read. Only provide if the file is too large to read at once.",
-      }),
-    ),
-  }),
-  returnType: claudeReadReturnSchema,
-  execute: async ({ file_path, offset, limit }, context) => {
-    const lower = file_path.toLowerCase();
-    if (/\.(png|jpe?g|gif|webp|bmp)$/.test(lower)) {
-      const mediaType = mediaTypeForPath(file_path);
-      const data = Buffer.from(await context.fs.readFileBuffer(file_path)).toString("base64");
-      return {
-        image_url: `data:${mediaType};base64,${data}`,
-        mediaType,
-      };
-    }
+    name: "Read",
+    label: "Read",
+    description: CLAUDE_READ_DESCRIPTION,
+    arguments: Type.Object({
+        file_path: Type.String({ description: "The absolute path to the file to read" }),
+        offset: Type.Optional(
+            Type.Number({
+                description:
+                    "The line number to start reading from. Only provide if the file is too large to read at once",
+            }),
+        ),
+        limit: Type.Optional(
+            Type.Number({
+                description:
+                    "The number of lines to read. Only provide if the file is too large to read at once.",
+            }),
+        ),
+    }),
+    returnType: claudeReadReturnSchema,
+    execute: async ({ file_path, offset, limit }, context) => {
+        const lower = file_path.toLowerCase();
+        if (/\.(png|jpe?g|gif|webp|bmp)$/.test(lower)) {
+            const mediaType = mediaTypeForPath(file_path);
+            const data = Buffer.from(await context.fs.readFileBuffer(file_path)).toString("base64");
+            return {
+                image_url: `data:${mediaType};base64,${data}`,
+                mediaType,
+            };
+        }
 
-    const options: Parameters<typeof readTextFile>[0] = {
-      path: file_path,
-      numbered: true,
-    };
-    if (offset !== undefined) options.offset = offset;
-    if (limit !== undefined) options.limit = limit;
-    return readTextFile(options, context);
-  },
-  toLLM: (result) => {
-    if ("image_url" in result) {
-      const match = /^data:([^;]+);base64,(.*)$/.exec(result.image_url);
-      return match
-        ? [{ type: "image", mediaType: match[1] ?? result.mediaType, data: match[2] ?? "" }]
-        : [{ type: "text", text: result.image_url }];
-    }
+        const options: Parameters<typeof readTextFile>[0] = {
+            path: file_path,
+            numbered: true,
+        };
+        if (offset !== undefined) options.offset = offset;
+        if (limit !== undefined) options.limit = limit;
+        return readTextFile(options, context);
+    },
+    toLLM: (result) => {
+        if ("image_url" in result) {
+            const match = /^data:([^;]+);base64,(.*)$/.exec(result.image_url);
+            return match
+                ? [{ type: "image", mediaType: match[1] ?? result.mediaType, data: match[2] ?? "" }]
+                : [{ type: "text", text: result.image_url }];
+        }
 
-    if ("content" in result) {
-      return [{ type: "text", text: result.content.length > 0 ? result.content : "(empty file)" }];
-    }
+        if ("content" in result) {
+            return [
+                { type: "text", text: result.content.length > 0 ? result.content : "(empty file)" },
+            ];
+        }
 
-    return [{ type: "text", text: result.text }];
-  },
-  toUI: (result, args) => {
-    if ("image_url" in result) {
-      return `Read image ${args.file_path}`;
-    }
-    if ("content" in result) {
-      return `Read ${result.path} (${result.returnedLines}/${result.totalLines} lines${result.truncated ? ", truncated" : ""})`;
-    }
-    return result.text;
-  },
-  locks: [],
+        return [{ type: "text", text: result.text }];
+    },
+    toUI: (result, args) => {
+        if ("image_url" in result) {
+            return `Read image ${args.file_path}`;
+        }
+        if ("content" in result) {
+            return `Read ${result.path} (${result.returnedLines}/${result.totalLines} lines${result.truncated ? ", truncated" : ""})`;
+        }
+        return result.text;
+    },
+    locks: [],
 });

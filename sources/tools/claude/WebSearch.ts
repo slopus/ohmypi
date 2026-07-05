@@ -32,22 +32,32 @@ IMPORTANT - Use the correct year in search queries:
 `;
 
 export const claudeWebSearchTool = defineTool({
-  name: "WebSearch",
-  label: "WebSearch",
-  description: CLAUDE_WEB_SEARCH_DESCRIPTION,
-  arguments: Type.Object({
-    query: Type.String({ description: "The search query to use" }),
-    allowed_domains: Type.Optional(Type.Array(Type.String(), { description: "Only include search results from these domains" })),
-    blocked_domains: Type.Optional(Type.Array(Type.String(), { description: "Never include search results from these domains" })),
-  }),
-  returnType: textOutputSchema,
-  execute: async ({ query, allowed_domains, blocked_domains }) => {
-    if (allowed_domains !== undefined && blocked_domains !== undefined) {
-      throw new Error("Error: Cannot specify both allowed_domains and blocked_domains in the same request");
-    }
-    return { text: `Claude wants to search the web for: ${query}` };
-  },
-  toLLM: toTextBlocks,
-  toUI: (result) => result.text,
-  locks: [],
+    name: "WebSearch",
+    label: "WebSearch",
+    description: CLAUDE_WEB_SEARCH_DESCRIPTION,
+    arguments: Type.Object({
+        query: Type.String({ description: "The search query to use" }),
+        allowed_domains: Type.Optional(
+            Type.Array(Type.String(), {
+                description: "Only include search results from these domains",
+            }),
+        ),
+        blocked_domains: Type.Optional(
+            Type.Array(Type.String(), {
+                description: "Never include search results from these domains",
+            }),
+        ),
+    }),
+    returnType: textOutputSchema,
+    execute: async ({ query, allowed_domains, blocked_domains }) => {
+        if (allowed_domains !== undefined && blocked_domains !== undefined) {
+            throw new Error(
+                "Error: Cannot specify both allowed_domains and blocked_domains in the same request",
+            );
+        }
+        return { text: `Claude wants to search the web for: ${query}` };
+    },
+    toLLM: toTextBlocks,
+    toUI: (result) => result.text,
+    locks: [],
 });

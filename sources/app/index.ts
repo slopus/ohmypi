@@ -1,8 +1,5 @@
 export { CodingAssistantApp } from "./CodingAssistantApp.js";
-export type {
-  CodingAssistantAppOptions,
-  DefaultModelPreference,
-} from "./CodingAssistantApp.js";
+export type { CodingAssistantAppOptions, DefaultModelPreference } from "./CodingAssistantApp.js";
 export type { AppTranscriptEntry, AppTranscriptRole } from "./AppTranscriptEntry.js";
 export type { CodingAssistantRuntime } from "./CodingAssistantRuntime.js";
 export { createCodingAssistantAgent } from "./createCodingAssistantAgent.js";

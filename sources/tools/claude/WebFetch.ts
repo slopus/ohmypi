@@ -24,21 +24,21 @@ Usage notes:
 `;
 
 export const claudeWebFetchTool = defineTool({
-  name: "WebFetch",
-  label: "WebFetch",
-  description: CLAUDE_WEB_FETCH_DESCRIPTION,
-  arguments: Type.Object({
-    url: Type.String({ description: "The URL to fetch content from" }),
-    prompt: Type.String({ description: "The prompt to run on the fetched content" }),
-  }),
-  returnType: textOutputSchema,
-  execute: async ({ url }) => {
-    const parsed = new URL(url);
-    return {
-      text: `Claude wants to fetch content from ${parsed.hostname}`,
-    };
-  },
-  toLLM: toTextBlocks,
-  toUI: (result) => result.text,
-  locks: [],
+    name: "WebFetch",
+    label: "WebFetch",
+    description: CLAUDE_WEB_FETCH_DESCRIPTION,
+    arguments: Type.Object({
+        url: Type.String({ description: "The URL to fetch content from" }),
+        prompt: Type.String({ description: "The prompt to run on the fetched content" }),
+    }),
+    returnType: textOutputSchema,
+    execute: async ({ url }) => {
+        const parsed = new URL(url);
+        return {
+            text: `Claude wants to fetch content from ${parsed.hostname}`,
+        };
+    },
+    toLLM: toTextBlocks,
+    toUI: (result) => result.text,
+    locks: [],
 });

@@ -1,44 +1,49 @@
 {
-  "name": "ohmypi",
-  "version": "0.0.0",
-  "description": "Opinionated pi fork with strong defaults for coding-agent workflows.",
-  "type": "module",
-  "packageManager": "pnpm@10.28.1",
-  "bin": {
-    "ohmypi": "./dist/main.js"
-  },
-  "files": [
-    "dist"
-  ],
-  "scripts": {
-    "build": "tsc -p tsconfig.build.json",
-    "check": "tsc --noEmit",
-    "dev": "tsx sources/main.ts",
-    "start": "node dist/main.js",
-    "start:build": "pnpm build && node dist/main.js",
-    "test": "vitest run",
-    "test:live": "OHMYPI_LIVE_TEST=1 vitest run -c vitest.live.config.ts",
-    "test:watch": "vitest"
-  },
-  "keywords": [
-    "pi",
-    "coding-agent",
-    "agent-harness"
-  ],
-  "license": "MIT",
-  "devDependencies": {
-    "@types/node": "^24.0.10",
-    "just-bash": "^3.0.2",
-    "tsx": "^4.23.0",
-    "typescript": "^5.8.3",
-    "vite": "^7.0.2",
-    "vitest": "^3.2.4"
-  },
-  "dependencies": {
-    "@earendil-works/pi-tui": "^0.80.3",
-    "@mariozechner/pi-ai": "^0.73.1",
-    "@paralleldrive/cuid2": "^3.3.0",
-    "@sinclair/typebox": "^0.34.49",
-    "smol-toml": "^1.7.0"
-  }
+    "name": "ohmypi",
+    "version": "0.0.0",
+    "description": "Opinionated pi fork with strong defaults for coding-agent workflows.",
+    "keywords": [
+        "agent-harness",
+        "coding-agent",
+        "pi"
+    ],
+    "license": "MIT",
+    "bin": {
+        "ohmypi": "./dist/main.js"
+    },
+    "files": [
+        "dist"
+    ],
+    "type": "module",
+    "scripts": {
+        "build": "tsc -p tsconfig.build.json",
+        "check": "tsc --noEmit",
+        "dev": "tsx sources/main.ts",
+        "format": "oxfmt --write .",
+        "format:check": "oxfmt --check .",
+        "lint": "oxlint .",
+        "start": "node dist/main.js",
+        "start:build": "pnpm build && node dist/main.js",
+        "test": "vitest run",
+        "test:live": "OHMYPI_LIVE_TEST=1 vitest run -c vitest.live.config.ts",
+        "test:watch": "vitest"
+    },
+    "dependencies": {
+        "@earendil-works/pi-tui": "^0.80.3",
+        "@mariozechner/pi-ai": "^0.73.1",
+        "@paralleldrive/cuid2": "^3.3.0",
+        "@sinclair/typebox": "^0.34.49",
+        "smol-toml": "^1.7.0"
+    },
+    "devDependencies": {
+        "@types/node": "^24.0.10",
+        "just-bash": "^3.0.2",
+        "oxfmt": "^0.57.0",
+        "oxlint": "^1.72.0",
+        "tsx": "^4.23.0",
+        "typescript": "^5.8.3",
+        "vite": "^7.0.2",
+        "vitest": "^3.2.4"
+    },
+    "packageManager": "pnpm@10.28.1"
 }

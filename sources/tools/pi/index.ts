@@ -15,11 +15,11 @@ import { piReadTool } from "./read.js";
 import { piWriteTool } from "./write.js";
 
 export const piTools = [
-  piReadTool,
-  piBashTool,
-  piEditTool,
-  piWriteTool,
-  piGrepTool,
-  piFindTool,
-  piLsTool,
+    piReadTool,
+    piBashTool,
+    piEditTool,
+    piWriteTool,
+    piGrepTool,
+    piFindTool,
+    piLsTool,
 ] as const;

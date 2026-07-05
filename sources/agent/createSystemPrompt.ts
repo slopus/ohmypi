@@ -6,36 +6,36 @@ import type { Message } from "./types.js";
 import type { Model, Provider } from "../providers/types.js";
 
 export interface CreateSystemPromptOptions {
-  provider: Provider;
-  model: Model;
-  instructions?: string;
-  messages: readonly Message[];
-  context: AgentContext;
+    provider: Provider;
+    model: Model;
+    instructions?: string;
+    messages: readonly Message[];
+    context: AgentContext;
 }
 
 export async function createSystemPrompt(
-  options: CreateSystemPromptOptions,
+    options: CreateSystemPromptOptions,
 ): Promise<string | undefined> {
-  const parts: string[] = [];
-  const modelPrompt = selectSystemPromptForModel(options.provider, options.model);
-  if (modelPrompt !== undefined && modelPrompt.length > 0) {
-    parts.push(modelPrompt);
-  }
-
-  if (options.instructions !== undefined && options.instructions.length > 0) {
-    parts.push(options.instructions);
-  }
-
-  for (const message of options.messages) {
-    if (message.role === "system") {
-      parts.push(systemMessageToText(message));
+    const parts: string[] = [];
+    const modelPrompt = selectSystemPromptForModel(options.provider, options.model);
+    if (modelPrompt !== undefined && modelPrompt.length > 0) {
+        parts.push(modelPrompt);
     }
-  }
 
-  const agentsMdInstructions = await loadAgentsMdInstructions(options.context.fs);
-  if (agentsMdInstructions !== undefined) {
-    parts.push(agentsMdInstructions);
-  }
+    if (options.instructions !== undefined && options.instructions.length > 0) {
+        parts.push(options.instructions);
+    }
 
-  return parts.length > 0 ? parts.join("\n\n") : undefined;
+    for (const message of options.messages) {
+        if (message.role === "system") {
+            parts.push(systemMessageToText(message));
+        }
+    }
+
+    const agentsMdInstructions = await loadAgentsMdInstructions(options.context.fs);
+    if (agentsMdInstructions !== undefined) {
+        parts.push(agentsMdInstructions);
+    }
+
+    return parts.length > 0 ? parts.join("\n\n") : undefined;
 }

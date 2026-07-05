@@ -19,13 +19,13 @@ import { claudeWebSearchTool } from "./WebSearch.js";
 import { claudeWriteTool } from "./Write.js";
 
 export const claudeCodeTools = [
-  claudeBashTool,
-  claudeReadTool,
-  claudeEditTool,
-  claudeWriteTool,
-  claudeGlobTool,
-  claudeGrepTool,
-  claudeTodoWriteTool,
-  claudeWebFetchTool,
-  claudeWebSearchTool,
+    claudeBashTool,
+    claudeReadTool,
+    claudeEditTool,
+    claudeWriteTool,
+    claudeGlobTool,
+    claudeGrepTool,
+    claudeTodoWriteTool,
+    claudeWebFetchTool,
+    claudeWebSearchTool,
 ] as const;

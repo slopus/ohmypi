@@ -2,24 +2,24 @@ import { createId } from "@paralleldrive/cuid2";
 import { homedir } from "node:os";
 import { basename } from "node:path";
 import {
-  CURSOR_MARKER,
-  Editor,
-  matchesKey,
-  truncateToWidth,
-  visibleWidth,
-  wrapTextWithAnsi,
-  type AutocompleteItem,
-  type Component,
-  type EditorTheme,
-  type Focusable,
-  type TUI,
+    CURSOR_MARKER,
+    Editor,
+    matchesKey,
+    truncateToWidth,
+    visibleWidth,
+    wrapTextWithAnsi,
+    type AutocompleteItem,
+    type Component,
+    type EditorTheme,
+    type Focusable,
+    type TUI,
 } from "@earendil-works/pi-tui";
 
 import {
-  type Agent,
-  type AgentLoopEvent,
-  type Message,
-  type ToolResultBlock,
+    type Agent,
+    type AgentLoopEvent,
+    type Message,
+    type ToolResultBlock,
 } from "../agent/index.js";
 import type { NativeProxessManager } from "../processes/index.js";
 import type { AppTranscriptEntry } from "./AppTranscriptEntry.js";
@@ -30,10 +30,7 @@ import { describeReasoningLevel } from "./describeReasoningLevel.js";
 import { formatActivityElapsedTime } from "./formatActivityElapsedTime.js";
 import { humanizeProviderId } from "./humanizeProviderId.js";
 import { humanizeReasoningLevel } from "./humanizeReasoningLevel.js";
-import {
-  ACTIVITY_WAVE_FRAME_COUNT,
-  renderActivityWave,
-} from "./renderActivityWave.js";
+import { ACTIVITY_WAVE_FRAME_COUNT, renderActivityWave } from "./renderActivityWave.js";
 import { renderAgentMarkdown } from "./renderAgentMarkdown.js";
 
 const RESET = "\x1b[0m";
@@ -66,1435 +63,1428 @@ const MODEL_MENU_RAW_KEYS = new Set(["\x1bm", "\x1bM"]);
 const SLASH_COMMAND_MAX_VISIBLE = 6;
 
 const EDITOR_THEME: EditorTheme = {
-  borderColor: (text) => text,
-  selectList: {
-    selectedPrefix: (text) => text,
-    selectedText: (text) => `${OH_MY_PI_ORANGE}${text}${RESET}${INPUT_FG}`,
-    description: (text) => `${DIM}${SURFACE_MUTED_FG}${text}${RESET}${INPUT_FG}`,
-    scrollInfo: (text) => `${DIM}${SURFACE_MUTED_FG}${text}${RESET}${INPUT_FG}`,
-    noMatch: (text) => `${SURFACE_MUTED_FG}${text}${RESET}${INPUT_FG}`,
-  },
+    borderColor: (text) => text,
+    selectList: {
+        selectedPrefix: (text) => text,
+        selectedText: (text) => `${OH_MY_PI_ORANGE}${text}${RESET}${INPUT_FG}`,
+        description: (text) => `${DIM}${SURFACE_MUTED_FG}${text}${RESET}${INPUT_FG}`,
+        scrollInfo: (text) => `${DIM}${SURFACE_MUTED_FG}${text}${RESET}${INPUT_FG}`,
+        noMatch: (text) => `${SURFACE_MUTED_FG}${text}${RESET}${INPUT_FG}`,
+    },
 };
 
 const MAX_TRANSCRIPT_ENTRIES = 500;
 
 export interface CodingAssistantAppOptions {
-  agent: Agent;
-  cwd: string;
-  processManager: NativeProxessManager;
-  tui: TUI;
-  idFactory?: () => string;
-  onDefaultModelChange?: (preference: DefaultModelPreference) => void | Promise<void>;
-  onExit?: () => void | Promise<void>;
-  now?: () => number;
-  version?: string;
+    agent: Agent;
+    cwd: string;
+    processManager: NativeProxessManager;
+    tui: TUI;
+    idFactory?: () => string;
+    onDefaultModelChange?: (preference: DefaultModelPreference) => void | Promise<void>;
+    onExit?: () => void | Promise<void>;
+    now?: () => number;
+    version?: string;
 }
 
 export interface DefaultModelPreference {
-  effort: string;
-  modelId: string;
+    effort: string;
+    modelId: string;
 }
 
 export class CodingAssistantApp implements Component, Focusable {
-  readonly #agent: Agent;
-  readonly #cwd: string;
-  readonly #idFactory: () => string;
-  readonly #now: () => number;
-  readonly #editor: Editor;
-  readonly #onDefaultModelChange:
-    | ((preference: DefaultModelPreference) => void | Promise<void>)
-    | undefined;
-  readonly #onExit: (() => void | Promise<void>) | undefined;
-  readonly #processManager: NativeProxessManager;
-  readonly #tui: TUI;
-  readonly #version: string;
-  readonly #exitPromise: Promise<void>;
+    readonly #agent: Agent;
+    readonly #cwd: string;
+    readonly #idFactory: () => string;
+    readonly #now: () => number;
+    readonly #editor: Editor;
+    readonly #onDefaultModelChange:
+        | ((preference: DefaultModelPreference) => void | Promise<void>)
+        | undefined;
+    readonly #onExit: (() => void | Promise<void>) | undefined;
+    readonly #processManager: NativeProxessManager;
+    readonly #tui: TUI;
+    readonly #version: string;
+    readonly #exitPromise: Promise<void>;
 
-  #abortController: AbortController | undefined;
-  #abortNotified = false;
-  #activeRun: Promise<void> | undefined;
-  #activityAnimationFrame = 0;
-  #activityStartedAtMs: number | undefined;
-  #activityAnimationTimer: ReturnType<typeof setInterval> | undefined;
-  #cursorBlinkTimer: ReturnType<typeof setInterval> | undefined;
-  #cursorTyping = false;
-  #cursorTypingDebounceTimer: ReturnType<typeof setTimeout> | undefined;
-  #cursorVisible = true;
-  #entries: AppTranscriptEntry[] = [];
-  #exiting = false;
-  #exitResolve: (() => void) | undefined;
-  #focused = false;
-  #pendingPrompts: string[] = [];
-  #selectionPanel: Component | undefined;
-  #dismissedSlashCommandText: string | undefined;
-  #slashCommandSelectionIndex = 0;
-  readonly #slashCommands = createSlashCommands();
-  #runToken = 0;
-  #running = false;
-  #seenToolCallIds = new Set<string>();
-  #statusText = "Idle";
-  #stopped = false;
-  #streamEntryId: string | undefined;
+    #abortController: AbortController | undefined;
+    #abortNotified = false;
+    #activeRun: Promise<void> | undefined;
+    #activityAnimationFrame = 0;
+    #activityStartedAtMs: number | undefined;
+    #activityAnimationTimer: ReturnType<typeof setInterval> | undefined;
+    #cursorBlinkTimer: ReturnType<typeof setInterval> | undefined;
+    #cursorTyping = false;
+    #cursorTypingDebounceTimer: ReturnType<typeof setTimeout> | undefined;
+    #cursorVisible = true;
+    #entries: AppTranscriptEntry[] = [];
+    #exiting = false;
+    #exitResolve: (() => void) | undefined;
+    #focused = false;
+    #pendingPrompts: string[] = [];
+    #selectionPanel: Component | undefined;
+    #dismissedSlashCommandText: string | undefined;
+    #slashCommandSelectionIndex = 0;
+    readonly #slashCommands = createSlashCommands();
+    #runToken = 0;
+    #running = false;
+    #seenToolCallIds = new Set<string>();
+    #statusText = "Idle";
+    #stopped = false;
+    #streamEntryId: string | undefined;
 
-  constructor(options: CodingAssistantAppOptions) {
-    this.#agent = options.agent;
-    this.#cwd = options.cwd;
-    this.#idFactory = options.idFactory ?? createId;
-    this.#now = options.now ?? Date.now;
-    this.#onDefaultModelChange = options.onDefaultModelChange;
-    this.#onExit = options.onExit;
-    this.#processManager = options.processManager;
-    this.#tui = options.tui;
-    this.#version = options.version ?? "0.0.0";
-    this.#editor = new Editor(this.#tui, EDITOR_THEME, { paddingX: 0 });
-    this.#exitPromise = new Promise((resolve) => {
-      this.#exitResolve = resolve;
-    });
-
-    this.#editor.onSubmit = (value) => {
-      this.#submit(value);
-    };
-  }
-
-  get focused(): boolean {
-    return this.#focused;
-  }
-
-  set focused(value: boolean) {
-    this.#focused = value;
-    this.#editor.focused = value;
-    this.#cursorVisible = true;
-    if (value) {
-      this.#cursorTyping = false;
-      this.#startCursorBlink();
-    } else {
-      this.#stopCursorBlink();
-    }
-  }
-
-  start(): void {
-    this.#tui.addChild(this);
-    this.focused = true;
-    this.#tui.setFocus(this);
-    this.#tui.start();
-    this.#requestRender();
-  }
-
-  async stop(): Promise<void> {
-    if (this.#stopped || this.#exiting) {
-      return;
-    }
-
-    this.#exiting = true;
-    this.#statusText = "Stopped";
-    this.#abortController?.abort();
-    this.#stopActivityAnimation();
-    this.#stopCursorBlink();
-    this.#editor.setText("");
-    this.#requestRender();
-    await this.#waitForShutdownRender();
-
-    this.#stopped = true;
-    this.#tui.stop();
-
-    try {
-      await this.#processManager.killAll({ forceAfterMs: 500 });
-      await this.#onExit?.();
-    } finally {
-      this.#exitResolve?.();
-      this.#requestRender();
-    }
-  }
-
-  waitForExit(): Promise<void> {
-    return this.#exitPromise;
-  }
-
-  async waitForIdle(): Promise<void> {
-    for (;;) {
-      const activeRun = this.#activeRun;
-      if (activeRun === undefined) {
-        return;
-      }
-
-      await activeRun;
-    }
-  }
-
-  handleInput(data: string): void {
-    if (this.#stopped || this.#exiting) {
-      return;
-    }
-
-    if (this.#selectionPanel !== undefined) {
-      if (matchesKey(data, "ctrl+c") || data === "\x03") {
-        void this.stop();
-        return;
-      }
-      this.#selectionPanel.handleInput?.(data);
-      this.#requestRender();
-      return;
-    }
-
-    if (matchesKey(data, "ctrl+c") || data === "\x03") {
-      void this.stop();
-      return;
-    }
-
-    if (matchesKey(data, "ctrl+d") && this.#editor.getText().length === 0) {
-      void this.stop();
-      return;
-    }
-
-    if (this.#handleSlashCommandAutocompleteInput(data)) {
-      this.#requestRender();
-      return;
-    }
-
-    if (matchesKey(data, "escape")) {
-      this.#markTypingActivity();
-      this.#handleEscape();
-      this.#requestRender();
-      return;
-    }
-
-    if (this.#handleModelMenuShortcut(data)) {
-      this.#requestRender();
-      return;
-    }
-
-    if (this.#handleReasoningShortcut(data)) {
-      this.#requestRender();
-      return;
-    }
-
-    this.#markTypingActivity();
-    this.#editor.handleInput(data);
-    this.#syncSlashCommandAutocompleteState();
-    this.#requestRender();
-  }
-
-  invalidate(): void {
-    this.#editor.invalidate();
-  }
-
-  render(width: number): string[] {
-    const safeWidth = Math.max(20, width);
-    const header = this.#renderHeader(safeWidth);
-    const footer = this.#renderFooter(safeWidth);
-    const input = this.#renderInput(safeWidth);
-
-    if (this.#exiting) {
-      return [
-        ...header,
-        ...this.#renderTranscript(safeWidth),
-      ];
-    }
-
-    return [
-      ...header,
-      ...this.#renderTranscript(safeWidth),
-      "",
-      ...(this.#selectionPanel === undefined
-        ? input
-        : this.#selectionPanel.render(safeWidth)),
-      "",
-      ...footer,
-      "",
-      "",
-    ];
-  }
-
-  #submit(value: string): void {
-    const prompt = value.trim();
-    if (prompt.length === 0) {
-      return;
-    }
-
-    this.#editor.setText("");
-    if (this.#handleCommand(prompt)) {
-      this.#requestRender();
-      return;
-    }
-
-    this.#appendEntry({ role: "user", text: prompt });
-    if (this.#running) {
-      this.#appendEntry({
-        role: "event",
-        title: "queue",
-        text: `Queued behind the active run.`,
-      });
-    }
-
-    this.#pendingPrompts.push(prompt);
-    this.#startDrainQueue();
-    this.#requestRender();
-  }
-
-  #handleCommand(prompt: string): boolean {
-    if (prompt === "/model") {
-      this.#openModelMenu();
-      return true;
-    }
-
-    if (prompt === "/new") {
-      this.#resetSession();
-      return true;
-    }
-
-    if (prompt === "/exit") {
-      void this.stop();
-      return true;
-    }
-
-    if (prompt === "/clear") {
-      this.#entries = [];
-      this.#streamEntryId = undefined;
-      this.#appendEntry({ role: "system", text: "Transcript cleared." });
-      return true;
-    }
-
-    if (prompt === "/abort") {
-      if (!this.#abortActiveRun()) {
-        this.#appendEntry({
-          role: "event",
-          title: "abort",
-          text: "No active run.",
+    constructor(options: CodingAssistantAppOptions) {
+        this.#agent = options.agent;
+        this.#cwd = options.cwd;
+        this.#idFactory = options.idFactory ?? createId;
+        this.#now = options.now ?? Date.now;
+        this.#onDefaultModelChange = options.onDefaultModelChange;
+        this.#onExit = options.onExit;
+        this.#processManager = options.processManager;
+        this.#tui = options.tui;
+        this.#version = options.version ?? "0.0.0";
+        this.#editor = new Editor(this.#tui, EDITOR_THEME, { paddingX: 0 });
+        this.#exitPromise = new Promise((resolve) => {
+            this.#exitResolve = resolve;
         });
-      }
-      return true;
+
+        this.#editor.onSubmit = (value) => {
+            this.#submit(value);
+        };
     }
 
-    return false;
-  }
-
-  #resetSession(): void {
-    this.#abortActiveRun({ silent: true });
-    this.#runToken += 1;
-    this.#pendingPrompts = [];
-    this.#entries = [];
-    this.#seenToolCallIds.clear();
-    this.#streamEntryId = undefined;
-    this.#abortNotified = false;
-    this.#statusText = "Idle";
-    this.#agent.reset();
-    this.#appendEntry({
-      role: "system",
-      text: "Session reset. Started a new session.",
-    });
-  }
-
-  #startDrainQueue(): void {
-    if (this.#activeRun !== undefined) {
-      return;
+    get focused(): boolean {
+        return this.#focused;
     }
 
-    this.#activeRun = this.#drainQueue().finally(() => {
-      this.#activeRun = undefined;
-      this.#requestRender();
-    });
-  }
-
-  async #drainQueue(): Promise<void> {
-    while (!this.#stopped) {
-      const prompt = this.#pendingPrompts.shift();
-      if (prompt === undefined) {
-        break;
-      }
-
-      await this.#runPrompt(prompt);
-    }
-  }
-
-  async #runPrompt(prompt: string): Promise<void> {
-    const controller = new AbortController();
-    const runToken = ++this.#runToken;
-    this.#abortController = controller;
-    this.#abortNotified = false;
-    this.#running = true;
-    this.#statusText = "Running";
-    this.#streamEntryId = undefined;
-    this.#activityStartedAtMs = this.#now();
-    this.#startActivityAnimation();
-    this.#requestRender();
-
-    try {
-      const result = await this.#agent.send(prompt, {
-        signal: controller.signal,
-        onEvent: (event) => this.#handleAgentEvent(event, runToken),
-        onMessage: (message) => this.#handleAgentMessage(message, runToken),
-      });
-      if (!this.#isCurrentRun(runToken)) {
-        return;
-      }
-
-      if (result.stopReason === "aborted") {
-        this.#statusText = "Idle";
-        this.#appendAbortNotice();
-      } else {
-        this.#statusText =
-          result.stopReason === "stop" ? "Idle" : `Stopped: ${result.stopReason}`;
-      }
-    } catch (error) {
-      if (!this.#isCurrentRun(runToken)) {
-        return;
-      }
-      if (controller.signal.aborted) {
-        this.#statusText = "Idle";
-        this.#appendAbortNotice();
-      } else {
-        this.#statusText = "Error";
-        this.#appendEntry({ role: "error", text: this.#formatError(error) });
-      }
-    } finally {
-      if (!this.#isCurrentRun(runToken)) {
-        return;
-      }
-      if (this.#abortController === controller) {
-        this.#abortController = undefined;
-      }
-      this.#running = false;
-      this.#stopActivityAnimation();
-      this.#streamEntryId = undefined;
-      this.#requestRender();
-    }
-  }
-
-  #handleEscape(): void {
-    if (this.#abortActiveRun()) {
-      return;
+    set focused(value: boolean) {
+        this.#focused = value;
+        this.#editor.focused = value;
+        this.#cursorVisible = true;
+        if (value) {
+            this.#cursorTyping = false;
+            this.#startCursorBlink();
+        } else {
+            this.#stopCursorBlink();
+        }
     }
 
-    void this.stop();
-  }
-
-  #abortActiveRun(options: { silent?: boolean } = {}): boolean {
-    if (!this.#running || this.#abortController === undefined) {
-      return false;
+    start(): void {
+        this.#tui.addChild(this);
+        this.focused = true;
+        this.#tui.setFocus(this);
+        this.#tui.start();
+        this.#requestRender();
     }
 
-    const controller = this.#abortController;
-    this.#runToken += 1;
-    controller.abort();
-    this.#abortController = undefined;
-    this.#pendingPrompts = [];
-    this.#running = false;
-    this.#statusText = "Idle";
-    this.#streamEntryId = undefined;
-    this.#stopActivityAnimation();
-    void this.#processManager.killAll({ forceAfterMs: 500 }).catch((error: unknown) => {
-      this.#appendEntry({ role: "error", text: this.#formatError(error) });
-    });
-    if (options.silent !== true) {
-      this.#appendAbortNotice();
-    }
-    this.#requestRender();
-    return true;
-  }
+    async stop(): Promise<void> {
+        if (this.#stopped || this.#exiting) {
+            return;
+        }
 
-  #isCurrentRun(runToken: number): boolean {
-    return !this.#stopped && runToken === this.#runToken;
-  }
+        this.#exiting = true;
+        this.#statusText = "Stopped";
+        this.#abortController?.abort();
+        this.#stopActivityAnimation();
+        this.#stopCursorBlink();
+        this.#editor.setText("");
+        this.#requestRender();
+        await this.#waitForShutdownRender();
 
-  #handleAgentEvent(event: AgentLoopEvent, runToken: number): void {
-    if (!this.#isCurrentRun(runToken)) {
-      return;
+        this.#stopped = true;
+        this.#tui.stop();
+
+        try {
+            await this.#processManager.killAll({ forceAfterMs: 500 });
+            await this.#onExit?.();
+        } finally {
+            this.#exitResolve?.();
+            this.#requestRender();
+        }
     }
 
-    if (event.type === "inference_iteration_start") {
-      this.#statusText = "Running";
-      this.#streamEntryId = undefined;
-      if (event.iteration > 1) {
-        this.#appendEntry({ role: "separator", text: "" });
-      }
-    } else if (event.type === "text_start") {
-      this.#statusText = "Running";
-    } else if (event.type === "text_delta") {
-      this.#appendStreamText(event.delta);
-    } else if (event.type === "text_end") {
-      this.#finishStreamText(event.content);
-    } else if (event.type === "thinking_start") {
-      this.#statusText = "Thinking";
-    } else if (event.type === "toolcall_end") {
-      this.#seenToolCallIds.add(event.toolCall.id);
-      this.#statusText = `Calling ${event.toolCall.name}`;
-      this.#appendEntry({
-        id: event.toolCall.id,
-        role: "tool",
-        title: event.toolCall.name,
-        text: this.#formatToolCall(event.toolCall.name, event.toolCall.arguments),
-      });
-    } else if (event.type === "done") {
-      this.#statusText = event.reason === "toolUse" ? "Running tools" : "Idle";
-    } else if (event.type === "error") {
-      if (event.reason === "aborted") {
-        this.#statusText = "Idle";
-        this.#appendAbortNotice();
-        return;
-      }
-      this.#statusText = "Error";
-      this.#appendEntry({
-        role: "error",
-        text: event.error.errorMessage ?? "Provider returned an error.",
-      });
+    waitForExit(): Promise<void> {
+        return this.#exitPromise;
     }
 
-    this.#requestRender();
-  }
+    async waitForIdle(): Promise<void> {
+        for (;;) {
+            const activeRun = this.#activeRun;
+            if (activeRun === undefined) {
+                return;
+            }
 
-  #appendAbortNotice(): void {
-    if (this.#abortNotified) {
-      return;
+            await activeRun;
+        }
     }
 
-    this.#abortNotified = true;
-    this.#appendEntry({
-      role: "error",
-      title: "Session interrupted",
-      text: "The active run was stopped.",
-    });
-  }
+    handleInput(data: string): void {
+        if (this.#stopped || this.#exiting) {
+            return;
+        }
 
-  #handleAgentMessage(message: Message, runToken: number): void {
-    if (!this.#isCurrentRun(runToken) || message.role !== "agent") {
-      return;
+        if (this.#selectionPanel !== undefined) {
+            if (matchesKey(data, "ctrl+c") || data === "\x03") {
+                void this.stop();
+                return;
+            }
+            this.#selectionPanel.handleInput?.(data);
+            this.#requestRender();
+            return;
+        }
+
+        if (matchesKey(data, "ctrl+c") || data === "\x03") {
+            void this.stop();
+            return;
+        }
+
+        if (matchesKey(data, "ctrl+d") && this.#editor.getText().length === 0) {
+            void this.stop();
+            return;
+        }
+
+        if (this.#handleSlashCommandAutocompleteInput(data)) {
+            this.#requestRender();
+            return;
+        }
+
+        if (matchesKey(data, "escape")) {
+            this.#markTypingActivity();
+            this.#handleEscape();
+            this.#requestRender();
+            return;
+        }
+
+        if (this.#handleModelMenuShortcut(data)) {
+            this.#requestRender();
+            return;
+        }
+
+        if (this.#handleReasoningShortcut(data)) {
+            this.#requestRender();
+            return;
+        }
+
+        this.#markTypingActivity();
+        this.#editor.handleInput(data);
+        this.#syncSlashCommandAutocompleteState();
+        this.#requestRender();
     }
 
-    const text = message.blocks
-      .filter((block) => block.type === "text")
-      .map((block) => block.text)
-      .join("");
-    if (text.length > 0) {
-      this.#finishAssistantMessage(message.id, text);
+    invalidate(): void {
+        this.#editor.invalidate();
     }
 
-    for (const block of message.blocks) {
-      if (block.type === "tool_call" && !this.#seenToolCallIds.has(block.id)) {
-        this.#seenToolCallIds.add(block.id);
-        this.#appendEntry({
-          id: block.id,
-          role: "tool",
-          title: block.name,
-          text: this.#formatToolCall(block.name, block.arguments),
-        });
-      } else if (block.type === "tool_result") {
-        this.#finishToolResult(block);
-      }
+    render(width: number): string[] {
+        const safeWidth = Math.max(20, width);
+        const header = this.#renderHeader(safeWidth);
+        const footer = this.#renderFooter(safeWidth);
+        const input = this.#renderInput(safeWidth);
+
+        if (this.#exiting) {
+            return [...header, ...this.#renderTranscript(safeWidth)];
+        }
+
+        return [
+            ...header,
+            ...this.#renderTranscript(safeWidth),
+            "",
+            ...(this.#selectionPanel === undefined
+                ? input
+                : this.#selectionPanel.render(safeWidth)),
+            "",
+            ...footer,
+            "",
+            "",
+        ];
     }
 
-    this.#requestRender();
-  }
+    #submit(value: string): void {
+        const prompt = value.trim();
+        if (prompt.length === 0) {
+            return;
+        }
 
-  #ensureStreamEntry(): AppTranscriptEntry {
-    const existing = this.#streamEntryId === undefined
-      ? undefined
-      : this.#entries.find((entry) => entry.id === this.#streamEntryId);
-    if (existing !== undefined) {
-      return existing;
+        this.#editor.setText("");
+        if (this.#handleCommand(prompt)) {
+            this.#requestRender();
+            return;
+        }
+
+        this.#appendEntry({ role: "user", text: prompt });
+        if (this.#running) {
+            this.#appendEntry({
+                role: "event",
+                title: "queue",
+                text: `Queued behind the active run.`,
+            });
+        }
+
+        this.#pendingPrompts.push(prompt);
+        this.#startDrainQueue();
+        this.#requestRender();
     }
 
-    const entry = this.#appendEntry({ role: "assistant", text: "" });
-    this.#streamEntryId = entry.id;
-    return entry;
-  }
+    #handleCommand(prompt: string): boolean {
+        if (prompt === "/model") {
+            this.#openModelMenu();
+            return true;
+        }
 
-  #appendStreamText(delta: string): void {
-    const entry = this.#ensureStreamEntry();
-    entry.text += delta;
-  }
+        if (prompt === "/new") {
+            this.#resetSession();
+            return true;
+        }
 
-  #finishStreamText(text: string): void {
-    const entry = this.#ensureStreamEntry();
-    entry.text = text;
-  }
+        if (prompt === "/exit") {
+            void this.stop();
+            return true;
+        }
 
-  #finishAssistantMessage(messageId: string, text: string): void {
-    if (this.#streamEntryId !== undefined) {
-      const entry = this.#entries.find((candidate) => candidate.id === this.#streamEntryId);
-      if (entry !== undefined) {
-        entry.id = messageId;
-        entry.text = text;
+        if (prompt === "/clear") {
+            this.#entries = [];
+            this.#streamEntryId = undefined;
+            this.#appendEntry({ role: "system", text: "Transcript cleared." });
+            return true;
+        }
+
+        if (prompt === "/abort") {
+            if (!this.#abortActiveRun()) {
+                this.#appendEntry({
+                    role: "event",
+                    title: "abort",
+                    text: "No active run.",
+                });
+            }
+            return true;
+        }
+
+        return false;
+    }
+
+    #resetSession(): void {
+        this.#abortActiveRun({ silent: true });
+        this.#runToken += 1;
+        this.#pendingPrompts = [];
+        this.#entries = [];
+        this.#seenToolCallIds.clear();
         this.#streamEntryId = undefined;
-        return;
-      }
-    }
-
-    this.#appendEntry({ id: messageId, role: "assistant", text });
-  }
-
-  #appendEntry(
-    entry: Omit<AppTranscriptEntry, "id"> & { id?: string },
-  ): AppTranscriptEntry {
-    const completeEntry: AppTranscriptEntry = {
-      id: entry.id ?? this.#idFactory(),
-      role: entry.role,
-      text: entry.text,
-    };
-    if (entry.detail !== undefined) {
-      completeEntry.detail = entry.detail;
-    }
-    if (entry.title !== undefined) {
-      completeEntry.title = entry.title;
-    }
-
-    this.#entries.push(completeEntry);
-    if (this.#entries.length > MAX_TRANSCRIPT_ENTRIES) {
-      this.#entries = this.#entries.slice(-MAX_TRANSCRIPT_ENTRIES);
-    }
-    this.#requestRender();
-    return completeEntry;
-  }
-
-  #renderHeader(width: number): string[] {
-    const model = this.#modelDisplayName();
-    const provider = humanizeProviderId(this.#agent.provider.id);
-    return [
-      ...this.#renderStartupBox(width, [
-        `${OH_MY_PI_ORANGE}>_${RESET} ${BOLD}Oh My Pi${NOT_BOLD_OR_DIM} ${this.#version}`,
-        `Model: ${model}`,
-        `Provider: ${provider}`,
-        `Directory: ${this.#directoryName()}`,
-      ]),
-      "",
-    ];
-  }
-
-  #renderTranscript(width: number): string[] {
-    const sourceEntries = this.#entries.length === 0
-      ? [{ id: "ready", role: "system" as const, text: "Ready." }]
-      : this.#entries;
-    const lines: string[] = [];
-
-    for (const entry of sourceEntries) {
-      if (lines.length > 0) {
-        lines.push("");
-      }
-      lines.push(...this.#renderEntry(entry, width));
-    }
-
-    const activityLabel = this.#activityLabel();
-    if (activityLabel !== undefined && this.#shouldRenderActivityAsLastMessage()) {
-      if (lines.length > 0) {
-        lines.push("");
-      }
-      lines.push(...this.#renderActivityLine(activityLabel, width));
-    }
-
-    return lines;
-  }
-
-  #renderEntry(entry: AppTranscriptEntry, width: number): string[] {
-    if (entry.role === "separator") {
-      return [this.#turnSeparator(width)];
-    }
-    if (entry.role === "user") {
-      return this.#renderUserEntry(entry, width);
-    }
-    if (entry.role === "assistant") {
-      return this.#renderAssistantEntry(entry, width);
-    }
-    if (entry.role === "tool") {
-      return this.#renderToolEntry(entry, width, false);
-    }
-    if (entry.role === "error") {
-      return entry.detail === undefined
-        ? this.#renderNoticeEntry(entry.title ?? "Error", entry.text, width, RED)
-        : this.#renderToolEntry(entry, width, true);
-    }
-    if (entry.role === "event") {
-      return this.#renderNoticeEntry(entry.title ?? "event", entry.text, width, YELLOW);
-    }
-
-    return this.#renderNoticeEntry("system", entry.text, width, SURFACE_MUTED_FG);
-  }
-
-  #renderFooter(width: number): string[] {
-    const slashCommandSuggestions = this.#slashCommandSuggestions();
-    if (slashCommandSuggestions.length > 0) {
-      return this.#renderSlashCommandAutocomplete(width, slashCommandSuggestions);
-    }
-
-    const parts = [`${FOOTER_MODEL_FG}${this.#modelWithReasoningDisplayName()}${RESET}`];
-    parts.push(`${FOOTER_CWD_FG}${this.#cwdDisplayName()}${RESET}`);
-    if (this.#pendingPrompts.length > 0) {
-      parts.push(`${FOOTER_QUEUED_FG}queued ${this.#pendingPrompts.length}${RESET}`);
-    }
-
-    const line = `${" ".repeat(visibleWidth(INPUT_PROMPT))}${parts.join(`${DIM} • ${RESET}`)}`;
-    return [this.#fitLine(line, width)];
-  }
-
-  #renderSlashCommandAutocomplete(
-    width: number,
-    suggestions: readonly AutocompleteItem[],
-  ): string[] {
-    const selectedIndex = Math.min(this.#slashCommandSelectionIndex, suggestions.length - 1);
-    const startIndex = Math.max(
-      0,
-      Math.min(
-        selectedIndex - Math.floor(SLASH_COMMAND_MAX_VISIBLE / 2),
-        suggestions.length - SLASH_COMMAND_MAX_VISIBLE,
-      ),
-    );
-    const visibleSuggestions = suggestions.slice(
-      startIndex,
-      startIndex + SLASH_COMMAND_MAX_VISIBLE,
-    );
-
-    return visibleSuggestions.map((item, index) => {
-      const absoluteIndex = startIndex + index;
-      const isSelected = absoluteIndex === selectedIndex;
-      const marker = isSelected ? "→ " : "  ";
-      const label = this.#fitAndPadLine(item.label, 8);
-      const description = item.description ?? "";
-      const line = isSelected
-        ? `${OH_MY_PI_ORANGE}${marker}${label}${description}${RESET}`
-        : `${marker}${label}${DIM}${SURFACE_MUTED_FG}${description}${RESET}`;
-      return this.#fitLine(
-        line,
-        width,
-      );
-    });
-  }
-
-  #openModelMenu(): void {
-    if (this.#exiting || this.#stopped) {
-      return;
-    }
-
-    const selectedModelId = this.#agent.model.id;
-    const panel = createSelectionPanel({
-      title: "Choose Model",
-      subtitle: "Enter selects, Esc cancels",
-      selectedValue: selectedModelId,
-      items: this.#agent.provider.models.map((model) => ({
-        value: model.id,
-        label: model.name,
-        description: describeModelChoice(
-          model,
-          this.#agent.provider.id,
-          model.id === selectedModelId,
-        ),
-      })),
-      onSelect: (item) => {
-        this.#closeSelectionPanel();
-        this.#openReasoningMenu(item.value);
-      },
-      onCancel: () => {
-        this.#closeSelectionPanel();
-      },
-    });
-    this.#showSelectionPanel(panel);
-  }
-
-  #openReasoningMenu(modelId: string): void {
-    const model = this.#agent.provider.models.find((candidate) => candidate.id === modelId);
-    if (model === undefined) {
-      return;
-    }
-
-    const currentEffort = this.#agent.snapshot().effort;
-    const defaultEffort = model.defaultThinkingLevel;
-    const selectedEffort = currentEffort !== undefined && model.thinkingLevels.includes(currentEffort)
-      ? currentEffort
-      : defaultEffort;
-    const panel = createSelectionPanel({
-      title: "Choose Reasoning",
-      subtitle: model.name,
-      selectedValue: selectedEffort,
-      items: model.thinkingLevels.map((level) => ({
-        value: level,
-        label: humanizeReasoningLevel(level),
-        description: describeReasoningLevel(level, {
-          isCurrent: model.id === this.#agent.model.id && level === currentEffort,
-          isDefault: level === defaultEffort,
-        }),
-      })),
-      onSelect: (item) => {
-        this.#agent.setModel(model.id, item.value);
-        this.#persistDefaultModel(model.id, item.value);
+        this.#abortNotified = false;
+        this.#statusText = "Idle";
+        this.#agent.reset();
         this.#appendEntry({
-          role: "event",
-          title: "model",
-          text: `Model changed to ${model.name} with ${humanizeReasoningLevel(item.value)} reasoning.`,
+            role: "system",
+            text: "Session reset. Started a new session.",
         });
-        this.#closeSelectionPanel();
+    }
+
+    #startDrainQueue(): void {
+        if (this.#activeRun !== undefined) {
+            return;
+        }
+
+        this.#activeRun = this.#drainQueue().finally(() => {
+            this.#activeRun = undefined;
+            this.#requestRender();
+        });
+    }
+
+    async #drainQueue(): Promise<void> {
+        while (!this.#stopped) {
+            const prompt = this.#pendingPrompts.shift();
+            if (prompt === undefined) {
+                break;
+            }
+
+            await this.#runPrompt(prompt);
+        }
+    }
+
+    async #runPrompt(prompt: string): Promise<void> {
+        const controller = new AbortController();
+        const runToken = ++this.#runToken;
+        this.#abortController = controller;
+        this.#abortNotified = false;
+        this.#running = true;
+        this.#statusText = "Running";
+        this.#streamEntryId = undefined;
+        this.#activityStartedAtMs = this.#now();
+        this.#startActivityAnimation();
         this.#requestRender();
-      },
-      onCancel: () => {
-        this.#closeSelectionPanel();
-      },
-    });
-    this.#showSelectionPanel(panel);
-  }
 
-  #showSelectionPanel(component: Component): void {
-    this.#selectionPanel = component;
-  }
+        try {
+            const result = await this.#agent.send(prompt, {
+                signal: controller.signal,
+                onEvent: (event) => this.#handleAgentEvent(event, runToken),
+                onMessage: (message) => this.#handleAgentMessage(message, runToken),
+            });
+            if (!this.#isCurrentRun(runToken)) {
+                return;
+            }
 
-  #closeSelectionPanel(): void {
-    this.#selectionPanel = undefined;
-  }
-
-  #renderInput(width: number): string[] {
-    return [
-      this.#surfaceLine("", width),
-      ...this.#renderInputContent(width),
-      this.#surfaceLine("", width),
-    ];
-  }
-
-  #renderInputContent(width: number): string[] {
-    if (this.#editor.getText().length === 0) {
-      return [this.#inputSurfaceLine(this.#emptyInputLine(), width)];
+            if (result.stopReason === "aborted") {
+                this.#statusText = "Idle";
+                this.#appendAbortNotice();
+            } else {
+                this.#statusText =
+                    result.stopReason === "stop" ? "Idle" : `Stopped: ${result.stopReason}`;
+            }
+        } catch (error) {
+            if (!this.#isCurrentRun(runToken)) {
+                return;
+            }
+            if (controller.signal.aborted) {
+                this.#statusText = "Idle";
+                this.#appendAbortNotice();
+            } else {
+                this.#statusText = "Error";
+                this.#appendEntry({ role: "error", text: this.#formatError(error) });
+            }
+        } finally {
+            if (!this.#isCurrentRun(runToken)) {
+                return;
+            }
+            if (this.#abortController === controller) {
+                this.#abortController = undefined;
+            }
+            this.#running = false;
+            this.#stopActivityAnimation();
+            this.#streamEntryId = undefined;
+            this.#requestRender();
+        }
     }
 
-    const promptWidth = visibleWidth(INPUT_PROMPT);
-    const editorWidth = Math.max(1, width - promptWidth);
-    const contentLines = this.#stripSpuriousLeadingEmptyLine(
-      this.#stripEditorChrome(this.#editor.render(editorWidth)),
-    );
+    #handleEscape(): void {
+        if (this.#abortActiveRun()) {
+            return;
+        }
 
-    return contentLines.map((line, index) => {
-      const prefix = index === 0 ? this.#inputPrompt() : INPUT_LINE_INDENT;
-      const rendered = `${prefix}${line}`;
-      return this.#inputSurfaceLine(
-        this.#cursorVisible ? rendered : this.#hideCursor(rendered),
-        width,
-      );
-    });
-  }
-
-  #finishToolResult(block: ToolResultBlock): void {
-    const existing = this.#entries.find((entry) => entry.id === block.toolCallId);
-    const detail = this.#formatToolResult(block);
-    if (existing !== undefined) {
-      existing.role = block.isError ? "error" : "tool";
-      existing.title = block.toolName;
-      existing.detail = detail;
-      return;
+        void this.stop();
     }
 
-    this.#appendEntry({
-      id: block.toolCallId,
-      role: block.isError ? "error" : "tool",
-      title: block.toolName,
-      text: block.toolName,
-      detail,
-    });
-  }
+    #abortActiveRun(options: { silent?: boolean } = {}): boolean {
+        if (!this.#running || this.#abortController === undefined) {
+            return false;
+        }
 
-  #formatToolCall(toolName: string, args: unknown): string {
-    const record = this.#isRecord(args) ? args : {};
-    const stringField = (key: string): string | undefined => {
-      const value = record[key];
-      return typeof value === "string" && value.length > 0 ? value : undefined;
-    };
-
-    const normalized = toolName.toLowerCase();
-    const command = stringField("cmd") ?? stringField("command");
-    if (command !== undefined) {
-      return this.#singleLine(command);
-    }
-
-    const path = stringField("file_path") ?? stringField("path");
-    if (path !== undefined) {
-      return this.#singleLine(path);
-    }
-
-    const pattern = stringField("pattern");
-    if (pattern !== undefined) {
-      return this.#singleLine(pattern);
-    }
-
-    const query = stringField("query");
-    if (query !== undefined) {
-      return this.#singleLine(query);
-    }
-
-    if (normalized === "todowrite") {
-      const todos = record.todos;
-      return Array.isArray(todos) ? `${todos.length} todo${todos.length === 1 ? "" : "s"}` : "todos";
-    }
-
-    return toolName;
-  }
-
-  #formatToolResult(block: ToolResultBlock): string {
-    return this.#singleLine(block.display.length > 0 ? block.display : "(empty result)");
-  }
-
-  #formatError(error: unknown): string {
-    if (error instanceof Error) {
-      return error.message;
-    }
-
-    return String(error);
-  }
-
-  #fitLine(line: string, width: number): string {
-    return truncateToWidth(line, width, "", true);
-  }
-
-  #truncateLine(line: string, width: number): string {
-    return truncateToWidth(line, width, "", false);
-  }
-
-  #renderStartupBox(width: number, rows: string[]): string[] {
-    const maxInnerWidth = Math.max(1, width - 4);
-    const contentWidth = rows
-      .map((row) => visibleWidth(row))
-      .reduce((maxWidth, rowWidth) => Math.max(maxWidth, rowWidth), 1);
-    const innerWidth = Math.min(maxInnerWidth, contentWidth);
-    const rule = "─".repeat(innerWidth + 2);
-    const top = `╭${rule}╮`;
-    const bottom = `╰${rule}╯`;
-    return [
-      this.#truncateLine(`${DIM}${top}${RESET}`, width),
-      ...rows.map((row) => {
-        const paddedText = this.#fitAndPadLine(row, innerWidth);
-        return this.#truncateLine(
-          `${DIM}│ ${NOT_BOLD_OR_DIM}${paddedText}${DIM} │${RESET}`,
-          width,
-        );
-      }),
-      this.#truncateLine(`${DIM}${bottom}${RESET}`, width),
-    ];
-  }
-
-  #renderUserEntry(entry: AppTranscriptEntry, width: number): string[] {
-    const prefix = `${BOLD}›${NOT_BOLD_OR_DIM} `;
-    const prefixWidth = visibleWidth(prefix);
-    const contentWidth = Math.max(1, width - prefixWidth);
-    const wrapped = wrapTextWithAnsi(entry.text.length === 0 ? " " : entry.text, contentWidth);
-    const indent = " ".repeat(prefixWidth);
-    return [
-      this.#surfaceLine("", width),
-      ...wrapped.map((line, index) =>
-        this.#inputSurfaceLine(`${index === 0 ? prefix : indent}${line}`, width),
-      ),
-      this.#surfaceLine("", width),
-    ];
-  }
-
-  #renderAssistantEntry(entry: AppTranscriptEntry, width: number): string[] {
-    const prefix = `${DIM}•${RESET} `;
-    const prefixWidth = visibleWidth(prefix);
-    const contentWidth = Math.max(1, width - prefixWidth);
-    const renderedMarkdown = renderAgentMarkdown({
-      text: entry.text,
-      width: contentWidth,
-      cwd: this.#cwd,
-    });
-    const indent = " ".repeat(prefixWidth);
-    return renderedMarkdown.map((line, index) =>
-      this.#fitLine(`${index === 0 ? prefix : indent}${line}`, width),
-    );
-  }
-
-  #renderToolEntry(entry: AppTranscriptEntry, width: number, isError: boolean): string[] {
-    const toolName = entry.title ?? "tool";
-    const verb = isError ? "Failed" : this.#toolVerb(toolName);
-    const dot = isError ? RED : GREEN;
-    const callText = this.#singleLine(entry.text);
-    const titleSuffix = callText.length > 0 && callText !== toolName
-      ? ` ${CYAN}${callText}${RESET}`
-      : ` ${CYAN}${toolName}${RESET}`;
-    const title = `${dot}•${RESET} ${OH_MY_PI_ORANGE}${BOLD}${verb}${NOT_BOLD_OR_DIM}${titleSuffix}`;
-    const lines = [this.#fitLine(title, width)];
-    if (entry.detail !== undefined) {
-      const detailText = entry.detail.length > 0 ? entry.detail : "(empty result)";
-      lines.push(this.#fitLine(`  ${DIM}└${RESET} ${DIM}${detailText}${RESET}`, width));
-    }
-    return lines;
-  }
-
-  #renderNoticeEntry(
-    title: string,
-    text: string,
-    width: number,
-    color: string,
-  ): string[] {
-    const prefix = `${color}•${RESET} ${BOLD}${title}${NOT_BOLD_OR_DIM} `;
-    const prefixWidth = visibleWidth(prefix);
-    const wrapped = wrapTextWithAnsi(text.length === 0 ? " " : text, Math.max(1, width - prefixWidth));
-    const indent = " ".repeat(prefixWidth);
-    return wrapped.map((line, index) =>
-      this.#fitLine(`${index === 0 ? prefix : indent}${line}`, width),
-    );
-  }
-
-  #emptyInputLine(): string {
-    const marker = this.#focused ? CURSOR_MARKER : "";
-    if (!this.#focused || !this.#cursorVisible) {
-      return `${this.#inputPrompt()}${marker}${SURFACE_MUTED_FG}${INPUT_PLACEHOLDER}${INPUT_FG}`;
-    }
-
-    const firstCharacter = INPUT_PLACEHOLDER[0] ?? " ";
-    const rest = INPUT_PLACEHOLDER.slice(firstCharacter.length);
-    return `${this.#inputPrompt()}${marker}${CURSOR_BG}${CURSOR_FG}${firstCharacter}${RESET}${SURFACE_MUTED_FG}${rest}${INPUT_FG}`;
-  }
-
-  #surfaceLine(line: string, width: number): string {
-    return `${SURFACE_BG}${SURFACE_FG}${this.#fitAndPadLine(line, width)}${RESET}`;
-  }
-
-  #inputSurfaceLine(line: string, width: number): string {
-    const softened = this.#softenFakeCursor(line);
-    return `${SURFACE_BG}${INPUT_FG}${this.#fitAndPadLine(this.#restoreInputSurface(softened), width)}${RESET}`;
-  }
-
-  #restoreInputSurface(line: string): string {
-    return line.replaceAll(RESET, `${RESET}${SURFACE_BG}${INPUT_FG}`);
-  }
-
-  #softenFakeCursor(line: string): string {
-    return line.replace(
-      /\x1b\[7m([\s\S]*?)\x1b\[(?:27|0)m/gu,
-      `${CURSOR_BG}${CURSOR_FG}$1${SURFACE_BG}${INPUT_FG}`,
-    );
-  }
-
-  #activityText(): string | undefined {
-    const label = this.#activityLabel();
-    if (label === undefined) {
-      return undefined;
-    }
-
-    const elapsed = this.#activityElapsedText();
-    if (elapsed === undefined) {
-      return label;
-    }
-
-    return `${label} (${elapsed})`;
-  }
-
-  #activityElapsedText(): string | undefined {
-    if (this.#activityStartedAtMs === undefined) {
-      return undefined;
-    }
-
-    return formatActivityElapsedTime(this.#now() - this.#activityStartedAtMs);
-  }
-
-  #activityLabel(): string | undefined {
-    if (this.#statusText === "Idle") {
-      return undefined;
-    }
-    if (this.#statusText === "Running") {
-      return "Working";
-    }
-    if (this.#statusText.startsWith("Stopped:")) {
-      return undefined;
-    }
-
-    return this.#statusText;
-  }
-
-  #shouldRenderActivityAsLastMessage(): boolean {
-    if (this.#streamEntryId !== undefined) {
-      return false;
-    }
-
-    const lastEntry = this.#entries.at(-1);
-    return lastEntry === undefined
-      || lastEntry.role === "separator"
-      || lastEntry.role === "user"
-      || lastEntry.role === "system";
-  }
-
-  #renderActivityLine(label: string, width: number): string[] {
-    const prefix = `${OH_MY_PI_ORANGE}•${RESET} `;
-    const frame = this.#activityAnimationFrame;
-    const elapsed = this.#activityElapsedText();
-    const elapsedSuffix = elapsed === undefined
-      ? ""
-      : ` ${DIM}${SURFACE_MUTED_FG}(${elapsed})${RESET}`;
-
-    return [
-      this.#fitLine(
-        `${prefix}${renderActivityWave(label, frame)}${elapsedSuffix}`,
-        width,
-      ),
-    ];
-  }
-
-  #hideCursor(line: string): string {
-    return line.replace(/\x1b\[7m([\s\S]*?)\x1b\[(?:27|0)m/gu, "$1");
-  }
-
-  #fitAndPadLine(line: string, width: number): string {
-    const fitted = truncateToWidth(line, width, "", false);
-    const padding = " ".repeat(Math.max(0, width - visibleWidth(fitted)));
-    return `${fitted}${padding}`;
-  }
-
-  #turnSeparator(width: number): string {
-    return this.#fitLine(`${DIM}${"─".repeat(width)}${RESET}`, width);
-  }
-
-  #directoryName(): string {
-    return basename(this.#cwd) || this.#cwd;
-  }
-
-  #inputPrompt(): string {
-    return `${OH_MY_PI_ORANGE}${BOLD}›${NOT_BOLD_OR_DIM}${INPUT_FG} `;
-  }
-
-  #handleReasoningShortcut(data: string): boolean {
-    const direction = this.#reasoningShortcutDirection(data);
-    if (direction === undefined) {
-      return false;
-    }
-
-    const nextEffort = this.#nextReasoningEffort(direction);
-    if (nextEffort !== undefined) {
-      this.#agent.setEffort(nextEffort);
-      this.#persistDefaultModel(this.#agent.model.id, nextEffort);
-    }
-
-    return true;
-  }
-
-  #persistDefaultModel(modelId: string, effort: string): void {
-    if (this.#onDefaultModelChange === undefined) {
-      return;
-    }
-
-    void Promise.resolve(
-      this.#onDefaultModelChange({
-        modelId,
-        effort,
-      }),
-    ).catch(() => {
-      if (this.#stopped || this.#exiting) {
-        return;
-      }
-      this.#appendEntry({
-        role: "event",
-        title: "config",
-        text: "Could not update the config file.",
-      });
-      this.#requestRender();
-    });
-  }
-
-  #handleModelMenuShortcut(data: string): boolean {
-    if (MODEL_MENU_RAW_KEYS.has(data) || matchesKey(data, "alt+m")) {
-      this.#openModelMenu();
-      return true;
-    }
-
-    return false;
-  }
-
-  #handleSlashCommandAutocompleteInput(data: string): boolean {
-    const suggestions = this.#slashCommandSuggestions();
-    if (suggestions.length === 0) {
-      return false;
-    }
-
-    if (matchesKey(data, "up")) {
-      this.#slashCommandSelectionIndex =
-        (this.#slashCommandSelectionIndex + suggestions.length - 1) % suggestions.length;
-      return true;
-    }
-
-    if (matchesKey(data, "down")) {
-      this.#slashCommandSelectionIndex =
-        (this.#slashCommandSelectionIndex + 1) % suggestions.length;
-      return true;
-    }
-
-    if (matchesKey(data, "escape")) {
-      this.#dismissedSlashCommandText = this.#editor.getText();
-      return true;
-    }
-
-    if (matchesKey(data, "enter") || matchesKey(data, "tab")) {
-      const selected = suggestions[this.#slashCommandSelectionIndex] ?? suggestions[0];
-      if (selected === undefined) {
+        const controller = this.#abortController;
+        this.#runToken += 1;
+        controller.abort();
+        this.#abortController = undefined;
+        this.#pendingPrompts = [];
+        this.#running = false;
+        this.#statusText = "Idle";
+        this.#streamEntryId = undefined;
+        this.#stopActivityAnimation();
+        void this.#processManager.killAll({ forceAfterMs: 500 }).catch((error: unknown) => {
+            this.#appendEntry({ role: "error", text: this.#formatError(error) });
+        });
+        if (options.silent !== true) {
+            this.#appendAbortNotice();
+        }
+        this.#requestRender();
         return true;
-      }
-
-      this.#dismissedSlashCommandText = undefined;
-      this.#submit(`/${selected.value}`);
-      return true;
     }
 
-    return false;
-  }
-
-  #slashCommandSuggestions(): readonly AutocompleteItem[] {
-    const text = this.#editor.getText();
-    if (
-      text.length === 0
-      || text === this.#dismissedSlashCommandText
-      || text.includes("\n")
-      || !text.startsWith("/")
-      || /\s/u.test(text)
-    ) {
-      return [];
+    #isCurrentRun(runToken: number): boolean {
+        return !this.#stopped && runToken === this.#runToken;
     }
 
-    const query = text.slice(1).toLowerCase();
-    const suggestions = this.#slashCommands.filter((command) =>
-      command.value.toLowerCase().startsWith(query)
-      || command.aliases.some((alias) => alias.toLowerCase().startsWith(query)),
-    );
-    if (this.#slashCommandSelectionIndex >= suggestions.length) {
-      this.#slashCommandSelectionIndex = 0;
-    }
+    #handleAgentEvent(event: AgentLoopEvent, runToken: number): void {
+        if (!this.#isCurrentRun(runToken)) {
+            return;
+        }
 
-    return suggestions;
-  }
+        if (event.type === "inference_iteration_start") {
+            this.#statusText = "Running";
+            this.#streamEntryId = undefined;
+            if (event.iteration > 1) {
+                this.#appendEntry({ role: "separator", text: "" });
+            }
+        } else if (event.type === "text_start") {
+            this.#statusText = "Running";
+        } else if (event.type === "text_delta") {
+            this.#appendStreamText(event.delta);
+        } else if (event.type === "text_end") {
+            this.#finishStreamText(event.content);
+        } else if (event.type === "thinking_start") {
+            this.#statusText = "Thinking";
+        } else if (event.type === "toolcall_end") {
+            this.#seenToolCallIds.add(event.toolCall.id);
+            this.#statusText = `Calling ${event.toolCall.name}`;
+            this.#appendEntry({
+                id: event.toolCall.id,
+                role: "tool",
+                title: event.toolCall.name,
+                text: this.#formatToolCall(event.toolCall.name, event.toolCall.arguments),
+            });
+        } else if (event.type === "done") {
+            this.#statusText = event.reason === "toolUse" ? "Running tools" : "Idle";
+        } else if (event.type === "error") {
+            if (event.reason === "aborted") {
+                this.#statusText = "Idle";
+                this.#appendAbortNotice();
+                return;
+            }
+            this.#statusText = "Error";
+            this.#appendEntry({
+                role: "error",
+                text: event.error.errorMessage ?? "Provider returned an error.",
+            });
+        }
 
-  #syncSlashCommandAutocompleteState(): void {
-    const text = this.#editor.getText();
-    if (
-      this.#dismissedSlashCommandText !== undefined
-      && text !== this.#dismissedSlashCommandText
-    ) {
-      this.#dismissedSlashCommandText = undefined;
-    }
-    this.#slashCommandSuggestions();
-  }
-
-  #reasoningShortcutDirection(data: string): "down" | "up" | undefined {
-    if (
-      REASONING_DOWN_RAW_KEYS.has(data)
-      || matchesKey(data, "alt+,")
-      || matchesKey(data, "shift+down")
-    ) {
-      return "down";
-    }
-    if (
-      REASONING_UP_RAW_KEYS.has(data)
-      || matchesKey(data, "alt+.")
-      || matchesKey(data, "shift+up")
-    ) {
-      return "up";
-    }
-
-    return undefined;
-  }
-
-  #nextReasoningEffort(direction: "down" | "up"): string | undefined {
-    const choices = [...this.#agent.model.thinkingLevels];
-    if (choices.length === 0) {
-      return undefined;
-    }
-
-    const firstChoice = choices[0];
-    if (firstChoice === undefined) {
-      return undefined;
-    }
-
-    const snapshotEffort = this.#agent.snapshot().effort;
-    const fallbackEffort = this.#agent.model.defaultThinkingLevel;
-    const currentEffort = snapshotEffort !== undefined && choices.includes(snapshotEffort)
-      ? snapshotEffort
-      : choices.includes(fallbackEffort)
-        ? fallbackEffort
-        : firstChoice;
-    const currentIndex = choices.indexOf(currentEffort);
-    const nextIndex = direction === "up" ? currentIndex + 1 : currentIndex - 1;
-
-    return choices[nextIndex];
-  }
-
-  #modelDisplayName(): string {
-    return this.#agent.model.name;
-  }
-
-  #modelWithReasoningDisplayName(): string {
-    const effort = this.#agent.snapshot().effort ?? this.#agent.model.defaultThinkingLevel;
-    return effort === undefined
-      ? this.#modelDisplayName()
-      : `${this.#modelDisplayName()} ${humanizeReasoningLevel(effort)}`;
-  }
-
-  #cwdDisplayName(): string {
-    const home = homedir();
-    if (this.#cwd === home) {
-      return "~";
-    }
-    if (this.#cwd.startsWith(`${home}/`)) {
-      return `~/${this.#cwd.slice(home.length + 1)}`;
-    }
-
-    return this.#cwd;
-  }
-
-  #toolVerb(toolName: string): string {
-    const normalized = toolName.toLowerCase();
-    if (normalized.includes("bash") || normalized.includes("exec")) {
-      return "Ran";
-    }
-    if (
-      normalized.includes("grep")
-      || normalized.includes("find")
-      || normalized.includes("glob")
-      || normalized === "ls"
-    ) {
-      return "Explored";
-    }
-    if (normalized.includes("read") || normalized.includes("view")) {
-      return "Read";
-    }
-    if (
-      normalized.includes("write")
-      || normalized.includes("edit")
-      || normalized.includes("patch")
-    ) {
-      return "Edited";
-    }
-
-    return "Used";
-  }
-
-  #isRecord(value: unknown): value is Record<string, unknown> {
-    return typeof value === "object" && value !== null && !Array.isArray(value);
-  }
-
-  #singleLine(text: string): string {
-    return text.replace(/\s+/gu, " ").trim();
-  }
-
-  #markTypingActivity(): void {
-    this.#cursorTyping = true;
-    this.#cursorVisible = true;
-
-    if (this.#cursorTypingDebounceTimer !== undefined) {
-      clearTimeout(this.#cursorTypingDebounceTimer);
-    }
-
-    this.#cursorTypingDebounceTimer = setTimeout(() => {
-      this.#cursorTypingDebounceTimer = undefined;
-      this.#cursorTyping = false;
-    }, CURSOR_TYPING_DEBOUNCE_MS);
-    this.#cursorTypingDebounceTimer.unref?.();
-  }
-
-  #stripEditorChrome(lines: string[]): string[] {
-    let content = [...lines];
-
-    while (content.length > 0 && this.#isEditorBorderLine(content[0] ?? "")) {
-      content = content.slice(1);
-    }
-    while (content.length > 0 && this.#isEditorBorderLine(content[content.length - 1] ?? "")) {
-      content = content.slice(0, -1);
-    }
-
-    return content.filter((line) =>
-      !line.includes(" more ") && !this.#isEditorBorderLine(line)
-    );
-  }
-
-  #isEditorBorderLine(line: string): boolean {
-    const stripped = line.replace(/\x1b\[[0-9;]*m/g, "");
-    return stripped.length > 0 && [...stripped].every((character) => character === "─");
-  }
-
-  #stripSpuriousLeadingEmptyLine(lines: string[]): string[] {
-    if (lines.length <= 1) {
-      return lines;
-    }
-
-    const first = lines[0] ?? "";
-    if (this.#isVisibleEditorLine(first)) {
-      return lines;
-    }
-
-    return lines.slice(1);
-  }
-
-  #isVisibleEditorLine(line: string): boolean {
-    const stripped = line
-      .replace(/\x1b\[[0-9;]*m/g, "")
-      .replaceAll(CURSOR_MARKER, "")
-      .trim();
-    return stripped.length > 0 || line.includes("\x1b[7m") || line.includes(CURSOR_MARKER);
-  }
-
-  #startCursorBlink(): void {
-    if (this.#cursorBlinkTimer !== undefined || this.#stopped) {
-      return;
-    }
-
-    this.#cursorBlinkTimer = setInterval(() => {
-      if (!this.#focused || this.#stopped || this.#cursorTyping) {
-        return;
-      }
-
-      this.#cursorVisible = !this.#cursorVisible;
-      this.#requestRender();
-    }, CURSOR_BLINK_MS);
-    this.#cursorBlinkTimer.unref?.();
-  }
-
-  #stopCursorBlink(): void {
-    if (this.#cursorTypingDebounceTimer !== undefined) {
-      clearTimeout(this.#cursorTypingDebounceTimer);
-      this.#cursorTypingDebounceTimer = undefined;
-    }
-
-    this.#cursorTyping = false;
-
-    if (this.#cursorBlinkTimer === undefined) {
-      return;
-    }
-
-    clearInterval(this.#cursorBlinkTimer);
-    this.#cursorBlinkTimer = undefined;
-    this.#cursorVisible = true;
-  }
-
-  #startActivityAnimation(): void {
-    if (this.#activityAnimationTimer !== undefined || this.#stopped) {
-      return;
-    }
-
-    this.#activityAnimationFrame = 0;
-    this.#activityAnimationTimer = setInterval(() => {
-      if (this.#stopped || this.#exiting) {
-        return;
-      }
-
-      this.#activityAnimationFrame =
-        (this.#activityAnimationFrame + 1) % ACTIVITY_WAVE_FRAME_COUNT;
-      if (
-        this.#activityText() !== undefined
-        && this.#shouldRenderActivityAsLastMessage()
-      ) {
         this.#requestRender();
-      }
-    }, ACTIVITY_ANIMATION_MS);
-    this.#activityAnimationTimer.unref?.();
-  }
-
-  #stopActivityAnimation(): void {
-    if (this.#activityAnimationTimer === undefined) {
-      this.#activityAnimationFrame = 0;
-      this.#activityStartedAtMs = undefined;
-      return;
     }
 
-    clearInterval(this.#activityAnimationTimer);
-    this.#activityAnimationTimer = undefined;
-    this.#activityAnimationFrame = 0;
-    this.#activityStartedAtMs = undefined;
-  }
+    #appendAbortNotice(): void {
+        if (this.#abortNotified) {
+            return;
+        }
 
-  #requestRender(): void {
-    if (!this.#stopped) {
-      this.#tui.requestRender();
+        this.#abortNotified = true;
+        this.#appendEntry({
+            role: "error",
+            title: "Session interrupted",
+            text: "The active run was stopped.",
+        });
     }
-  }
 
-  #waitForShutdownRender(): Promise<void> {
-    return new Promise((resolve) => {
-      setTimeout(resolve, 25);
-    });
-  }
+    #handleAgentMessage(message: Message, runToken: number): void {
+        if (!this.#isCurrentRun(runToken) || message.role !== "agent") {
+            return;
+        }
+
+        const text = message.blocks
+            .filter((block) => block.type === "text")
+            .map((block) => block.text)
+            .join("");
+        if (text.length > 0) {
+            this.#finishAssistantMessage(message.id, text);
+        }
+
+        for (const block of message.blocks) {
+            if (block.type === "tool_call" && !this.#seenToolCallIds.has(block.id)) {
+                this.#seenToolCallIds.add(block.id);
+                this.#appendEntry({
+                    id: block.id,
+                    role: "tool",
+                    title: block.name,
+                    text: this.#formatToolCall(block.name, block.arguments),
+                });
+            } else if (block.type === "tool_result") {
+                this.#finishToolResult(block);
+            }
+        }
+
+        this.#requestRender();
+    }
+
+    #ensureStreamEntry(): AppTranscriptEntry {
+        const existing =
+            this.#streamEntryId === undefined
+                ? undefined
+                : this.#entries.find((entry) => entry.id === this.#streamEntryId);
+        if (existing !== undefined) {
+            return existing;
+        }
+
+        const entry = this.#appendEntry({ role: "assistant", text: "" });
+        this.#streamEntryId = entry.id;
+        return entry;
+    }
+
+    #appendStreamText(delta: string): void {
+        const entry = this.#ensureStreamEntry();
+        entry.text += delta;
+    }
+
+    #finishStreamText(text: string): void {
+        const entry = this.#ensureStreamEntry();
+        entry.text = text;
+    }
+
+    #finishAssistantMessage(messageId: string, text: string): void {
+        if (this.#streamEntryId !== undefined) {
+            const entry = this.#entries.find((candidate) => candidate.id === this.#streamEntryId);
+            if (entry !== undefined) {
+                entry.id = messageId;
+                entry.text = text;
+                this.#streamEntryId = undefined;
+                return;
+            }
+        }
+
+        this.#appendEntry({ id: messageId, role: "assistant", text });
+    }
+
+    #appendEntry(entry: Omit<AppTranscriptEntry, "id"> & { id?: string }): AppTranscriptEntry {
+        const completeEntry: AppTranscriptEntry = {
+            id: entry.id ?? this.#idFactory(),
+            role: entry.role,
+            text: entry.text,
+        };
+        if (entry.detail !== undefined) {
+            completeEntry.detail = entry.detail;
+        }
+        if (entry.title !== undefined) {
+            completeEntry.title = entry.title;
+        }
+
+        this.#entries.push(completeEntry);
+        if (this.#entries.length > MAX_TRANSCRIPT_ENTRIES) {
+            this.#entries = this.#entries.slice(-MAX_TRANSCRIPT_ENTRIES);
+        }
+        this.#requestRender();
+        return completeEntry;
+    }
+
+    #renderHeader(width: number): string[] {
+        const model = this.#modelDisplayName();
+        const provider = humanizeProviderId(this.#agent.provider.id);
+        return [
+            ...this.#renderStartupBox(width, [
+                `${OH_MY_PI_ORANGE}>_${RESET} ${BOLD}Oh My Pi${NOT_BOLD_OR_DIM} ${this.#version}`,
+                `Model: ${model}`,
+                `Provider: ${provider}`,
+                `Directory: ${this.#directoryName()}`,
+            ]),
+            "",
+        ];
+    }
+
+    #renderTranscript(width: number): string[] {
+        const sourceEntries =
+            this.#entries.length === 0
+                ? [{ id: "ready", role: "system" as const, text: "Ready." }]
+                : this.#entries;
+        const lines: string[] = [];
+
+        for (const entry of sourceEntries) {
+            if (lines.length > 0) {
+                lines.push("");
+            }
+            lines.push(...this.#renderEntry(entry, width));
+        }
+
+        const activityLabel = this.#activityLabel();
+        if (activityLabel !== undefined && this.#shouldRenderActivityAsLastMessage()) {
+            if (lines.length > 0) {
+                lines.push("");
+            }
+            lines.push(...this.#renderActivityLine(activityLabel, width));
+        }
+
+        return lines;
+    }
+
+    #renderEntry(entry: AppTranscriptEntry, width: number): string[] {
+        if (entry.role === "separator") {
+            return [this.#turnSeparator(width)];
+        }
+        if (entry.role === "user") {
+            return this.#renderUserEntry(entry, width);
+        }
+        if (entry.role === "assistant") {
+            return this.#renderAssistantEntry(entry, width);
+        }
+        if (entry.role === "tool") {
+            return this.#renderToolEntry(entry, width, false);
+        }
+        if (entry.role === "error") {
+            return entry.detail === undefined
+                ? this.#renderNoticeEntry(entry.title ?? "Error", entry.text, width, RED)
+                : this.#renderToolEntry(entry, width, true);
+        }
+        if (entry.role === "event") {
+            return this.#renderNoticeEntry(entry.title ?? "event", entry.text, width, YELLOW);
+        }
+
+        return this.#renderNoticeEntry("system", entry.text, width, SURFACE_MUTED_FG);
+    }
+
+    #renderFooter(width: number): string[] {
+        const slashCommandSuggestions = this.#slashCommandSuggestions();
+        if (slashCommandSuggestions.length > 0) {
+            return this.#renderSlashCommandAutocomplete(width, slashCommandSuggestions);
+        }
+
+        const parts = [`${FOOTER_MODEL_FG}${this.#modelWithReasoningDisplayName()}${RESET}`];
+        parts.push(`${FOOTER_CWD_FG}${this.#cwdDisplayName()}${RESET}`);
+        if (this.#pendingPrompts.length > 0) {
+            parts.push(`${FOOTER_QUEUED_FG}queued ${this.#pendingPrompts.length}${RESET}`);
+        }
+
+        const line = `${" ".repeat(visibleWidth(INPUT_PROMPT))}${parts.join(`${DIM} • ${RESET}`)}`;
+        return [this.#fitLine(line, width)];
+    }
+
+    #renderSlashCommandAutocomplete(
+        width: number,
+        suggestions: readonly AutocompleteItem[],
+    ): string[] {
+        const selectedIndex = Math.min(this.#slashCommandSelectionIndex, suggestions.length - 1);
+        const startIndex = Math.max(
+            0,
+            Math.min(
+                selectedIndex - Math.floor(SLASH_COMMAND_MAX_VISIBLE / 2),
+                suggestions.length - SLASH_COMMAND_MAX_VISIBLE,
+            ),
+        );
+        const visibleSuggestions = suggestions.slice(
+            startIndex,
+            startIndex + SLASH_COMMAND_MAX_VISIBLE,
+        );
+
+        return visibleSuggestions.map((item, index) => {
+            const absoluteIndex = startIndex + index;
+            const isSelected = absoluteIndex === selectedIndex;
+            const marker = isSelected ? "→ " : "  ";
+            const label = this.#fitAndPadLine(item.label, 8);
+            const description = item.description ?? "";
+            const line = isSelected
+                ? `${OH_MY_PI_ORANGE}${marker}${label}${description}${RESET}`
+                : `${marker}${label}${DIM}${SURFACE_MUTED_FG}${description}${RESET}`;
+            return this.#fitLine(line, width);
+        });
+    }
+
+    #openModelMenu(): void {
+        if (this.#exiting || this.#stopped) {
+            return;
+        }
+
+        const selectedModelId = this.#agent.model.id;
+        const panel = createSelectionPanel({
+            title: "Choose Model",
+            subtitle: "Enter selects, Esc cancels",
+            selectedValue: selectedModelId,
+            items: this.#agent.provider.models.map((model) => ({
+                value: model.id,
+                label: model.name,
+                description: describeModelChoice(
+                    model,
+                    this.#agent.provider.id,
+                    model.id === selectedModelId,
+                ),
+            })),
+            onSelect: (item) => {
+                this.#closeSelectionPanel();
+                this.#openReasoningMenu(item.value);
+            },
+            onCancel: () => {
+                this.#closeSelectionPanel();
+            },
+        });
+        this.#showSelectionPanel(panel);
+    }
+
+    #openReasoningMenu(modelId: string): void {
+        const model = this.#agent.provider.models.find((candidate) => candidate.id === modelId);
+        if (model === undefined) {
+            return;
+        }
+
+        const currentEffort = this.#agent.snapshot().effort;
+        const defaultEffort = model.defaultThinkingLevel;
+        const selectedEffort =
+            currentEffort !== undefined && model.thinkingLevels.includes(currentEffort)
+                ? currentEffort
+                : defaultEffort;
+        const panel = createSelectionPanel({
+            title: "Choose Reasoning",
+            subtitle: model.name,
+            selectedValue: selectedEffort,
+            items: model.thinkingLevels.map((level) => ({
+                value: level,
+                label: humanizeReasoningLevel(level),
+                description: describeReasoningLevel(level, {
+                    isCurrent: model.id === this.#agent.model.id && level === currentEffort,
+                    isDefault: level === defaultEffort,
+                }),
+            })),
+            onSelect: (item) => {
+                this.#agent.setModel(model.id, item.value);
+                this.#persistDefaultModel(model.id, item.value);
+                this.#appendEntry({
+                    role: "event",
+                    title: "model",
+                    text: `Model changed to ${model.name} with ${humanizeReasoningLevel(item.value)} reasoning.`,
+                });
+                this.#closeSelectionPanel();
+                this.#requestRender();
+            },
+            onCancel: () => {
+                this.#closeSelectionPanel();
+            },
+        });
+        this.#showSelectionPanel(panel);
+    }
+
+    #showSelectionPanel(component: Component): void {
+        this.#selectionPanel = component;
+    }
+
+    #closeSelectionPanel(): void {
+        this.#selectionPanel = undefined;
+    }
+
+    #renderInput(width: number): string[] {
+        return [
+            this.#surfaceLine("", width),
+            ...this.#renderInputContent(width),
+            this.#surfaceLine("", width),
+        ];
+    }
+
+    #renderInputContent(width: number): string[] {
+        if (this.#editor.getText().length === 0) {
+            return [this.#inputSurfaceLine(this.#emptyInputLine(), width)];
+        }
+
+        const promptWidth = visibleWidth(INPUT_PROMPT);
+        const editorWidth = Math.max(1, width - promptWidth);
+        const contentLines = this.#stripSpuriousLeadingEmptyLine(
+            this.#stripEditorChrome(this.#editor.render(editorWidth)),
+        );
+
+        return contentLines.map((line, index) => {
+            const prefix = index === 0 ? this.#inputPrompt() : INPUT_LINE_INDENT;
+            const rendered = `${prefix}${line}`;
+            return this.#inputSurfaceLine(
+                this.#cursorVisible ? rendered : this.#hideCursor(rendered),
+                width,
+            );
+        });
+    }
+
+    #finishToolResult(block: ToolResultBlock): void {
+        const existing = this.#entries.find((entry) => entry.id === block.toolCallId);
+        const detail = this.#formatToolResult(block);
+        if (existing !== undefined) {
+            existing.role = block.isError ? "error" : "tool";
+            existing.title = block.toolName;
+            existing.detail = detail;
+            return;
+        }
+
+        this.#appendEntry({
+            id: block.toolCallId,
+            role: block.isError ? "error" : "tool",
+            title: block.toolName,
+            text: block.toolName,
+            detail,
+        });
+    }
+
+    #formatToolCall(toolName: string, args: unknown): string {
+        const record = this.#isRecord(args) ? args : {};
+        const stringField = (key: string): string | undefined => {
+            const value = record[key];
+            return typeof value === "string" && value.length > 0 ? value : undefined;
+        };
+
+        const normalized = toolName.toLowerCase();
+        const command = stringField("cmd") ?? stringField("command");
+        if (command !== undefined) {
+            return this.#singleLine(command);
+        }
+
+        const path = stringField("file_path") ?? stringField("path");
+        if (path !== undefined) {
+            return this.#singleLine(path);
+        }
+
+        const pattern = stringField("pattern");
+        if (pattern !== undefined) {
+            return this.#singleLine(pattern);
+        }
+
+        const query = stringField("query");
+        if (query !== undefined) {
+            return this.#singleLine(query);
+        }
+
+        if (normalized === "todowrite") {
+            const todos = record.todos;
+            return Array.isArray(todos)
+                ? `${todos.length} todo${todos.length === 1 ? "" : "s"}`
+                : "todos";
+        }
+
+        return toolName;
+    }
+
+    #formatToolResult(block: ToolResultBlock): string {
+        return this.#singleLine(block.display.length > 0 ? block.display : "(empty result)");
+    }
+
+    #formatError(error: unknown): string {
+        if (error instanceof Error) {
+            return error.message;
+        }
+
+        return String(error);
+    }
+
+    #fitLine(line: string, width: number): string {
+        return truncateToWidth(line, width, "", true);
+    }
+
+    #truncateLine(line: string, width: number): string {
+        return truncateToWidth(line, width, "", false);
+    }
+
+    #renderStartupBox(width: number, rows: string[]): string[] {
+        const maxInnerWidth = Math.max(1, width - 4);
+        const contentWidth = rows
+            .map((row) => visibleWidth(row))
+            .reduce((maxWidth, rowWidth) => Math.max(maxWidth, rowWidth), 1);
+        const innerWidth = Math.min(maxInnerWidth, contentWidth);
+        const rule = "─".repeat(innerWidth + 2);
+        const top = `╭${rule}╮`;
+        const bottom = `╰${rule}╯`;
+        return [
+            this.#truncateLine(`${DIM}${top}${RESET}`, width),
+            ...rows.map((row) => {
+                const paddedText = this.#fitAndPadLine(row, innerWidth);
+                return this.#truncateLine(
+                    `${DIM}│ ${NOT_BOLD_OR_DIM}${paddedText}${DIM} │${RESET}`,
+                    width,
+                );
+            }),
+            this.#truncateLine(`${DIM}${bottom}${RESET}`, width),
+        ];
+    }
+
+    #renderUserEntry(entry: AppTranscriptEntry, width: number): string[] {
+        const prefix = `${BOLD}›${NOT_BOLD_OR_DIM} `;
+        const prefixWidth = visibleWidth(prefix);
+        const contentWidth = Math.max(1, width - prefixWidth);
+        const wrapped = wrapTextWithAnsi(entry.text.length === 0 ? " " : entry.text, contentWidth);
+        const indent = " ".repeat(prefixWidth);
+        return [
+            this.#surfaceLine("", width),
+            ...wrapped.map((line, index) =>
+                this.#inputSurfaceLine(`${index === 0 ? prefix : indent}${line}`, width),
+            ),
+            this.#surfaceLine("", width),
+        ];
+    }
+
+    #renderAssistantEntry(entry: AppTranscriptEntry, width: number): string[] {
+        const prefix = `${DIM}•${RESET} `;
+        const prefixWidth = visibleWidth(prefix);
+        const contentWidth = Math.max(1, width - prefixWidth);
+        const renderedMarkdown = renderAgentMarkdown({
+            text: entry.text,
+            width: contentWidth,
+            cwd: this.#cwd,
+        });
+        const indent = " ".repeat(prefixWidth);
+        return renderedMarkdown.map((line, index) =>
+            this.#fitLine(`${index === 0 ? prefix : indent}${line}`, width),
+        );
+    }
+
+    #renderToolEntry(entry: AppTranscriptEntry, width: number, isError: boolean): string[] {
+        const toolName = entry.title ?? "tool";
+        const verb = isError ? "Failed" : this.#toolVerb(toolName);
+        const dot = isError ? RED : GREEN;
+        const callText = this.#singleLine(entry.text);
+        const titleSuffix =
+            callText.length > 0 && callText !== toolName
+                ? ` ${CYAN}${callText}${RESET}`
+                : ` ${CYAN}${toolName}${RESET}`;
+        const title = `${dot}•${RESET} ${OH_MY_PI_ORANGE}${BOLD}${verb}${NOT_BOLD_OR_DIM}${titleSuffix}`;
+        const lines = [this.#fitLine(title, width)];
+        if (entry.detail !== undefined) {
+            const detailText = entry.detail.length > 0 ? entry.detail : "(empty result)";
+            lines.push(this.#fitLine(`  ${DIM}└${RESET} ${DIM}${detailText}${RESET}`, width));
+        }
+        return lines;
+    }
+
+    #renderNoticeEntry(title: string, text: string, width: number, color: string): string[] {
+        const prefix = `${color}•${RESET} ${BOLD}${title}${NOT_BOLD_OR_DIM} `;
+        const prefixWidth = visibleWidth(prefix);
+        const wrapped = wrapTextWithAnsi(
+            text.length === 0 ? " " : text,
+            Math.max(1, width - prefixWidth),
+        );
+        const indent = " ".repeat(prefixWidth);
+        return wrapped.map((line, index) =>
+            this.#fitLine(`${index === 0 ? prefix : indent}${line}`, width),
+        );
+    }
+
+    #emptyInputLine(): string {
+        const marker = this.#focused ? CURSOR_MARKER : "";
+        if (!this.#focused || !this.#cursorVisible) {
+            return `${this.#inputPrompt()}${marker}${SURFACE_MUTED_FG}${INPUT_PLACEHOLDER}${INPUT_FG}`;
+        }
+
+        const firstCharacter = INPUT_PLACEHOLDER[0] ?? " ";
+        const rest = INPUT_PLACEHOLDER.slice(firstCharacter.length);
+        return `${this.#inputPrompt()}${marker}${CURSOR_BG}${CURSOR_FG}${firstCharacter}${RESET}${SURFACE_MUTED_FG}${rest}${INPUT_FG}`;
+    }
+
+    #surfaceLine(line: string, width: number): string {
+        return `${SURFACE_BG}${SURFACE_FG}${this.#fitAndPadLine(line, width)}${RESET}`;
+    }
+
+    #inputSurfaceLine(line: string, width: number): string {
+        const softened = this.#softenFakeCursor(line);
+        return `${SURFACE_BG}${INPUT_FG}${this.#fitAndPadLine(this.#restoreInputSurface(softened), width)}${RESET}`;
+    }
+
+    #restoreInputSurface(line: string): string {
+        return line.replaceAll(RESET, `${RESET}${SURFACE_BG}${INPUT_FG}`);
+    }
+
+    #softenFakeCursor(line: string): string {
+        return line.replace(
+            /\x1b\[7m([\s\S]*?)\x1b\[(?:27|0)m/gu,
+            `${CURSOR_BG}${CURSOR_FG}$1${SURFACE_BG}${INPUT_FG}`,
+        );
+    }
+
+    #activityText(): string | undefined {
+        const label = this.#activityLabel();
+        if (label === undefined) {
+            return undefined;
+        }
+
+        const elapsed = this.#activityElapsedText();
+        if (elapsed === undefined) {
+            return label;
+        }
+
+        return `${label} (${elapsed})`;
+    }
+
+    #activityElapsedText(): string | undefined {
+        if (this.#activityStartedAtMs === undefined) {
+            return undefined;
+        }
+
+        return formatActivityElapsedTime(this.#now() - this.#activityStartedAtMs);
+    }
+
+    #activityLabel(): string | undefined {
+        if (this.#statusText === "Idle") {
+            return undefined;
+        }
+        if (this.#statusText === "Running") {
+            return "Working";
+        }
+        if (this.#statusText.startsWith("Stopped:")) {
+            return undefined;
+        }
+
+        return this.#statusText;
+    }
+
+    #shouldRenderActivityAsLastMessage(): boolean {
+        if (this.#streamEntryId !== undefined) {
+            return false;
+        }
+
+        const lastEntry = this.#entries.at(-1);
+        return (
+            lastEntry === undefined ||
+            lastEntry.role === "separator" ||
+            lastEntry.role === "user" ||
+            lastEntry.role === "system"
+        );
+    }
+
+    #renderActivityLine(label: string, width: number): string[] {
+        const prefix = `${OH_MY_PI_ORANGE}•${RESET} `;
+        const frame = this.#activityAnimationFrame;
+        const elapsed = this.#activityElapsedText();
+        const elapsedSuffix =
+            elapsed === undefined ? "" : ` ${DIM}${SURFACE_MUTED_FG}(${elapsed})${RESET}`;
+
+        return [
+            this.#fitLine(`${prefix}${renderActivityWave(label, frame)}${elapsedSuffix}`, width),
+        ];
+    }
+
+    #hideCursor(line: string): string {
+        return line.replace(/\x1b\[7m([\s\S]*?)\x1b\[(?:27|0)m/gu, "$1");
+    }
+
+    #fitAndPadLine(line: string, width: number): string {
+        const fitted = truncateToWidth(line, width, "", false);
+        const padding = " ".repeat(Math.max(0, width - visibleWidth(fitted)));
+        return `${fitted}${padding}`;
+    }
+
+    #turnSeparator(width: number): string {
+        return this.#fitLine(`${DIM}${"─".repeat(width)}${RESET}`, width);
+    }
+
+    #directoryName(): string {
+        return basename(this.#cwd) || this.#cwd;
+    }
+
+    #inputPrompt(): string {
+        return `${OH_MY_PI_ORANGE}${BOLD}›${NOT_BOLD_OR_DIM}${INPUT_FG} `;
+    }
+
+    #handleReasoningShortcut(data: string): boolean {
+        const direction = this.#reasoningShortcutDirection(data);
+        if (direction === undefined) {
+            return false;
+        }
+
+        const nextEffort = this.#nextReasoningEffort(direction);
+        if (nextEffort !== undefined) {
+            this.#agent.setEffort(nextEffort);
+            this.#persistDefaultModel(this.#agent.model.id, nextEffort);
+        }
+
+        return true;
+    }
+
+    #persistDefaultModel(modelId: string, effort: string): void {
+        if (this.#onDefaultModelChange === undefined) {
+            return;
+        }
+
+        void Promise.resolve(
+            this.#onDefaultModelChange({
+                modelId,
+                effort,
+            }),
+        ).catch(() => {
+            if (this.#stopped || this.#exiting) {
+                return;
+            }
+            this.#appendEntry({
+                role: "event",
+                title: "config",
+                text: "Could not update the config file.",
+            });
+            this.#requestRender();
+        });
+    }
+
+    #handleModelMenuShortcut(data: string): boolean {
+        if (MODEL_MENU_RAW_KEYS.has(data) || matchesKey(data, "alt+m")) {
+            this.#openModelMenu();
+            return true;
+        }
+
+        return false;
+    }
+
+    #handleSlashCommandAutocompleteInput(data: string): boolean {
+        const suggestions = this.#slashCommandSuggestions();
+        if (suggestions.length === 0) {
+            return false;
+        }
+
+        if (matchesKey(data, "up")) {
+            this.#slashCommandSelectionIndex =
+                (this.#slashCommandSelectionIndex + suggestions.length - 1) % suggestions.length;
+            return true;
+        }
+
+        if (matchesKey(data, "down")) {
+            this.#slashCommandSelectionIndex =
+                (this.#slashCommandSelectionIndex + 1) % suggestions.length;
+            return true;
+        }
+
+        if (matchesKey(data, "escape")) {
+            this.#dismissedSlashCommandText = this.#editor.getText();
+            return true;
+        }
+
+        if (matchesKey(data, "enter") || matchesKey(data, "tab")) {
+            const selected = suggestions[this.#slashCommandSelectionIndex] ?? suggestions[0];
+            if (selected === undefined) {
+                return true;
+            }
+
+            this.#dismissedSlashCommandText = undefined;
+            this.#submit(`/${selected.value}`);
+            return true;
+        }
+
+        return false;
+    }
+
+    #slashCommandSuggestions(): readonly AutocompleteItem[] {
+        const text = this.#editor.getText();
+        if (
+            text.length === 0 ||
+            text === this.#dismissedSlashCommandText ||
+            text.includes("\n") ||
+            !text.startsWith("/") ||
+            /\s/u.test(text)
+        ) {
+            return [];
+        }
+
+        const query = text.slice(1).toLowerCase();
+        const suggestions = this.#slashCommands.filter(
+            (command) =>
+                command.value.toLowerCase().startsWith(query) ||
+                command.aliases.some((alias) => alias.toLowerCase().startsWith(query)),
+        );
+        if (this.#slashCommandSelectionIndex >= suggestions.length) {
+            this.#slashCommandSelectionIndex = 0;
+        }
+
+        return suggestions;
+    }
+
+    #syncSlashCommandAutocompleteState(): void {
+        const text = this.#editor.getText();
+        if (
+            this.#dismissedSlashCommandText !== undefined &&
+            text !== this.#dismissedSlashCommandText
+        ) {
+            this.#dismissedSlashCommandText = undefined;
+        }
+        this.#slashCommandSuggestions();
+    }
+
+    #reasoningShortcutDirection(data: string): "down" | "up" | undefined {
+        if (
+            REASONING_DOWN_RAW_KEYS.has(data) ||
+            matchesKey(data, "alt+,") ||
+            matchesKey(data, "shift+down")
+        ) {
+            return "down";
+        }
+        if (
+            REASONING_UP_RAW_KEYS.has(data) ||
+            matchesKey(data, "alt+.") ||
+            matchesKey(data, "shift+up")
+        ) {
+            return "up";
+        }
+
+        return undefined;
+    }
+
+    #nextReasoningEffort(direction: "down" | "up"): string | undefined {
+        const choices = [...this.#agent.model.thinkingLevels];
+        if (choices.length === 0) {
+            return undefined;
+        }
+
+        const firstChoice = choices[0];
+        if (firstChoice === undefined) {
+            return undefined;
+        }
+
+        const snapshotEffort = this.#agent.snapshot().effort;
+        const fallbackEffort = this.#agent.model.defaultThinkingLevel;
+        const currentEffort =
+            snapshotEffort !== undefined && choices.includes(snapshotEffort)
+                ? snapshotEffort
+                : choices.includes(fallbackEffort)
+                  ? fallbackEffort
+                  : firstChoice;
+        const currentIndex = choices.indexOf(currentEffort);
+        const nextIndex = direction === "up" ? currentIndex + 1 : currentIndex - 1;
+
+        return choices[nextIndex];
+    }
+
+    #modelDisplayName(): string {
+        return this.#agent.model.name;
+    }
+
+    #modelWithReasoningDisplayName(): string {
+        const effort = this.#agent.snapshot().effort ?? this.#agent.model.defaultThinkingLevel;
+        return effort === undefined
+            ? this.#modelDisplayName()
+            : `${this.#modelDisplayName()} ${humanizeReasoningLevel(effort)}`;
+    }
+
+    #cwdDisplayName(): string {
+        const home = homedir();
+        if (this.#cwd === home) {
+            return "~";
+        }
+        if (this.#cwd.startsWith(`${home}/`)) {
+            return `~/${this.#cwd.slice(home.length + 1)}`;
+        }
+
+        return this.#cwd;
+    }
+
+    #toolVerb(toolName: string): string {
+        const normalized = toolName.toLowerCase();
+        if (normalized.includes("bash") || normalized.includes("exec")) {
+            return "Ran";
+        }
+        if (
+            normalized.includes("grep") ||
+            normalized.includes("find") ||
+            normalized.includes("glob") ||
+            normalized === "ls"
+        ) {
+            return "Explored";
+        }
+        if (normalized.includes("read") || normalized.includes("view")) {
+            return "Read";
+        }
+        if (
+            normalized.includes("write") ||
+            normalized.includes("edit") ||
+            normalized.includes("patch")
+        ) {
+            return "Edited";
+        }
+
+        return "Used";
+    }
+
+    #isRecord(value: unknown): value is Record<string, unknown> {
+        return typeof value === "object" && value !== null && !Array.isArray(value);
+    }
+
+    #singleLine(text: string): string {
+        return text.replace(/\s+/gu, " ").trim();
+    }
+
+    #markTypingActivity(): void {
+        this.#cursorTyping = true;
+        this.#cursorVisible = true;
+
+        if (this.#cursorTypingDebounceTimer !== undefined) {
+            clearTimeout(this.#cursorTypingDebounceTimer);
+        }
+
+        this.#cursorTypingDebounceTimer = setTimeout(() => {
+            this.#cursorTypingDebounceTimer = undefined;
+            this.#cursorTyping = false;
+        }, CURSOR_TYPING_DEBOUNCE_MS);
+        this.#cursorTypingDebounceTimer.unref?.();
+    }
+
+    #stripEditorChrome(lines: string[]): string[] {
+        let content = [...lines];
+
+        while (content.length > 0 && this.#isEditorBorderLine(content[0] ?? "")) {
+            content = content.slice(1);
+        }
+        while (content.length > 0 && this.#isEditorBorderLine(content[content.length - 1] ?? "")) {
+            content = content.slice(0, -1);
+        }
+
+        return content.filter(
+            (line) => !line.includes(" more ") && !this.#isEditorBorderLine(line),
+        );
+    }
+
+    #isEditorBorderLine(line: string): boolean {
+        const stripped = line.replace(/\x1b\[[0-9;]*m/g, "");
+        return stripped.length > 0 && [...stripped].every((character) => character === "─");
+    }
+
+    #stripSpuriousLeadingEmptyLine(lines: string[]): string[] {
+        if (lines.length <= 1) {
+            return lines;
+        }
+
+        const first = lines[0] ?? "";
+        if (this.#isVisibleEditorLine(first)) {
+            return lines;
+        }
+
+        return lines.slice(1);
+    }
+
+    #isVisibleEditorLine(line: string): boolean {
+        const stripped = line
+            .replace(/\x1b\[[0-9;]*m/g, "")
+            .replaceAll(CURSOR_MARKER, "")
+            .trim();
+        return stripped.length > 0 || line.includes("\x1b[7m") || line.includes(CURSOR_MARKER);
+    }
+
+    #startCursorBlink(): void {
+        if (this.#cursorBlinkTimer !== undefined || this.#stopped) {
+            return;
+        }
+
+        this.#cursorBlinkTimer = setInterval(() => {
+            if (!this.#focused || this.#stopped || this.#cursorTyping) {
+                return;
+            }
+
+            this.#cursorVisible = !this.#cursorVisible;
+            this.#requestRender();
+        }, CURSOR_BLINK_MS);
+        this.#cursorBlinkTimer.unref?.();
+    }
+
+    #stopCursorBlink(): void {
+        if (this.#cursorTypingDebounceTimer !== undefined) {
+            clearTimeout(this.#cursorTypingDebounceTimer);
+            this.#cursorTypingDebounceTimer = undefined;
+        }
+
+        this.#cursorTyping = false;
+
+        if (this.#cursorBlinkTimer === undefined) {
+            return;
+        }
+
+        clearInterval(this.#cursorBlinkTimer);
+        this.#cursorBlinkTimer = undefined;
+        this.#cursorVisible = true;
+    }
+
+    #startActivityAnimation(): void {
+        if (this.#activityAnimationTimer !== undefined || this.#stopped) {
+            return;
+        }
+
+        this.#activityAnimationFrame = 0;
+        this.#activityAnimationTimer = setInterval(() => {
+            if (this.#stopped || this.#exiting) {
+                return;
+            }
+
+            this.#activityAnimationFrame =
+                (this.#activityAnimationFrame + 1) % ACTIVITY_WAVE_FRAME_COUNT;
+            if (this.#activityText() !== undefined && this.#shouldRenderActivityAsLastMessage()) {
+                this.#requestRender();
+            }
+        }, ACTIVITY_ANIMATION_MS);
+        this.#activityAnimationTimer.unref?.();
+    }
+
+    #stopActivityAnimation(): void {
+        if (this.#activityAnimationTimer === undefined) {
+            this.#activityAnimationFrame = 0;
+            this.#activityStartedAtMs = undefined;
+            return;
+        }
+
+        clearInterval(this.#activityAnimationTimer);
+        this.#activityAnimationTimer = undefined;
+        this.#activityAnimationFrame = 0;
+        this.#activityStartedAtMs = undefined;
+    }
+
+    #requestRender(): void {
+        if (!this.#stopped) {
+            this.#tui.requestRender();
+        }
+    }
+
+    #waitForShutdownRender(): Promise<void> {
+        return new Promise((resolve) => {
+            setTimeout(resolve, 25);
+        });
+    }
 }

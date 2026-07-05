@@ -14,37 +14,40 @@ Usage:
 - Use \`replace_all\` for replacing and renaming strings across the file. This parameter is useful if you want to rename a variable for instance.`;
 
 export const claudeEditTool = defineTool({
-  name: "Edit",
-  label: "Edit",
-  description: CLAUDE_EDIT_DESCRIPTION,
-  arguments: Type.Object({
-    file_path: Type.String({ description: "The absolute path to the file to modify" }),
-    old_string: Type.String({ description: "The text to replace" }),
-    new_string: Type.String({
-      description: "The text to replace it with (must be different from old_string)",
+    name: "Edit",
+    label: "Edit",
+    description: CLAUDE_EDIT_DESCRIPTION,
+    arguments: Type.Object({
+        file_path: Type.String({ description: "The absolute path to the file to modify" }),
+        old_string: Type.String({ description: "The text to replace" }),
+        new_string: Type.String({
+            description: "The text to replace it with (must be different from old_string)",
+        }),
+        replace_all: Type.Optional(
+            Type.Boolean({ description: "Replace all occurrences of old_string (default false)" }),
+        ),
     }),
-    replace_all: Type.Optional(
-      Type.Boolean({ description: "Replace all occurrences of old_string (default false)" }),
-    ),
-  }),
-  returnType: editFileReturnSchema,
-  execute: async ({ file_path, old_string, new_string, replace_all }, context) => {
-    const result = await editTextFile({
-      path: file_path,
-      oldString: old_string,
-      newString: new_string,
-      replaceAll: replace_all ?? false,
-      fuzzy: false,
-    }, context);
-    return result;
-  },
-  toLLM: (result) => [
-    {
-      type: "text",
-      text: `The file ${result.path} has been updated.`,
+    returnType: editFileReturnSchema,
+    execute: async ({ file_path, old_string, new_string, replace_all }, context) => {
+        const result = await editTextFile(
+            {
+                path: file_path,
+                oldString: old_string,
+                newString: new_string,
+                replaceAll: replace_all ?? false,
+                fuzzy: false,
+            },
+            context,
+        );
+        return result;
     },
-  ],
-  toUI: (result) =>
-    `Edited ${result.path} (${result.replacements} replacement${result.replacements === 1 ? "" : "s"})`,
-  locks: [(args) => args.file_path],
+    toLLM: (result) => [
+        {
+            type: "text",
+            text: `The file ${result.path} has been updated.`,
+        },
+    ],
+    toUI: (result) =>
+        `Edited ${result.path} (${result.replacements} replacement${result.replacements === 1 ? "" : "s"})`,
+    locks: [(args) => args.file_path],
 });

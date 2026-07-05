@@ -13,23 +13,23 @@ Usage:
 - Only use emojis if the user explicitly requests it. Avoid writing emojis to files unless asked.`;
 
 export const claudeWriteTool = defineTool({
-  name: "Write",
-  label: "Write",
-  description: CLAUDE_WRITE_DESCRIPTION,
-  arguments: Type.Object({
-    file_path: Type.String({
-      description: "The absolute path to the file to write (must be absolute, not relative)",
+    name: "Write",
+    label: "Write",
+    description: CLAUDE_WRITE_DESCRIPTION,
+    arguments: Type.Object({
+        file_path: Type.String({
+            description: "The absolute path to the file to write (must be absolute, not relative)",
+        }),
+        content: Type.String({ description: "The content to write to the file" }),
     }),
-    content: Type.String({ description: "The content to write to the file" }),
-  }),
-  returnType: textOutputSchema,
-  execute: async ({ file_path, content }, context) => {
-    const result = await writeTextFile({ path: file_path, content }, context);
-    return {
-      text: `File ${result.created ? "created" : "updated"} successfully at: ${result.path}`,
-    };
-  },
-  toLLM: toTextBlocks,
-  toUI: (_result, args) => `Wrote ${args.file_path}`,
-  locks: [(args) => args.file_path],
+    returnType: textOutputSchema,
+    execute: async ({ file_path, content }, context) => {
+        const result = await writeTextFile({ path: file_path, content }, context);
+        return {
+            text: `File ${result.created ? "created" : "updated"} successfully at: ${result.path}`,
+        };
+    },
+    toLLM: toTextBlocks,
+    toUI: (_result, args) => `Wrote ${args.file_path}`,
+    locks: [(args) => args.file_path],
 });

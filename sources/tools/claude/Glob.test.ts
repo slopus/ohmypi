@@ -4,18 +4,18 @@ import { createJustBashToolHarness } from "../testing/createJustBashToolHarness.
 import { claudeGlobTool } from "./Glob.js";
 
 describe("Claude Code Glob tool", () => {
-  it("returns matching files", async () => {
-    const harness = createJustBashToolHarness({
-      files: {
-        "/workspace/src/app.ts": "app",
-        "/workspace/src/app.js": "app",
-      },
-    });
+    it("returns matching files", async () => {
+        const harness = createJustBashToolHarness({
+            files: {
+                "/workspace/src/app.ts": "app",
+                "/workspace/src/app.js": "app",
+            },
+        });
 
-    const result = await harness.runTool(claudeGlobTool, {
-      pattern: "**/*.ts",
-    });
+        const result = await harness.runTool(claudeGlobTool, {
+            pattern: "**/*.ts",
+        });
 
-    expect(result.text).toBe("/workspace/src/app.ts");
-  });
+        expect(result.text).toBe("/workspace/src/app.ts");
+    });
 });

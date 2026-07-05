@@ -1,11 +1,11 @@
 export { Agent } from "./Agent.js";
 export type {
-  AgentOptions,
-  AgentRunOptions,
-  AgentRunResult,
-  AgentSnapshot,
-  AgentStatus,
-  QueuedAgentMessage,
+    AgentOptions,
+    AgentRunOptions,
+    AgentRunResult,
+    AgentSnapshot,
+    AgentStatus,
+    QueuedAgentMessage,
 } from "./Agent.js";
 export { runAgentLoop } from "./loop.js";
 export type { AgentLoopEvent, AgentLoopResult, RunAgentLoopOptions } from "./loop.js";
@@ -20,26 +20,23 @@ export { contentBlockToText } from "./contentBlockToText.js";
 export { selectToolsForModel } from "./selectToolsForModel.js";
 export type { SelectToolsForModelOptions } from "./selectToolsForModel.js";
 export type {
-  AgentBlock,
-  AgentMessage,
-  AnyDefinedTool,
-  ContentBlock,
-  DefinedTool,
-  ImageBlock,
-  Message,
-  SystemMessage,
-  TextBlock,
-  ThinkingBlock,
-  ToolCallBlock,
-  ToolResultBlock,
-  UserMessage,
+    AgentBlock,
+    AgentMessage,
+    AnyDefinedTool,
+    ContentBlock,
+    DefinedTool,
+    ImageBlock,
+    Message,
+    SystemMessage,
+    TextBlock,
+    ThinkingBlock,
+    ToolCallBlock,
+    ToolResultBlock,
+    UserMessage,
 } from "./types.js";
 export type { AgentContext } from "./context/AgentContext.js";
 export type { BashContext, BashRunOptions, BashRunResult } from "./context/BashContext.js";
-export type {
-  FileSystemContext,
-  FileSystemStat,
-} from "./context/FileSystemContext.js";
+export type { FileSystemContext, FileSystemStat } from "./context/FileSystemContext.js";
 export { createJustBashAgentContext } from "./context/createJustBashAgentContext.js";
 export { createJustBashBashContext } from "./context/createJustBashBashContext.js";
 export { createJustBashFileSystemContext } from "./context/createJustBashFileSystemContext.js";
