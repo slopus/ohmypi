@@ -1,7 +1,7 @@
 import { Type } from "@sinclair/typebox";
 
 import { defineTool } from "../../agent/types.js";
-import { runShellCommand, shellOutputToText, shellToolOutputSchema } from "../utils/index.js";
+import { runShellCommand, shellOutputToText, shellToolOutputSchema, summarizeShellOutput } from "../utils/index.js";
 
 export const claudeBashTool = defineTool({
   name: "Bash",
@@ -29,5 +29,6 @@ export const claudeBashTool = defineTool({
     return runShellCommand(command, options, context);
   },
   toLLM: shellOutputToText,
+  toUI: (result) => summarizeShellOutput(result),
   locks: [],
 });

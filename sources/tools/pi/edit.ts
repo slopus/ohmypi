@@ -54,6 +54,8 @@ export const piEditTool = defineTool({
       text: `Successfully replaced ${result.replacements} block(s) in ${result.path}.`,
     },
   ],
+  toUI: (result) =>
+    `Edited ${result.path} (${result.replacements} replacement${result.replacements === 1 ? "" : "s"})`,
   locks: [(args) => args.path],
 });
 

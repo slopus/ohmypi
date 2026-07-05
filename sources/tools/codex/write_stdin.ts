@@ -1,7 +1,7 @@
 import { Type } from "@sinclair/typebox";
 
 import { defineTool } from "../../agent/types.js";
-import { textOutputSchema, toTextBlocks } from "../utils/index.js";
+import { singleLineText, textOutputSchema, toTextBlocks } from "../utils/index.js";
 
 export const codexWriteStdinTool = defineTool({
   name: "write_stdin",
@@ -18,5 +18,9 @@ export const codexWriteStdinTool = defineTool({
     text: `No active Codex unified exec session ${session_id}; this implementation runs exec_command to completion.`,
   }),
   toLLM: toTextBlocks,
+  toUI: (result, args) =>
+    singleLineText(args.chars === undefined || args.chars.length === 0
+      ? `Polled session ${args.session_id}: ${result.text}`
+      : `Sent input to session ${args.session_id}`),
   locks: [],
 });

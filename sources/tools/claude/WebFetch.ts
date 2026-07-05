@@ -39,5 +39,6 @@ export const claudeWebFetchTool = defineTool({
     };
   },
   toLLM: toTextBlocks,
+  toUI: (result) => result.text,
   locks: [],
 });

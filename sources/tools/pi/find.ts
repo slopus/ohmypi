@@ -1,7 +1,7 @@
 import { Type } from "@sinclair/typebox";
 
 import { defineTool } from "../../agent/types.js";
-import { globFiles, textOutputSchema, toTextBlocks } from "../utils/index.js";
+import { countTextLines, globFiles, textOutputSchema, toTextBlocks } from "../utils/index.js";
 
 const DEFAULT_LIMIT = 1000;
 const DEFAULT_MAX_BYTES = 50 * 1024;
@@ -25,5 +25,9 @@ export const piFindTool = defineTool({
     return { text: files.length > 0 ? files.join("\n") : "No files found matching pattern" };
   },
   toLLM: toTextBlocks,
+  toUI: (result, args) =>
+    result.text === "No files found matching pattern"
+      ? `Found files for "${args.pattern}" (0)`
+      : `Found files for "${args.pattern}" (${countTextLines(result.text)})`,
   locks: [],
 });

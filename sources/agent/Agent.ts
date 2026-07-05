@@ -1,7 +1,7 @@
 import { createId } from "@paralleldrive/cuid2";
 
 import type { AgentContext } from "./context/AgentContext.js";
-import { runAgentLoop, type AgentLoopResult } from "./loop.js";
+import { runAgentLoop, type AgentLoopEvent, type AgentLoopResult } from "./loop.js";
 import { printAgentMessageToConsole, type AgentConsole } from "./printAgentMessageToConsole.js";
 import { selectToolsForModel } from "./selectToolsForModel.js";
 import type {
@@ -49,13 +49,13 @@ export interface AgentOptions {
   now?: () => number;
   console?: AgentConsole;
   printToConsole?: boolean;
-  onEvent?: (event: AssistantMessageEvent) => void | Promise<void>;
+  onEvent?: (event: AgentLoopEvent) => void | Promise<void>;
   onMessage?: (message: Message) => void | Promise<void>;
 }
 
 export interface AgentRunOptions {
   signal?: AbortSignal;
-  onEvent?: (event: AssistantMessageEvent) => void | Promise<void>;
+  onEvent?: (event: AgentLoopEvent) => void | Promise<void>;
   onMessage?: (message: Message) => void | Promise<void>;
 }
 
@@ -76,7 +76,7 @@ export class Agent {
   #now: () => number;
   #console: AgentConsole;
   #printToConsole: boolean;
-  #onEvent: ((event: AssistantMessageEvent) => void | Promise<void>) | undefined;
+  #onEvent: ((event: AgentLoopEvent) => void | Promise<void>) | undefined;
   #onMessage: ((message: Message) => void | Promise<void>) | undefined;
   #messages: Message[] = [];
   #queue: QueuedAgentMessage[] = [];
@@ -89,7 +89,7 @@ export class Agent {
     this.provider = options.provider;
     this.model = this.#findModel(options.modelId);
     this.context = options.context;
-    this.#effort = options.effort;
+    this.#effort = options.effort ?? this.model.defaultThinkingLevel;
     this.#instructions = options.instructions;
     this.#tools = options.tools ?? selectToolsForModel({
       provider: options.provider,
@@ -256,7 +256,7 @@ export class Agent {
     printAgentMessageToConsole(message, this.#console);
   }
 
-  #printEvent(event: AssistantMessageEvent): void {
+  #printEvent(event: AgentLoopEvent): void {
     if (!this.#printToConsole) {
       return;
     }
@@ -278,7 +278,7 @@ export class Agent {
   }
 
   async #handleEvent(
-    event: AssistantMessageEvent,
+    event: AgentLoopEvent,
     options: AgentRunOptions,
   ): Promise<void> {
     this.#printEvent(event);

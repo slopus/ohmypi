@@ -4,11 +4,13 @@ export type AppTranscriptRole =
   | "assistant"
   | "tool"
   | "event"
-  | "error";
+  | "error"
+  | "separator";
 
 export interface AppTranscriptEntry {
   id: string;
   role: AppTranscriptRole;
   text: string;
+  detail?: string;
   title?: string;
 }

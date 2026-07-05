@@ -19,6 +19,7 @@ describe("Agent", () => {
       id: "openai/gpt-test",
       name: "GPT Test",
       thinkingLevels: ["off", "high"],
+      defaultThinkingLevel: "off",
     });
     const contexts: Context[] = [];
     const provider = defineProvider({
@@ -90,7 +91,11 @@ describe("Agent", () => {
       "[user:id-4] Say done.",
       "[agent:id-7] agent-done",
     ]);
-    expect(observedEvents).toEqual(["start", "done"]);
+    expect(observedEvents).toEqual([
+      "inference_iteration_start",
+      "start",
+      "done",
+    ]);
     expect(observedMessages).toEqual(["id-7"]);
   });
 
@@ -99,6 +104,7 @@ describe("Agent", () => {
       id: "openai/gpt-test",
       name: "GPT Test",
       thinkingLevels: ["off"],
+      defaultThinkingLevel: "off",
     });
     const provider = defineProvider({
       id: "codex",
@@ -139,6 +145,7 @@ describe("Agent", () => {
       returnType: Type.Object({ ok: Type.Boolean() }),
       execute: () => ({ ok: true }),
       toLLM: () => [{ type: "text", text: "ok" }],
+      toUI: () => "ok",
       locks: [],
     });
     const overrideAgent = new Agent({

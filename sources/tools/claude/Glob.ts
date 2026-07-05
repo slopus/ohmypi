@@ -1,7 +1,7 @@
 import { Type } from "@sinclair/typebox";
 
 import { defineTool } from "../../agent/types.js";
-import { globFiles, textOutputSchema, toTextBlocks } from "../utils/index.js";
+import { countTextLines, globFiles, textOutputSchema, toTextBlocks } from "../utils/index.js";
 
 const CLAUDE_GLOB_DESCRIPTION = `- Fast file pattern matching tool that works with any codebase size
 - Supports glob patterns like "**/*.js" or "src/**/*.ts"
@@ -32,5 +32,9 @@ export const claudeGlobTool = defineTool({
     };
   },
   toLLM: toTextBlocks,
+  toUI: (result, args) =>
+    result.text === "No files found"
+      ? `Found files for "${args.pattern}" (0)`
+      : `Found files for "${args.pattern}" (${countTextLines(result.text)})`,
   locks: [],
 });

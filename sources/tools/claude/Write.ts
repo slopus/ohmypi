@@ -30,5 +30,6 @@ export const claudeWriteTool = defineTool({
     };
   },
   toLLM: toTextBlocks,
+  toUI: (_result, args) => `Wrote ${args.file_path}`,
   locks: [(args) => args.file_path],
 });

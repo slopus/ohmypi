@@ -48,5 +48,6 @@ export const claudeWebSearchTool = defineTool({
     return { text: `Claude wants to search the web for: ${query}` };
   },
   toLLM: toTextBlocks,
+  toUI: (result) => result.text,
   locks: [],
 });

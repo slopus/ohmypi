@@ -1,7 +1,7 @@
 import { Type } from "@sinclair/typebox";
 
 import { defineTool } from "../../agent/types.js";
-import { runShellCommand, shellOutputToText, shellToolOutputSchema } from "../utils/index.js";
+import { runShellCommand, shellOutputToText, shellToolOutputSchema, summarizeShellOutput } from "../utils/index.js";
 
 export const codexExecCommandTool = defineTool({
   name: "exec_command",
@@ -26,5 +26,6 @@ export const codexExecCommandTool = defineTool({
     return runShellCommand(cmd, options, context);
   },
   toLLM: shellOutputToText,
+  toUI: (result) => summarizeShellOutput(result),
   locks: [],
 });

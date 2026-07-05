@@ -84,5 +84,14 @@ export const claudeReadTool = defineTool({
 
     return [{ type: "text", text: result.text }];
   },
+  toUI: (result, args) => {
+    if ("image_url" in result) {
+      return `Read image ${args.file_path}`;
+    }
+    if ("content" in result) {
+      return `Read ${result.path} (${result.returnedLines}/${result.totalLines} lines${result.truncated ? ", truncated" : ""})`;
+    }
+    return result.text;
+  },
   locks: [],
 });

@@ -28,5 +28,7 @@ export const piReadTool = defineTool({
       text: result.content.length > 0 ? result.content : "(empty file)",
     },
   ],
+  toUI: (result) =>
+    `Read ${result.path} (${result.returnedLines}/${result.totalLines} lines${result.truncated ? ", truncated" : ""})`,
   locks: [],
 });

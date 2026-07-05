@@ -106,6 +106,7 @@ export interface Model<TThinkingLevel extends string = string> {
   id: string;
   name: string;
   thinkingLevels: readonly TThinkingLevel[];
+  defaultThinkingLevel: TThinkingLevel;
 }
 
 export interface StreamOptions<TThinkingLevel extends string = string> {
@@ -173,6 +174,7 @@ export function defineModel<const TThinkingLevel extends string>(model: {
   id: string;
   name: string;
   thinkingLevels: readonly TThinkingLevel[];
+  defaultThinkingLevel: TThinkingLevel;
 }): Model<TThinkingLevel> {
   return model;
 }

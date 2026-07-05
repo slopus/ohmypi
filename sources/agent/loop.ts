@@ -42,10 +42,17 @@ export interface RunAgentLoopOptions {
   sessionId?: string;
   idFactory?: () => string;
   now?: () => number;
-  onEvent?: (event: AssistantMessageEvent) => void | Promise<void>;
+  onEvent?: (event: AgentLoopEvent) => void | Promise<void>;
   onMessage?: (message: Message) => void | Promise<void>;
   context: AgentContext;
 }
+
+export type AgentLoopEvent =
+  | AssistantMessageEvent
+  | {
+      type: "inference_iteration_start";
+      iteration: number;
+    };
 
 export interface AgentLoopResult {
   messages: readonly Message[];
@@ -69,10 +76,17 @@ export async function runAgentLoop(
   const toolsByName = new Map(options.tools.map((tool) => [tool.name, tool]));
   const toolContext = options.context;
 
+  let iteration = 0;
   for (;;) {
     if (options.signal?.aborted) {
       return { messages: transcript, stopReason: "aborted" };
     }
+
+    iteration += 1;
+    await options.onEvent?.({
+      type: "inference_iteration_start",
+      iteration,
+    });
 
     let assistantMessage: ProviderAssistantMessage;
     try {
@@ -120,14 +134,21 @@ export async function runAgentLoop(
       return { messages: transcript, stopReason: assistantMessage.stopReason };
     }
 
-    const toolResultBlocks: ToolResultBlock[] = [];
-    for (const toolCall of toolCalls) {
-      if (options.signal?.aborted) {
-        return { messages: transcript, stopReason: "aborted" };
-      }
+    if (options.signal?.aborted) {
+      return { messages: transcript, stopReason: "aborted" };
+    }
 
-      const resultBlock = await executeToolCall(toolCall, toolsByName, toolContext);
-      toolResultBlocks.push(resultBlock);
+    const toolResultBlocks = await Promise.all(
+      toolCalls.map((toolCall) =>
+        executeToolCall(toolCall, toolsByName, toolContext),
+      ),
+    );
+
+    if (options.signal?.aborted) {
+      return { messages: transcript, stopReason: "aborted" };
+    }
+
+    for (const resultBlock of toolResultBlocks) {
       providerMessages.push(toProviderToolResultMessage(resultBlock, now));
     }
 
@@ -424,6 +445,7 @@ async function executeToolCall(
       context: AgentContext,
     ) => Promise<unknown> | unknown;
     const toLLM = tool.toLLM as (result: unknown) => readonly ContentBlock[];
+    const toUI = tool.toUI as (result: unknown, args: unknown) => string;
     const result = await execute(toolCall.arguments, context);
 
     return {
@@ -431,6 +453,7 @@ async function executeToolCall(
       toolCallId: toolCall.id,
       toolName: tool.name,
       rendered: toLLM(result),
+      display: toUI(result, toolCall.arguments),
     };
   } catch (error) {
     return errorToolResultBlock(
@@ -454,6 +477,7 @@ function errorToolResultBlock(
         text: message,
       },
     ],
+    display: message,
     isError: true,
   };
 }

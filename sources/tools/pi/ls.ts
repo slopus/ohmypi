@@ -1,7 +1,7 @@
 import { Type } from "@sinclair/typebox";
 
 import { defineTool } from "../../agent/types.js";
-import { resolveToolPath, textOutputSchema, toTextBlocks } from "../utils/index.js";
+import { countTextLines, resolveToolPath, textOutputSchema, toTextBlocks } from "../utils/index.js";
 
 const DEFAULT_LIMIT = 500;
 const DEFAULT_MAX_BYTES = 50 * 1024;
@@ -27,5 +27,9 @@ export const piLsTool = defineTool({
     return { text: output.length > 0 ? output.join("\n") : "(empty directory)" };
   },
   toLLM: toTextBlocks,
+  toUI: (result, args) =>
+    result.text === "(empty directory)"
+      ? `Listed ${args.path ?? "."} (empty)`
+      : `Listed ${args.path ?? "."} (${countTextLines(result.text)} entries)`,
   locks: [],
 });

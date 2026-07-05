@@ -8,7 +8,7 @@ export type {
   QueuedAgentMessage,
 } from "./Agent.js";
 export { runAgentLoop } from "./loop.js";
-export type { AgentLoopResult, RunAgentLoopOptions } from "./loop.js";
+export type { AgentLoopEvent, AgentLoopResult, RunAgentLoopOptions } from "./loop.js";
 export { printAgentMessageToConsole } from "./printAgentMessageToConsole.js";
 export type { AgentConsole } from "./printAgentMessageToConsole.js";
 export { agentMessageToText } from "./agentMessageToText.js";

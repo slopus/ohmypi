@@ -1,7 +1,7 @@
 import { Type } from "@sinclair/typebox";
 
 import { defineTool } from "../../agent/types.js";
-import { runShellCommand, textOutputSchema, toTextBlocks } from "../utils/index.js";
+import { runShellCommand, summarizeTextOutput, textOutputSchema, toTextBlocks } from "../utils/index.js";
 
 const DEFAULT_MAX_LINES = 2000;
 const DEFAULT_MAX_BYTES = 50 * 1024;
@@ -26,5 +26,6 @@ export const piBashTool = defineTool({
     return { text };
   },
   toLLM: toTextBlocks,
+  toUI: (result) => summarizeTextOutput(result.text),
   locks: [],
 });

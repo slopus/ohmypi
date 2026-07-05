@@ -23,6 +23,7 @@ describe("agent loop live", () => {
       id: "mock/model",
       name: "Mock Model",
       thinkingLevels: ["off", "high"],
+      defaultThinkingLevel: "off",
     });
     const contexts: Context[] = [];
     const streamOptions: StreamOptions[] = [];
@@ -81,6 +82,7 @@ describe("agent loop live", () => {
         text: `total=${result.total}`,
       },
     ]);
+    const addToUI = vi.fn((result: { total: number }) => `added ${result.total}`);
     const addTool = defineTool({
       name: "add",
       label: "Add",
@@ -94,6 +96,7 @@ describe("agent loop live", () => {
       }),
       execute: addExecute,
       toLLM: addToLLM,
+      toUI: addToUI,
       locks: [],
     });
 
@@ -106,6 +109,7 @@ describe("agent loop live", () => {
         text: result.shouted,
       },
     ]);
+    const shoutToUI = vi.fn((result: { shouted: string }) => `shouted ${result.shouted}`);
     const shoutTool = defineTool({
       name: "shout",
       label: "Shout",
@@ -118,6 +122,7 @@ describe("agent loop live", () => {
       }),
       execute: shoutExecute,
       toLLM: shoutToLLM,
+      toUI: shoutToUI,
       locks: [],
     });
 
@@ -169,6 +174,10 @@ describe("agent loop live", () => {
       }),
     );
     expect(addToLLM).toHaveBeenCalledExactlyOnceWith({ total: 7 });
+    expect(addToUI).toHaveBeenCalledExactlyOnceWith({ total: 7 }, {
+      left: 2,
+      right: 5,
+    });
     expect(shoutExecute).toHaveBeenCalledExactlyOnceWith(
       { value: "dublin" },
       expect.objectContaining({
@@ -179,6 +188,9 @@ describe("agent loop live", () => {
     expect(shoutToLLM).toHaveBeenCalledExactlyOnceWith({
       shouted: "DUBLIN",
     });
+    expect(shoutToUI).toHaveBeenCalledExactlyOnceWith({
+      shouted: "DUBLIN",
+    }, { value: "dublin" });
 
     expect(contexts[1]?.messages).toHaveLength(4);
     expect(contexts[1]?.messages[2]).toMatchObject({
@@ -205,17 +217,167 @@ describe("agent loop live", () => {
           toolCallId: "call-add",
           toolName: "add",
           rendered: [{ type: "text", text: "total=7" }],
+          display: "added 7",
         },
         {
           type: "tool_result",
           toolCallId: "call-shout",
           toolName: "shout",
           rendered: [{ type: "text", text: "DUBLIN" }],
+          display: "shouted DUBLIN",
+        },
+      ],
+    });
+  });
+
+  it("executes provider tool calls in parallel and preserves result order", async () => {
+    const model = defineModel({
+      id: "mock/model",
+      name: "Mock Model",
+      thinkingLevels: ["off"],
+      defaultThinkingLevel: "off",
+    });
+    const contexts: Context[] = [];
+
+    const provider = defineProvider({
+      id: "mock",
+      models: [model],
+      stream(_model, context) {
+        contexts.push(context);
+
+        if (contexts.length === 1) {
+          return streamFor(
+            assistantMessage(
+              [
+                {
+                  type: "toolCall",
+                  id: "call-slow",
+                  name: "slow",
+                  arguments: { value: "slow" },
+                },
+                {
+                  type: "toolCall",
+                  id: "call-fast",
+                  name: "fast",
+                  arguments: { value: "fast" },
+                },
+              ],
+              "toolUse",
+            ),
+          );
+        }
+
+        return streamFor(
+          assistantMessage([{ type: "text", text: "done" }], "stop"),
+        );
+      },
+    });
+
+    const events: string[] = [];
+    const slowTool = defineTool({
+      name: "slow",
+      label: "Slow",
+      description: "Returns slowly.",
+      arguments: Type.Object({ value: Type.String() }),
+      returnType: Type.Object({ value: Type.String() }),
+      async execute(args: { value: string }) {
+        events.push("slow-start");
+        await delay(40);
+        events.push("slow-end");
+        return args;
+      },
+      toLLM(result: { value: string }) {
+        return [{ type: "text", text: result.value }];
+      },
+      toUI(result: { value: string }) {
+        return `finished ${result.value}`;
+      },
+      locks: [],
+    });
+    const fastTool = defineTool({
+      name: "fast",
+      label: "Fast",
+      description: "Returns quickly.",
+      arguments: Type.Object({ value: Type.String() }),
+      returnType: Type.Object({ value: Type.String() }),
+      async execute(args: { value: string }) {
+        events.push("fast-start");
+        await delay(1);
+        events.push("fast-end");
+        return args;
+      },
+      toLLM(result: { value: string }) {
+        return [{ type: "text", text: result.value }];
+      },
+      toUI(result: { value: string }) {
+        return `finished ${result.value}`;
+      },
+      locks: [],
+    });
+
+    const harness = createJustBashToolHarness();
+    const result = await runAgentLoop({
+      provider,
+      modelId: "mock/model",
+      tools: [slowTool, fastTool],
+      messages: [
+        {
+          role: "user",
+          id: "user-1",
+          blocks: [{ type: "text", text: "Run both tools." }],
+        },
+      ],
+      context: harness.context,
+    });
+
+    expect(result.stopReason).toBe("stop");
+    expect(events.indexOf("fast-start")).toBeGreaterThan(
+      events.indexOf("slow-start"),
+    );
+    expect(events.indexOf("fast-start")).toBeLessThan(
+      events.indexOf("slow-end"),
+    );
+    expect(contexts[1]?.messages.slice(2)).toMatchObject([
+      {
+        role: "toolResult",
+        toolCallId: "call-slow",
+        toolName: "slow",
+        content: [{ type: "text", text: "slow" }],
+      },
+      {
+        role: "toolResult",
+        toolCallId: "call-fast",
+        toolName: "fast",
+        content: [{ type: "text", text: "fast" }],
+      },
+    ]);
+    expect(result.messages[2]).toMatchObject({
+      role: "agent",
+      blocks: [
+        {
+          type: "tool_result",
+          toolCallId: "call-slow",
+          toolName: "slow",
+          rendered: [{ type: "text", text: "slow" }],
+          display: "finished slow",
+        },
+        {
+          type: "tool_result",
+          toolCallId: "call-fast",
+          toolName: "fast",
+          rendered: [{ type: "text", text: "fast" }],
+          display: "finished fast",
         },
       ],
     });
   });
 });
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
 
 function streamFor(message: AssistantMessage): InferenceStream {
   const doneReason = toDoneReason(message.stopReason);

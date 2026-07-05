@@ -22,5 +22,6 @@ export const claudeTodoWriteTool = defineTool({
     text: `Todos have been modified successfully. ${todos.length} item(s) provided.`,
   }),
   toLLM: toTextBlocks,
+  toUI: (_result, args) => `Updated ${args.todos.length} todo${args.todos.length === 1 ? "" : "s"}`,
   locks: ["TodoWrite"],
 });

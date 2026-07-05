@@ -13,6 +13,9 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "check": "tsc --noEmit",
+    "dev": "tsx sources/main.ts",
+    "start": "node dist/main.js",
+    "start:build": "pnpm build && node dist/main.js",
     "test": "vitest run",
     "test:live": "OHMYPI_LIVE_TEST=1 vitest run -c vitest.live.config.ts",
     "test:watch": "vitest"
@@ -26,6 +29,7 @@
   "devDependencies": {
     "@types/node": "^24.0.10",
     "just-bash": "^3.0.2",
+    "tsx": "^4.23.0",
     "typescript": "^5.8.3",
     "vite": "^7.0.2",
     "vitest": "^3.2.4"

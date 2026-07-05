@@ -1,7 +1,7 @@
 import { Type } from "@sinclair/typebox";
 
 import { defineTool } from "../../agent/types.js";
-import { runRipgrep, textOutputSchema, toTextBlocks } from "../utils/index.js";
+import { countTextLines, runRipgrep, textOutputSchema, toTextBlocks } from "../utils/index.js";
 
 const DEFAULT_LIMIT = 100;
 const DEFAULT_MAX_BYTES = 50 * 1024;
@@ -36,5 +36,9 @@ export const piGrepTool = defineTool({
     return { text: result.text.length > 0 ? result.text : "No matches found" };
   },
   toLLM: toTextBlocks,
+  toUI: (result, args) =>
+    result.text === "No matches found"
+      ? `Searched "${args.pattern}" (no matches)`
+      : `Searched "${args.pattern}" (${countTextLines(result.text)} matches)`,
   locks: [],
 });

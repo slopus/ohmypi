@@ -20,5 +20,6 @@ export const piWriteTool = defineTool({
       text: `Successfully wrote ${result.bytes} bytes to ${result.path}`,
     },
   ],
+  toUI: (result) => `Wrote ${result.path} (${result.bytes} bytes)`,
   locks: [(args) => args.path],
 });

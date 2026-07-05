@@ -45,6 +45,8 @@ export interface ToolResultBlock {
   toolName: string;
   /** Rendered tool answer produced by the tool's `toLLM` serializer. */
   rendered: readonly ContentBlock[];
+  /** Short human-facing tool summary produced by the tool's `toUI` serializer. */
+  display: string;
   isError?: boolean;
 }
 
@@ -99,6 +101,10 @@ export interface DefinedTool<
     context: AgentContext,
   ) => Promise<Static<TReturnSchema>> | Static<TReturnSchema>;
   toLLM: (result: Static<TReturnSchema>) => readonly ContentBlock[];
+  toUI: (
+    result: Static<TReturnSchema>,
+    args: Static<TArgsSchema>,
+  ) => string;
   /** Locks acquired for each invocation; constants or argument-derived keys. */
   locks: readonly Lock<Static<TArgsSchema>>[];
 }
@@ -111,6 +117,7 @@ export interface AnyDefinedTool {
   returnType: TSchema;
   execute: (args: never, context: AgentContext) => Promise<unknown> | unknown;
   toLLM: (result: never) => readonly ContentBlock[];
+  toUI: (result: never, args: never) => string;
   locks: readonly Lock<never>[];
 }
 
@@ -139,6 +146,10 @@ export function defineTool<
     context: AgentContext,
   ) => Promise<Static<TReturnSchema>> | Static<TReturnSchema>;
   toLLM: (result: Static<TReturnSchema>) => readonly ContentBlock[];
+  toUI: (
+    result: Static<TReturnSchema>,
+    args: Static<TArgsSchema>,
+  ) => string;
   locks: readonly Lock<Static<TArgsSchema>>[];
 }): DefinedTool<TArgsSchema, TReturnSchema> {
   return tool;

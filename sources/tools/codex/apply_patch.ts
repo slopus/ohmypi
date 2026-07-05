@@ -19,5 +19,6 @@ export const codexApplyPatchTool = defineTool({
     };
   },
   toLLM: toTextBlocks,
+  toUI: (result) => result.text === "patch not applied" ? "Patch not applied" : "Applied patch",
   locks: ["apply_patch"],
 });

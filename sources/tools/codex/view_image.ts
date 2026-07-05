@@ -37,5 +37,6 @@ export const codexViewImageTool = defineTool({
       ? [{ type: "image", mediaType: match[1] ?? "image/png", data: match[2] ?? "" }]
       : [{ type: "text", text: result.image_url }];
   },
+  toUI: (_result, args) => `Viewed ${args.path}`,
   locks: [],
 });
