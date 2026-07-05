@@ -12,6 +12,10 @@ export type { AgentLoopEvent, AgentLoopResult, RunAgentLoopOptions } from "./loo
 export { createSystemPrompt } from "./createSystemPrompt.js";
 export type { CreateSystemPromptOptions } from "./createSystemPrompt.js";
 export { loadAgentsMdInstructions } from "./loadAgentsMdInstructions.js";
+export { formatSkillInvocation } from "./skills/formatSkillInvocation.js";
+export { loadSkillInstructions } from "./skills/loadSkillInstructions.js";
+export { loadSkills } from "./skills/loadSkills.js";
+export type { Skill } from "./skills/Skill.js";
 export { selectSystemPromptForModel } from "./selectSystemPromptForModel.js";
 export { printAgentMessageToConsole } from "./printAgentMessageToConsole.js";
 export type { AgentConsole } from "./printAgentMessageToConsole.js";

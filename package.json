@@ -37,6 +37,7 @@
         "@paralleldrive/cuid2": "^3.3.0",
         "@sinclair/typebox": "^0.34.49",
         "smol-toml": "^1.7.0",
+        "yaml": "^2.9.0",
         "zod": "^4.4.3"
     },
     "devDependencies": {

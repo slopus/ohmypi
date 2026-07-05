@@ -1,6 +1,6 @@
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import type { AgentContext } from "./context/AgentContext.js";
@@ -177,6 +177,133 @@ describe("createSystemPrompt", () => {
             }),
         ).resolves.toBe("Base instructions.");
     });
+
+    it("adds available skills from Codex, shared agent, and Pi skill roots", async () => {
+        const root = await makeTempDir();
+        const nested = join(root, "packages", "app");
+        await mkdir(nested, { recursive: true });
+        await writeFile(join(root, ".git"), "gitdir: here");
+
+        const home = join(root, ".home");
+        const codexSkill = join(home, ".codex", "skills", "review", "SKILL.md");
+        const projectSkill = join(root, ".agents", "skills", "build", "SKILL.md");
+        const nestedPiSkill = join(nested, ".pi", "skills", "tester", "SKILL.md");
+        await mkdir(dirname(codexSkill), { recursive: true });
+        await mkdir(dirname(projectSkill), { recursive: true });
+        await mkdir(dirname(nestedPiSkill), { recursive: true });
+        await writeFile(
+            codexSkill,
+            "---\nname: review\ndescription: Review changes carefully.\n---\n\n# Review\n",
+        );
+        await writeFile(
+            projectSkill,
+            "---\nname: build\ndescription: >\n  Build and verify\n  local changes.\n---\n\n# Build\n",
+        );
+        await writeFile(
+            nestedPiSkill,
+            "---\nname: tester\ndescription: Test the application.\n---\n\n# Test\n",
+        );
+
+        const model = defineModel({
+            id: "mock/model",
+            name: "Mock Model",
+            thinkingLevels: ["off"],
+            defaultThinkingLevel: "off",
+        });
+
+        const prompt = await createSystemPrompt({
+            provider: providerFor("mock", model),
+            model,
+            messages: [],
+            context: contextFor(nested, home),
+        });
+
+        expect(prompt).toContain("# Skills");
+        expect(prompt).toContain("<available_skills>");
+        expect(prompt).toContain("<name>build</name>");
+        expect(prompt).toContain("<description>Build and verify local changes.</description>");
+        expect(prompt).toContain(`<location>${projectSkill}</location>`);
+        expect(prompt).toContain("<name>review</name>");
+        expect(prompt).toContain(`<location>${codexSkill}</location>`);
+        expect(prompt).toContain("<name>tester</name>");
+        expect(prompt).toContain(`<location>${nestedPiSkill}</location>`);
+        expect(prompt).toContain("Read the skill file with the available filesystem tools");
+        expect(prompt).not.toContain("# Review");
+        expect(prompt).not.toContain("# Build");
+        expect(prompt).not.toContain("# Test");
+    });
+
+    it("ignores Claude-only executable skill frontmatter fields", async () => {
+        const root = await makeTempDir();
+        await writeFile(join(root, ".git"), "gitdir: here");
+        const skillPath = join(root, ".agents", "skills", "safe", "SKILL.md");
+        await mkdir(dirname(skillPath), { recursive: true });
+        await writeFile(
+            skillPath,
+            [
+                "---",
+                "name: safe",
+                "description: Safe instructions only.",
+                "allowed-tools:",
+                "  - Bash",
+                "shell: bash",
+                "hooks:",
+                "  PreToolUse:",
+                "    - matcher: Bash",
+                "---",
+                "",
+                "This body should be read explicitly when needed.",
+            ].join("\n"),
+        );
+
+        const model = defineModel({
+            id: "mock/model",
+            name: "Mock Model",
+            thinkingLevels: ["off"],
+            defaultThinkingLevel: "off",
+        });
+
+        const prompt = await createSystemPrompt({
+            provider: providerFor("mock", model),
+            model,
+            messages: [],
+            context: contextFor(root),
+        });
+
+        expect(prompt).toContain("<name>safe</name>");
+        expect(prompt).toContain("<description>Safe instructions only.</description>");
+        expect(prompt).not.toContain("allowed-tools");
+        expect(prompt).not.toContain("shell: bash");
+        expect(prompt).not.toContain("PreToolUse");
+        expect(prompt).not.toContain("This body should be read explicitly");
+    });
+
+    it("does not advertise skills disabled for model invocation", async () => {
+        const root = await makeTempDir();
+        await writeFile(join(root, ".git"), "gitdir: here");
+        const skillPath = join(root, ".agents", "skills", "manual", "SKILL.md");
+        await mkdir(dirname(skillPath), { recursive: true });
+        await writeFile(
+            skillPath,
+            "---\nname: manual\ndescription: Manual-only skill.\ndisable-model-invocation: true\n---\n\n# Manual\n",
+        );
+
+        const model = defineModel({
+            id: "mock/model",
+            name: "Mock Model",
+            thinkingLevels: ["off"],
+            defaultThinkingLevel: "off",
+        });
+
+        await expect(
+            createSystemPrompt({
+                provider: providerFor("mock", model),
+                model,
+                messages: [],
+                context: contextFor(root),
+            }),
+        ).resolves.toBeUndefined();
+    });
 });
 
 function providerFor(id: string, model: Model): Provider {
@@ -189,9 +316,9 @@ function providerFor(id: string, model: Model): Provider {
     });
 }
 
-function contextFor(cwd: string): AgentContext {
+function contextFor(cwd: string, home = join(cwd, ".home")): AgentContext {
     return {
-        fs: createNodeFileSystemContext(cwd),
+        fs: createNodeFileSystemContext(cwd, { home }),
         bash: {
             cwd,
             async run() {

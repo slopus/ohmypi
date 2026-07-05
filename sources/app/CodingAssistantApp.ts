@@ -19,12 +19,16 @@ import {
     type Agent,
     type AgentLoopEvent,
     type Message,
+    type Skill,
     type ToolResultBlock,
+    formatSkillInvocation,
+    loadSkills,
 } from "../agent/index.js";
+import { parseSkillFrontmatter } from "../agent/skills/parseSkillFrontmatter.js";
 import type { NativeProxessManager } from "../processes/index.js";
 import type { AppTranscriptEntry } from "./AppTranscriptEntry.js";
 import { createSelectionPanel } from "./createSelectionPanel.js";
-import { createSlashCommands } from "./createSlashCommands.js";
+import { createSlashCommands, type SlashCommandItem } from "./createSlashCommands.js";
 import { describeModelChoice } from "./describeModelChoice.js";
 import { describeReasoningLevel } from "./describeReasoningLevel.js";
 import { formatActivityElapsedTime } from "./formatActivityElapsedTime.js";
@@ -131,9 +135,14 @@ export class CodingAssistantApp implements Component, Focusable {
     #pendingPrompts: string[] = [];
     #selectionPanel: Component | undefined;
     #dismissedSlashCommandText: string | undefined;
+    #activeSubmission: Promise<void> | undefined;
     #showReasoning: boolean;
     #slashCommandSelectionIndex = 0;
     readonly #slashCommands = createSlashCommands();
+    #skillCommands: SlashCommandItem[] = [];
+    #skillCommandsLoaded = false;
+    #skillCommandsRefresh: Promise<void> | undefined;
+    #skillsByName = new Map<string, Skill>();
     #runToken = 0;
     #running = false;
     #seenToolCallIds = new Set<string>();
@@ -162,6 +171,8 @@ export class CodingAssistantApp implements Component, Focusable {
         this.#editor.onSubmit = (value) => {
             this.#submit(value);
         };
+
+        void this.#refreshSkillCommands();
     }
 
     get focused(): boolean {
@@ -220,6 +231,12 @@ export class CodingAssistantApp implements Component, Focusable {
 
     async waitForIdle(): Promise<void> {
         for (;;) {
+            const activeSubmission = this.#activeSubmission;
+            if (activeSubmission !== undefined) {
+                await activeSubmission;
+                continue;
+            }
+
             const activeRun = this.#activeRun;
             if (activeRun === undefined) {
                 return;
@@ -254,8 +271,12 @@ export class CodingAssistantApp implements Component, Focusable {
             return;
         }
 
+        const previousSlashCommandSuggestionCount = this.#slashCommandSuggestions().length;
         if (this.#handleSlashCommandAutocompleteInput(data)) {
-            this.#requestRender();
+            const nextSlashCommandSuggestionCount = this.#slashCommandSuggestions().length;
+            this.#requestRender(
+                nextSlashCommandSuggestionCount < previousSlashCommandSuggestionCount,
+            );
             return;
         }
 
@@ -279,7 +300,8 @@ export class CodingAssistantApp implements Component, Focusable {
         this.#markTypingActivity();
         this.#editor.handleInput(data);
         this.#syncSlashCommandAutocompleteState();
-        this.#requestRender();
+        const nextSlashCommandSuggestionCount = this.#slashCommandSuggestions().length;
+        this.#requestRender(nextSlashCommandSuggestionCount < previousSlashCommandSuggestionCount);
     }
 
     invalidate(): void {
@@ -289,7 +311,8 @@ export class CodingAssistantApp implements Component, Focusable {
     render(width: number): string[] {
         const safeWidth = Math.max(20, width);
         const header = this.#renderHeader(safeWidth);
-        const footer = this.#renderFooter(safeWidth);
+        const slashCommandSuggestions = this.#slashCommandSuggestions();
+        const footer = this.#renderFooter(safeWidth, slashCommandSuggestions);
         const input = this.#renderInput(safeWidth);
 
         if (this.#exiting) {
@@ -311,12 +334,32 @@ export class CodingAssistantApp implements Component, Focusable {
     }
 
     #submit(value: string): void {
+        const submission = this.#submitAsync(value).catch((error: unknown) => {
+            this.#appendEntry({ role: "error", text: this.#formatError(error) });
+        });
+        const trackedSubmission = submission.finally(() => {
+            if (this.#activeSubmission === trackedSubmission) {
+                this.#activeSubmission = undefined;
+            }
+            this.#requestRender();
+        });
+        this.#activeSubmission = trackedSubmission;
+    }
+
+    async #submitAsync(value: string): Promise<void> {
         const prompt = value.trim();
         if (prompt.length === 0) {
             return;
         }
 
         this.#editor.setText("");
+
+        if (prompt.startsWith("/skill:")) {
+            await this.#submitSkillCommand(prompt);
+            this.#requestRender();
+            return;
+        }
+
         if (this.#handleCommand(prompt)) {
             this.#requestRender();
             return;
@@ -334,6 +377,60 @@ export class CodingAssistantApp implements Component, Focusable {
         this.#pendingPrompts.push(prompt);
         this.#startDrainQueue();
         this.#requestRender();
+    }
+
+    async #submitSkillCommand(prompt: string): Promise<void> {
+        const parsed = /^\/skill:([a-z0-9-]+)(?:\s+([\s\S]*))?$/u.exec(prompt);
+        if (parsed === null) {
+            this.#appendEntry({
+                role: "event",
+                title: "skill",
+                text: "Use /skill:<name> followed by optional instructions.",
+            });
+            return;
+        }
+
+        await this.#refreshSkillCommands({ force: true });
+        const skillName = parsed[1];
+        const skill = skillName === undefined ? undefined : this.#skillsByName.get(skillName);
+        if (skill === undefined) {
+            this.#appendEntry({
+                role: "event",
+                title: "skill",
+                text: `Skill '${skillName ?? ""}' was not found.`,
+            });
+            return;
+        }
+
+        let content: string;
+        try {
+            content = await this.#agent.context.fs.readFile(skill.filePath);
+        } catch (error) {
+            this.#appendEntry({
+                role: "error",
+                title: "skill",
+                text: this.#formatError(error),
+            });
+            return;
+        }
+
+        const expandedPrompt = formatSkillInvocation(
+            skill,
+            parseSkillFrontmatter(content).body,
+            parsed[2] ?? "",
+        );
+
+        this.#appendEntry({ role: "user", text: prompt });
+        if (this.#running) {
+            this.#appendEntry({
+                role: "event",
+                title: "queue",
+                text: `Queued behind the active run.`,
+            });
+        }
+
+        this.#pendingPrompts.push(expandedPrompt);
+        this.#startDrainQueue();
     }
 
     #handleCommand(prompt: string): boolean {
@@ -432,6 +529,11 @@ export class CodingAssistantApp implements Component, Focusable {
         this.#requestRender();
 
         try {
+            await this.#refreshSkillCommands({ force: true });
+            if (!this.#isCurrentRun(runToken)) {
+                return;
+            }
+
             const result = await this.#agent.send(prompt, {
                 signal: controller.signal,
                 onEvent: (event) => this.#handleAgentEvent(event, runToken),
@@ -795,8 +897,10 @@ export class CodingAssistantApp implements Component, Focusable {
         return this.#renderNoticeEntry("system", entry.text, width, SURFACE_MUTED_FG);
     }
 
-    #renderFooter(width: number): string[] {
-        const slashCommandSuggestions = this.#slashCommandSuggestions();
+    #renderFooter(
+        width: number,
+        slashCommandSuggestions: readonly AutocompleteItem[] = this.#slashCommandSuggestions(),
+    ): string[] {
         if (slashCommandSuggestions.length > 0) {
             return this.#renderSlashCommandAutocomplete(width, slashCommandSuggestions);
         }
@@ -814,34 +918,44 @@ export class CodingAssistantApp implements Component, Focusable {
     #renderSlashCommandAutocomplete(
         width: number,
         suggestions: readonly AutocompleteItem[],
+        maxVisible = SLASH_COMMAND_MAX_VISIBLE,
     ): string[] {
+        const rowWidth = Math.max(1, width - 1);
+        const visibleCount = Math.max(1, Math.min(maxVisible, SLASH_COMMAND_MAX_VISIBLE));
         const selectedIndex = Math.min(this.#slashCommandSelectionIndex, suggestions.length - 1);
         const startIndex = Math.max(
             0,
             Math.min(
-                selectedIndex - Math.floor(SLASH_COMMAND_MAX_VISIBLE / 2),
-                suggestions.length - SLASH_COMMAND_MAX_VISIBLE,
+                selectedIndex - Math.floor(visibleCount / 2),
+                suggestions.length - visibleCount,
             ),
         );
-        const visibleSuggestions = suggestions.slice(
-            startIndex,
-            startIndex + SLASH_COMMAND_MAX_VISIBLE,
-        );
+        const visibleSuggestions = suggestions.slice(startIndex, startIndex + visibleCount);
         const labelWidth = Math.max(
             8,
-            ...visibleSuggestions.map((item) => visibleWidth(item.label) + 2),
+            ...visibleSuggestions.map((item) => visibleWidth(this.#singleLine(item.label)) + 2),
         );
+        const labelColumnWidth = Math.min(labelWidth, Math.max(1, rowWidth - 2));
 
         return visibleSuggestions.map((item, index) => {
             const absoluteIndex = startIndex + index;
             const isSelected = absoluteIndex === selectedIndex;
             const marker = isSelected ? "→ " : "  ";
-            const label = this.#fitAndPadLine(item.label, labelWidth);
-            const description = item.description ?? "";
+            const label = this.#fitAndPadLine(this.#singleLine(item.label), labelColumnWidth);
+            const remainingWidth = Math.max(
+                0,
+                rowWidth - visibleWidth(marker) - visibleWidth(label),
+            );
+            const description = truncateToWidth(
+                this.#singleLine(item.description ?? ""),
+                remainingWidth,
+                "",
+                false,
+            );
             const line = isSelected
                 ? `${OH_MY_PI_ORANGE}${marker}${label}${description}${RESET}`
                 : `${marker}${label}${DIM}${SURFACE_MUTED_FG}${description}${RESET}`;
-            return this.#fitLine(line, width);
+            return this.#fitLine(line, rowWidth);
         });
     }
 
@@ -1369,6 +1483,41 @@ export class CodingAssistantApp implements Component, Focusable {
         return false;
     }
 
+    #refreshSkillCommands(options: { force?: boolean } = {}): Promise<void> {
+        if (
+            options.force !== true &&
+            (this.#skillCommandsLoaded || this.#skillCommandsRefresh !== undefined)
+        ) {
+            return this.#skillCommandsRefresh ?? Promise.resolve();
+        }
+
+        const refresh = loadSkills(this.#agent.context.fs)
+            .then((skills) => {
+                this.#skillsByName = new Map(skills.map((skill) => [skill.name, skill]));
+                this.#skillCommands = skills.map((skill) => ({
+                    value: `skill:${skill.name}`,
+                    label: `/skill:${skill.name}`,
+                    description: skill.description,
+                    aliases: [],
+                }));
+                this.#skillCommandsLoaded = true;
+            })
+            .catch(() => {
+                this.#skillsByName = new Map();
+                this.#skillCommands = [];
+                this.#skillCommandsLoaded = true;
+            });
+
+        const trackedRefresh = refresh.finally(() => {
+            if (this.#skillCommandsRefresh === trackedRefresh) {
+                this.#skillCommandsRefresh = undefined;
+            }
+            this.#requestRender();
+        });
+        this.#skillCommandsRefresh = trackedRefresh;
+        return trackedRefresh;
+    }
+
     #handleSlashCommandAutocompleteInput(data: string): boolean {
         const suggestions = this.#slashCommandSuggestions();
         if (suggestions.length === 0) {
@@ -1419,7 +1568,11 @@ export class CodingAssistantApp implements Component, Focusable {
         }
 
         const query = text.slice(1).toLowerCase();
-        const suggestions = this.#slashCommands.filter(
+        if (!this.#skillCommandsLoaded && this.#skillCommandsRefresh === undefined) {
+            void this.#refreshSkillCommands();
+        }
+
+        const suggestions = [...this.#slashCommands, ...this.#skillCommands].filter(
             (command) =>
                 command.value.toLowerCase().startsWith(query) ||
                 command.aliases.some((alias) => alias.toLowerCase().startsWith(query)),
@@ -1666,9 +1819,9 @@ export class CodingAssistantApp implements Component, Focusable {
         this.#activityStartedAtMs = undefined;
     }
 
-    #requestRender(): void {
+    #requestRender(force = false): void {
         if (!this.#stopped) {
-            this.#tui.requestRender();
+            this.#tui.requestRender(force);
         }
     }
 

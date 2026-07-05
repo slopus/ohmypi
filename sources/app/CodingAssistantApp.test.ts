@@ -1,4 +1,4 @@
-import type { TUI } from "@earendil-works/pi-tui";
+import { visibleWidth, type TUI } from "@earendil-works/pi-tui";
 import { describe, expect, it, vi } from "vitest";
 
 import { Agent } from "../agent/Agent.js";
@@ -420,6 +420,371 @@ describe("CodingAssistantApp", () => {
         const modelPicker = stripAnsi(app.render(80).join("\n"));
         expect(modelPicker).toContain("Choose Model");
         expect(modelPicker).not.toContain("/model");
+    });
+
+    it("shows loaded skills as slash command autocomplete items", async () => {
+        const model = defineModel({
+            id: "openai/gpt-test",
+            name: "GPT Test",
+            thinkingLevels: ["off"],
+            defaultThinkingLevel: "off",
+        });
+        const provider = defineProvider({
+            id: "codex",
+            models: [model],
+            stream() {
+                return streamText("unused");
+            },
+        });
+        const harness = createJustBashToolHarness({
+            files: {
+                "/workspace/.git": "gitdir: here",
+                "/workspace/.agents/skills/review/SKILL.md":
+                    "---\nname: review\ndescription: Review changes carefully.\n---\n\n# Review\n",
+            },
+        });
+        const agent = new Agent({
+            provider,
+            modelId: model.id,
+            context: harness.context,
+            printToConsole: false,
+        });
+        const app = new CodingAssistantApp({
+            agent,
+            cwd: harness.context.fs.cwd,
+            processManager: new NativeProxessManager(),
+            tui: fakeTui(),
+        });
+
+        app.focused = true;
+        await delay(30);
+        app.handleInput("/skill:");
+        await delay(30);
+
+        const rendered = stripAnsi(app.render(100).join("\n"));
+        expect(rendered).toContain("/skill:review");
+        expect(rendered).toContain("Review changes carefully.");
+    });
+
+    it("limits visible skill slash command autocomplete rows", async () => {
+        const model = defineModel({
+            id: "openai/gpt-test",
+            name: "GPT Test",
+            thinkingLevels: ["off"],
+            defaultThinkingLevel: "off",
+        });
+        const provider = defineProvider({
+            id: "codex",
+            models: [model],
+            stream() {
+                return streamText("unused");
+            },
+        });
+        const skillFiles = Object.fromEntries(
+            Array.from({ length: 24 }, (_, index) => {
+                const name = `skill-${index.toString().padStart(2, "0")}`;
+                return [
+                    `/workspace/.agents/skills/${name}/SKILL.md`,
+                    `---\nname: ${name}\ndescription: Skill ${index} with a long description that should stay on one rendered row.\n---\n\n# ${name}\n`,
+                ];
+            }),
+        );
+        const harness = createJustBashToolHarness({
+            files: {
+                "/workspace/.git": "gitdir: here",
+                ...skillFiles,
+            },
+        });
+        const agent = new Agent({
+            provider,
+            modelId: model.id,
+            context: harness.context,
+            printToConsole: false,
+        });
+        const app = new CodingAssistantApp({
+            agent,
+            cwd: harness.context.fs.cwd,
+            processManager: new NativeProxessManager(),
+            tui: fakeTui(),
+        });
+
+        app.focused = true;
+        await delay(30);
+        app.handleInput("/skill:");
+        await delay(30);
+
+        const visibleSkillRows = stripAnsi(app.render(100).join("\n"))
+            .split("\n")
+            .filter((line) => line.includes("/skill:skill-"));
+        expect(visibleSkillRows).toHaveLength(6);
+        expect(visibleSkillRows[0]).toContain("/skill:skill-00");
+        expect(visibleSkillRows[5]).toContain("/skill:skill-05");
+    });
+
+    it("renders each skill autocomplete suggestion as a single terminal row", async () => {
+        const model = defineModel({
+            id: "openai/gpt-test",
+            name: "GPT Test",
+            thinkingLevels: ["off"],
+            defaultThinkingLevel: "off",
+        });
+        const provider = defineProvider({
+            id: "codex",
+            models: [model],
+            stream() {
+                return streamText("unused");
+            },
+        });
+        const skillFiles = Object.fromEntries(
+            Array.from({ length: 12 }, (_, index) => {
+                const name = `skill-${index.toString().padStart(2, "0")}`;
+                return [
+                    `/workspace/.agents/skills/${name}/SKILL.md`,
+                    [
+                        "---",
+                        `name: ${name}`,
+                        "description: |",
+                        "  First description line that is intentionally too long for a narrow terminal.",
+                        "  Second description line must not become a second physical row.",
+                        "---",
+                        "",
+                        `# ${name}`,
+                    ].join("\n"),
+                ];
+            }),
+        );
+        const harness = createJustBashToolHarness({
+            files: {
+                "/workspace/.git": "gitdir: here",
+                ...skillFiles,
+            },
+        });
+        const agent = new Agent({
+            provider,
+            modelId: model.id,
+            context: harness.context,
+            printToConsole: false,
+        });
+        const tui = fakeTui({ rows: 10, columns: 48 });
+        const app = new CodingAssistantApp({
+            agent,
+            cwd: harness.context.fs.cwd,
+            processManager: new NativeProxessManager(),
+            tui,
+        });
+
+        app.focused = true;
+        await delay(30);
+        app.handleInput("/skill:");
+        await delay(30);
+        vi.mocked(tui.requestRender).mockClear();
+        app.handleInput("\x1b[B");
+        app.handleInput("\x1b[B");
+        app.handleInput("\x1b[A");
+
+        const width = 48;
+        const lines = app.render(width);
+        const physicalRows = stripAnsi(lines.join("\n")).split("\n");
+        const autocompleteRows = lines.filter((line) => stripAnsi(line).includes("/skill:skill-"));
+
+        expect(tui.requestRender).toHaveBeenCalled();
+        expect(tui.requestRender).not.toHaveBeenCalledWith(true);
+        expect(physicalRows).toHaveLength(lines.length);
+        expect(autocompleteRows).toHaveLength(6);
+        for (const row of autocompleteRows) {
+            expect(row).not.toContain("\n");
+            expect(visibleWidth(row)).toBeLessThan(width);
+        }
+    });
+
+    it("keeps transcript history while slash autocomplete is open", async () => {
+        const model = defineModel({
+            id: "openai/gpt-test",
+            name: "GPT Test",
+            thinkingLevels: ["off"],
+            defaultThinkingLevel: "off",
+        });
+        const provider = defineProvider({
+            id: "codex",
+            models: [model],
+            stream() {
+                return streamText("answer with enough text to leave transcript rows behind");
+            },
+        });
+        const skillFiles = Object.fromEntries(
+            Array.from({ length: 20 }, (_, index) => {
+                const name = `skill-${index.toString().padStart(2, "0")}`;
+                return [
+                    `/workspace/.agents/skills/${name}/SKILL.md`,
+                    `---\nname: ${name}\ndescription: Skill ${index}.\n---\n\n# ${name}\n`,
+                ];
+            }),
+        );
+        const harness = createJustBashToolHarness({
+            files: {
+                "/workspace/.git": "gitdir: here",
+                ...skillFiles,
+            },
+        });
+        const agent = new Agent({
+            provider,
+            modelId: model.id,
+            context: harness.context,
+            printToConsole: false,
+        });
+        const app = new CodingAssistantApp({
+            agent,
+            cwd: harness.context.fs.cwd,
+            processManager: new NativeProxessManager(),
+            tui: fakeTui({ rows: 8 }),
+        });
+
+        submit(app, "first");
+        await app.waitForIdle();
+        submit(app, "second");
+        await app.waitForIdle();
+        app.focused = true;
+        app.handleInput("/skill:");
+        await delay(30);
+
+        const lines = app.render(100);
+        const rendered = stripAnsi(lines.join("\n"));
+        expect(lines.length).toBeGreaterThan(8);
+        expect(rendered).toContain("› first");
+        expect(rendered).toContain("› second");
+        expect(rendered).toContain("• answer with enough text to leave transcript rows behind");
+        expect(rendered).toContain("› /skill:");
+        expect(rendered).toContain("/skill:skill-00");
+        expect(rendered).toContain("/skill:skill-05");
+        expect(rendered).not.toContain("/skill:skill-06");
+    });
+
+    it("uses normal diff redraw while navigating a large skill autocomplete list", async () => {
+        const model = defineModel({
+            id: "openai/gpt-test",
+            name: "GPT Test",
+            thinkingLevels: ["off"],
+            defaultThinkingLevel: "off",
+        });
+        const provider = defineProvider({
+            id: "codex",
+            models: [model],
+            stream() {
+                return streamText("unused");
+            },
+        });
+        const skillFiles = Object.fromEntries(
+            Array.from({ length: 30 }, (_, index) => {
+                const name = `skill-${index.toString().padStart(2, "0")}`;
+                return [
+                    `/workspace/.agents/skills/${name}/SKILL.md`,
+                    `---\nname: ${name}\ndescription: Skill ${index}.\n---\n\n# ${name}\n`,
+                ];
+            }),
+        );
+        const harness = createJustBashToolHarness({
+            files: {
+                "/workspace/.git": "gitdir: here",
+                ...skillFiles,
+            },
+        });
+        const agent = new Agent({
+            provider,
+            modelId: model.id,
+            context: harness.context,
+            printToConsole: false,
+        });
+        const tui = fakeTui({ rows: 8 });
+        const app = new CodingAssistantApp({
+            agent,
+            cwd: harness.context.fs.cwd,
+            processManager: new NativeProxessManager(),
+            tui,
+        });
+
+        app.focused = true;
+        await delay(30);
+        app.handleInput("/skill:");
+        await delay(30);
+        vi.mocked(tui.requestRender).mockClear();
+
+        app.handleInput("\x1b[B");
+        app.handleInput("\x1b[B");
+        app.handleInput("\x1b[A");
+
+        expect(tui.requestRender).toHaveBeenCalled();
+        expect(tui.requestRender).not.toHaveBeenCalledWith(true);
+        expect(app.render(100).length).toBeGreaterThan(8);
+    });
+
+    it("expands a skill slash command before sending it to the model", async () => {
+        const model = defineModel({
+            id: "openai/gpt-test",
+            name: "GPT Test",
+            thinkingLevels: ["off"],
+            defaultThinkingLevel: "off",
+        });
+        const contexts: Context[] = [];
+        const provider = defineProvider({
+            id: "codex",
+            models: [model],
+            stream(_model, context) {
+                contexts.push(context);
+                return streamText("skill used");
+            },
+        });
+        const harness = createJustBashToolHarness({
+            files: {
+                "/workspace/.git": "gitdir: here",
+                "/workspace/.agents/skills/review/SKILL.md": [
+                    "---",
+                    "name: review",
+                    "description: Review changes carefully.",
+                    "allowed-tools:",
+                    "  - Bash",
+                    "---",
+                    "",
+                    "# Review",
+                    "Use the word cobalt.",
+                ].join("\n"),
+            },
+        });
+        const agent = new Agent({
+            provider,
+            modelId: model.id,
+            context: harness.context,
+            printToConsole: false,
+        });
+        const app = new CodingAssistantApp({
+            agent,
+            cwd: harness.context.fs.cwd,
+            processManager: new NativeProxessManager(),
+            tui: fakeTui(),
+        });
+
+        submit(app, "/skill:review inspect this diff");
+        await app.waitForIdle();
+
+        const sentContent = contexts[0]?.messages[0]?.content[0];
+        const sentText =
+            typeof sentContent === "string"
+                ? sentContent
+                : sentContent?.type === "text"
+                  ? sentContent.text
+                  : "";
+        expect(sentText).toContain(
+            '<skill name="review" location="/workspace/.agents/skills/review/SKILL.md">',
+        );
+        expect(sentText).toContain("References are relative to /workspace/.agents/skills/review.");
+        expect(sentText).toContain("# Review");
+        expect(sentText).toContain("Use the word cobalt.");
+        expect(sentText).toContain("</skill>\n\ninspect this diff");
+        expect(sentText).not.toContain("allowed-tools");
+
+        const rendered = stripAnsi(app.render(100).join("\n"));
+        expect(rendered).toContain("› /skill:review inspect this diff");
+        expect(rendered).toContain("• skill used");
+        expect(rendered).not.toContain("Use the word cobalt.");
     });
 
     it("finds new session command by reset and clears agent state", async () => {
@@ -1530,12 +1895,6 @@ describe("CodingAssistantApp", () => {
 function createDeterministicIds(): () => string {
     let next = 0;
     return () => `app-id-${++next}`;
-}
-
-function nextTick(): Promise<void> {
-    return new Promise((resolve) => {
-        process.nextTick(resolve);
-    });
 }
 
 function delay(ms: number): Promise<void> {

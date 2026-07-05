@@ -1,11 +1,20 @@
 import { existsSync } from "node:fs";
 import { mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { homedir } from "node:os";
 
 import type { FileSystemContext } from "./FileSystemContext.js";
 
-export function createNodeFileSystemContext(cwd: string): FileSystemContext {
+export interface CreateNodeFileSystemContextOptions {
+    home?: string;
+}
+
+export function createNodeFileSystemContext(
+    cwd: string,
+    options: CreateNodeFileSystemContextOptions = {},
+): FileSystemContext {
     return {
         cwd,
+        home: options.home ?? homedir(),
         async exists(path) {
             return existsSync(path);
         },

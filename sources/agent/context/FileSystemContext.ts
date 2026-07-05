@@ -8,6 +8,7 @@ export interface FileSystemStat {
 
 export interface FileSystemContext {
     cwd: string;
+    home?: string;
     exists(path: string): Promise<boolean>;
     mkdir(path: string, options?: { recursive?: boolean }): Promise<void>;
     readFile(path: string): Promise<string>;

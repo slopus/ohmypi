@@ -1,6 +1,7 @@
 import type { AgentContext } from "./context/AgentContext.js";
 import { loadAgentsMdInstructions } from "./loadAgentsMdInstructions.js";
 import { selectSystemPromptForModel } from "./selectSystemPromptForModel.js";
+import { loadSkillInstructions } from "./skills/loadSkillInstructions.js";
 import { systemMessageToText } from "./systemMessageToText.js";
 import type { Message } from "./types.js";
 import type { Model, Provider } from "../providers/types.js";
@@ -35,6 +36,11 @@ export async function createSystemPrompt(
     const agentsMdInstructions = await loadAgentsMdInstructions(options.context.fs);
     if (agentsMdInstructions !== undefined) {
         parts.push(agentsMdInstructions);
+    }
+
+    const skillInstructions = await loadSkillInstructions(options.context.fs);
+    if (skillInstructions !== undefined) {
+        parts.push(skillInstructions);
     }
 
     return parts.length > 0 ? parts.join("\n\n") : undefined;
