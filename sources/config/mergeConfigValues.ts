@@ -5,6 +5,7 @@ export function mergeConfigValues(
     ...configs: PartialOhMyPiConfig[]
 ): OhMyPiConfig {
     const defaults = { ...base.defaults };
+    const settings = { ...base.settings };
 
     for (const config of configs) {
         if (config.defaults?.modelId !== undefined) {
@@ -16,7 +17,10 @@ export function mergeConfigValues(
         if (config.defaults?.instructions !== undefined) {
             defaults.instructions = config.defaults.instructions;
         }
+        if (config.settings?.showReasoning !== undefined) {
+            settings.showReasoning = config.settings.showReasoning;
+        }
     }
 
-    return { defaults };
+    return { defaults, settings };
 }

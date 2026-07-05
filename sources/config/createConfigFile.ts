@@ -20,6 +20,9 @@ export async function createConfigFile(
                     ? { instructions: config.defaults.instructions }
                     : {}),
             },
+            settings: {
+                show_reasoning: config.settings.showReasoning,
+            },
         }),
         { encoding: "utf8", flag: "wx" },
     );

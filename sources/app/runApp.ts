@@ -1,6 +1,6 @@
 import { ProcessTerminal, TUI } from "@earendil-works/pi-tui";
 
-import { loadConfig, writeRuntimeConfigDefaults } from "../config/index.js";
+import { loadConfig, writeRuntimeConfig } from "../config/index.js";
 import { CodingAssistantApp } from "./CodingAssistantApp.js";
 import {
     createCodingAssistantAgent,
@@ -15,6 +15,7 @@ export interface RunAppOptions {
     effort?: string;
     instructions?: string;
     modelId?: string;
+    showReasoning?: boolean;
 }
 
 export async function runApp(options: RunAppOptions = {}): Promise<void> {
@@ -34,6 +35,7 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
     if (options.effort !== undefined) agentOptions.effort = options.effort;
     if (options.instructions !== undefined) agentOptions.instructions = options.instructions;
     if (options.modelId !== undefined) agentOptions.modelId = options.modelId;
+    let showReasoning = options.showReasoning ?? loadedConfig.config.settings.showReasoning;
 
     const runtime = createCodingAssistantAgent(agentOptions);
     // The app renders a softened fake cursor; keep the terminal cursor hidden
@@ -43,11 +45,28 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
         agent: runtime.agent,
         cwd: runtime.cwd,
         onDefaultModelChange: (preference) =>
-            writeRuntimeConfigDefaults(loadedConfig.paths.runtime, {
-                modelId: preference.modelId,
-                effort: preference.effort,
+            writeRuntimeConfig(loadedConfig.paths.runtime, {
+                defaults: {
+                    modelId: preference.modelId,
+                    effort: preference.effort,
+                },
+                settings: {
+                    showReasoning,
+                },
             }),
+        onSettingsChange: (settings) => {
+            showReasoning = settings.showReasoning;
+            return writeRuntimeConfig(loadedConfig.paths.runtime, {
+                defaults: {
+                    modelId: runtime.agent.model.id,
+                    effort:
+                        runtime.agent.snapshot().effort ?? runtime.agent.model.defaultThinkingLevel,
+                },
+                settings,
+            });
+        },
         processManager: runtime.processManager,
+        showReasoning,
         tui,
         version: readPackageVersion(),
     });

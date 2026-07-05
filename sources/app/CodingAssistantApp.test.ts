@@ -182,6 +182,7 @@ describe("CodingAssistantApp", () => {
             agent,
             cwd: harness.context.fs.cwd,
             processManager: new NativeProxessManager(),
+            showReasoning: true,
             tui: fakeTui(),
         });
 
@@ -217,6 +218,7 @@ describe("CodingAssistantApp", () => {
             agent,
             cwd: harness.context.fs.cwd,
             processManager: new NativeProxessManager(),
+            showReasoning: true,
             tui: fakeTui(),
         });
 
@@ -349,6 +351,7 @@ describe("CodingAssistantApp", () => {
             agent,
             cwd: harness.context.fs.cwd,
             processManager: new NativeProxessManager(),
+            showReasoning: true,
             tui: fakeTui(),
         });
 
@@ -384,6 +387,7 @@ describe("CodingAssistantApp", () => {
             agent,
             cwd: harness.context.fs.cwd,
             processManager: new NativeProxessManager(),
+            showReasoning: true,
             tui: fakeTui(),
         });
 
@@ -399,6 +403,8 @@ describe("CodingAssistantApp", () => {
         expect(commandLine).not.toContain("\x1b[1m");
         expect(rendered).toContain("/model");
         expect(rendered).toContain("Choose the model and reasoning level.");
+        expect(rendered).toContain("/configure");
+        expect(rendered).toContain("Configure app settings.");
         expect(rendered).toContain("/new");
         expect(rendered).toContain("Reset this session and start fresh.");
         expect(rendered).toContain("/exit");
@@ -441,6 +447,7 @@ describe("CodingAssistantApp", () => {
             agent,
             cwd: harness.context.fs.cwd,
             processManager: new NativeProxessManager(),
+            showReasoning: true,
             tui: fakeTui(),
         });
 
@@ -528,6 +535,7 @@ describe("CodingAssistantApp", () => {
             agent,
             cwd: harness.context.fs.cwd,
             processManager: new NativeProxessManager(),
+            showReasoning: true,
             tui: fakeTui(),
         });
 
@@ -790,6 +798,7 @@ describe("CodingAssistantApp", () => {
         expect(rendered).toContain("  line two");
         expect(contexts).toHaveLength(0);
 
+        app.handleInput("\x1b[A");
         app.handleInput("\r");
         await app.waitForIdle();
 
@@ -1245,6 +1254,184 @@ describe("CodingAssistantApp", () => {
         await app.waitForIdle();
     });
 
+    it("renders completed thinking blocks as transcript text", async () => {
+        const model = defineModel({
+            id: "openai/gpt-test",
+            name: "GPT Test",
+            thinkingLevels: ["high"],
+            defaultThinkingLevel: "high",
+        });
+        const message: AssistantMessage = {
+            role: "assistant",
+            content: [
+                {
+                    type: "thinking",
+                    thinking: "I should **inspect** `renderer` before changing the UI.",
+                },
+                { type: "text", text: "Done." },
+            ],
+            api: "test",
+            provider: "codex",
+            model: "openai/gpt-test",
+            usage: zeroUsage(),
+            stopReason: "stop",
+            timestamp: 1,
+        };
+        const provider = defineProvider({
+            id: "codex",
+            models: [model],
+            stream() {
+                return streamMessage(message);
+            },
+        });
+        const harness = createJustBashToolHarness();
+        const agent = new Agent({
+            provider,
+            modelId: model.id,
+            context: harness.context,
+            effort: "high",
+            printToConsole: false,
+        });
+        const app = new CodingAssistantApp({
+            agent,
+            cwd: harness.context.fs.cwd,
+            processManager: new NativeProxessManager(),
+            showReasoning: true,
+            tui: fakeTui(),
+        });
+
+        submit(app, "show reasoning");
+        await app.waitForIdle();
+
+        const raw = app.render(100).join("\n");
+        const rendered = stripAnsi(raw);
+        expect(rendered).toContain("• I should inspect renderer before changing the UI.");
+        expect(rendered).not.toContain("Thinking");
+        expect(rendered).toContain("• Done.");
+        expect(raw).toContain("\x1b[2m•\x1b[0m");
+        expect(raw).toContain("\x1b[1m");
+    });
+
+    it("renders streamed thinking deltas without duplicating the final block", async () => {
+        const model = defineModel({
+            id: "openai/gpt-test",
+            name: "GPT Test",
+            thinkingLevels: ["high"],
+            defaultThinkingLevel: "high",
+        });
+        const provider = defineProvider({
+            id: "codex",
+            models: [model],
+            stream() {
+                return streamThinkingText(
+                    "I should read the transcript renderer and then update tests.",
+                    "Done.",
+                );
+            },
+        });
+        const harness = createJustBashToolHarness();
+        const agent = new Agent({
+            provider,
+            modelId: model.id,
+            context: harness.context,
+            effort: "high",
+            printToConsole: false,
+        });
+        const app = new CodingAssistantApp({
+            agent,
+            cwd: harness.context.fs.cwd,
+            processManager: new NativeProxessManager(),
+            showReasoning: true,
+            tui: fakeTui(),
+        });
+
+        submit(app, "show streamed reasoning");
+        await app.waitForIdle();
+
+        const rendered = stripAnsi(app.render(100).join("\n"));
+        expect(rendered).toContain(
+            "• I should read the transcript renderer and then update tests.",
+        );
+        expect(rendered).not.toContain("Thinking");
+        expect(
+            rendered.split("I should read the transcript renderer and then update tests."),
+        ).toHaveLength(2);
+        expect(rendered).toContain("• Done.");
+    });
+
+    it("toggles reasoning display from the configure menu", async () => {
+        const model = defineModel({
+            id: "openai/gpt-test",
+            name: "GPT Test",
+            thinkingLevels: ["high"],
+            defaultThinkingLevel: "high",
+        });
+        const message: AssistantMessage = {
+            role: "assistant",
+            content: [
+                {
+                    type: "thinking",
+                    thinking: "This reasoning text can be hidden.",
+                },
+                { type: "text", text: "Final answer stays visible." },
+            ],
+            api: "test",
+            provider: "codex",
+            model: "openai/gpt-test",
+            usage: zeroUsage(),
+            stopReason: "stop",
+            timestamp: 1,
+        };
+        const provider = defineProvider({
+            id: "codex",
+            models: [model],
+            stream() {
+                return streamMessage(message);
+            },
+        });
+        const harness = createJustBashToolHarness();
+        const agent = new Agent({
+            provider,
+            modelId: model.id,
+            context: harness.context,
+            effort: "high",
+            printToConsole: false,
+        });
+        const settingsChanges: Array<{ showReasoning: boolean }> = [];
+        const app = new CodingAssistantApp({
+            agent,
+            cwd: harness.context.fs.cwd,
+            onSettingsChange: (settings) => {
+                settingsChanges.push(settings);
+            },
+            processManager: new NativeProxessManager(),
+            tui: fakeTui(),
+        });
+
+        submit(app, "show reasoning");
+        await app.waitForIdle();
+
+        expect(stripAnsi(app.render(100).join("\n"))).not.toContain(
+            "This reasoning text can be hidden.",
+        );
+
+        submit(app, "/configure");
+        const menu = stripAnsi(app.render(100).join("\n"));
+        expect(menu).toContain("Configure");
+        expect(menu).toContain("Show reasoning");
+        expect(menu).toContain("Hide reasoning");
+        expect(menu).toContain("Current setting");
+
+        app.handleInput("\x1b[A");
+        app.handleInput("\r");
+
+        const rendered = stripAnsi(app.render(100).join("\n"));
+        expect(settingsChanges).toEqual([{ showReasoning: true }]);
+        expect(rendered).toContain("This reasoning text can be hidden.");
+        expect(rendered).toContain("Final answer stays visible.");
+        expect(rendered).toContain("Reasoning display enabled.");
+    });
+
     it("keeps activity visible after text_start until the first text delta", async () => {
         const model = defineModel({
             id: "openai/gpt-test",
@@ -1608,6 +1795,65 @@ function streamThinking(
             yield {
                 type: "text_end" as const,
                 contentIndex: 0,
+                content: text,
+                partial: message,
+            };
+            yield { type: "done" as const, reason: "stop", message };
+        },
+        async result() {
+            return message;
+        },
+    };
+}
+
+function streamThinkingText(thinking: string, text: string): InferenceStream {
+    const message: AssistantMessage = {
+        role: "assistant",
+        content: [
+            { type: "thinking", thinking },
+            { type: "text", text },
+        ],
+        api: "test",
+        provider: "codex",
+        model: "openai/gpt-test",
+        usage: zeroUsage(),
+        stopReason: "stop",
+        timestamp: 1,
+    };
+    const midpoint = Math.floor(thinking.length / 2);
+
+    return {
+        async *[Symbol.asyncIterator]() {
+            yield { type: "start" as const, partial: message };
+            yield { type: "thinking_start" as const, contentIndex: 0, partial: message };
+            yield {
+                type: "thinking_delta" as const,
+                contentIndex: 0,
+                delta: thinking.slice(0, midpoint),
+                partial: message,
+            };
+            yield {
+                type: "thinking_delta" as const,
+                contentIndex: 0,
+                delta: thinking.slice(midpoint),
+                partial: message,
+            };
+            yield {
+                type: "thinking_end" as const,
+                contentIndex: 0,
+                content: thinking,
+                partial: message,
+            };
+            yield { type: "text_start" as const, contentIndex: 1, partial: message };
+            yield {
+                type: "text_delta" as const,
+                contentIndex: 1,
+                delta: text,
+                partial: message,
+            };
+            yield {
+                type: "text_end" as const,
+                contentIndex: 1,
                 content: text,
                 partial: message,
             };

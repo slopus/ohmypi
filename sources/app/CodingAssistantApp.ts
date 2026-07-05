@@ -82,14 +82,20 @@ export interface CodingAssistantAppOptions {
     tui: TUI;
     idFactory?: () => string;
     onDefaultModelChange?: (preference: DefaultModelPreference) => void | Promise<void>;
+    onSettingsChange?: (settings: AppSettings) => void | Promise<void>;
     onExit?: () => void | Promise<void>;
     now?: () => number;
+    showReasoning?: boolean;
     version?: string;
 }
 
 export interface DefaultModelPreference {
     effort: string;
     modelId: string;
+}
+
+export interface AppSettings {
+    showReasoning: boolean;
 }
 
 export class CodingAssistantApp implements Component, Focusable {
@@ -101,6 +107,7 @@ export class CodingAssistantApp implements Component, Focusable {
     readonly #onDefaultModelChange:
         | ((preference: DefaultModelPreference) => void | Promise<void>)
         | undefined;
+    readonly #onSettingsChange: ((settings: AppSettings) => void | Promise<void>) | undefined;
     readonly #onExit: (() => void | Promise<void>) | undefined;
     readonly #processManager: NativeProxessManager;
     readonly #tui: TUI;
@@ -124,6 +131,7 @@ export class CodingAssistantApp implements Component, Focusable {
     #pendingPrompts: string[] = [];
     #selectionPanel: Component | undefined;
     #dismissedSlashCommandText: string | undefined;
+    #showReasoning: boolean;
     #slashCommandSelectionIndex = 0;
     readonly #slashCommands = createSlashCommands();
     #runToken = 0;
@@ -132,6 +140,7 @@ export class CodingAssistantApp implements Component, Focusable {
     #statusText = "Idle";
     #stopped = false;
     #streamEntryId: string | undefined;
+    #thinkingEntryIdsByContentIndex = new Map<number, string>();
 
     constructor(options: CodingAssistantAppOptions) {
         this.#agent = options.agent;
@@ -139,8 +148,10 @@ export class CodingAssistantApp implements Component, Focusable {
         this.#idFactory = options.idFactory ?? createId;
         this.#now = options.now ?? Date.now;
         this.#onDefaultModelChange = options.onDefaultModelChange;
+        this.#onSettingsChange = options.onSettingsChange;
         this.#onExit = options.onExit;
         this.#processManager = options.processManager;
+        this.#showReasoning = options.showReasoning ?? false;
         this.#tui = options.tui;
         this.#version = options.version ?? "0.0.0";
         this.#editor = new Editor(this.#tui, EDITOR_THEME, { paddingX: 0 });
@@ -331,6 +342,11 @@ export class CodingAssistantApp implements Component, Focusable {
             return true;
         }
 
+        if (prompt === "/configure") {
+            this.#openConfigureMenu();
+            return true;
+        }
+
         if (prompt === "/new") {
             this.#resetSession();
             return true;
@@ -344,6 +360,7 @@ export class CodingAssistantApp implements Component, Focusable {
         if (prompt === "/clear") {
             this.#entries = [];
             this.#streamEntryId = undefined;
+            this.#thinkingEntryIdsByContentIndex.clear();
             this.#appendEntry({ role: "system", text: "Transcript cleared." });
             return true;
         }
@@ -369,6 +386,7 @@ export class CodingAssistantApp implements Component, Focusable {
         this.#entries = [];
         this.#seenToolCallIds.clear();
         this.#streamEntryId = undefined;
+        this.#thinkingEntryIdsByContentIndex.clear();
         this.#abortNotified = false;
         this.#statusText = "Idle";
         this.#agent.reset();
@@ -408,6 +426,7 @@ export class CodingAssistantApp implements Component, Focusable {
         this.#running = true;
         this.#statusText = "Running";
         this.#streamEntryId = undefined;
+        this.#thinkingEntryIdsByContentIndex.clear();
         this.#activityStartedAtMs = this.#now();
         this.#startActivityAnimation();
         this.#requestRender();
@@ -450,6 +469,7 @@ export class CodingAssistantApp implements Component, Focusable {
             this.#running = false;
             this.#stopActivityAnimation();
             this.#streamEntryId = undefined;
+            this.#thinkingEntryIdsByContentIndex.clear();
             this.#requestRender();
         }
     }
@@ -475,6 +495,7 @@ export class CodingAssistantApp implements Component, Focusable {
         this.#running = false;
         this.#statusText = "Idle";
         this.#streamEntryId = undefined;
+        this.#thinkingEntryIdsByContentIndex.clear();
         this.#stopActivityAnimation();
         void this.#processManager.killAll({ forceAfterMs: 500 }).catch((error: unknown) => {
             this.#appendEntry({ role: "error", text: this.#formatError(error) });
@@ -498,6 +519,7 @@ export class CodingAssistantApp implements Component, Focusable {
         if (event.type === "inference_iteration_start") {
             this.#statusText = "Running";
             this.#streamEntryId = undefined;
+            this.#thinkingEntryIdsByContentIndex.clear();
             if (event.iteration > 1) {
                 this.#appendEntry({ role: "separator", text: "" });
             }
@@ -509,6 +531,12 @@ export class CodingAssistantApp implements Component, Focusable {
             this.#finishStreamText(event.content);
         } else if (event.type === "thinking_start") {
             this.#statusText = "Thinking";
+        } else if (event.type === "thinking_delta") {
+            this.#statusText = "Thinking";
+            this.#appendThinkingText(event.contentIndex, event.delta);
+        } else if (event.type === "thinking_end") {
+            this.#statusText = "Thinking";
+            this.#finishThinkingText(event.contentIndex, event.content);
         } else if (event.type === "toolcall_end") {
             this.#seenToolCallIds.add(event.toolCall.id);
             this.#statusText = `Calling ${event.toolCall.name}`;
@@ -554,16 +582,30 @@ export class CodingAssistantApp implements Component, Focusable {
             return;
         }
 
-        const text = message.blocks
-            .filter((block) => block.type === "text")
-            .map((block) => block.text)
-            .join("");
-        if (text.length > 0) {
-            this.#finishAssistantMessage(message.id, text);
-        }
+        let pendingText = "";
+        let textSegment = 0;
+        const flushText = () => {
+            if (pendingText.length === 0) {
+                return;
+            }
 
-        for (const block of message.blocks) {
-            if (block.type === "tool_call" && !this.#seenToolCallIds.has(block.id)) {
+            const id = textSegment === 0 ? message.id : `${message.id}:text:${textSegment}`;
+            this.#finishAssistantMessage(id, pendingText);
+            pendingText = "";
+            textSegment += 1;
+        };
+
+        for (const [contentIndex, block] of message.blocks.entries()) {
+            if (block.type === "text") {
+                pendingText += block.text;
+                continue;
+            }
+
+            flushText();
+
+            if (block.type === "thinking") {
+                this.#finishThinkingMessage(message.id, contentIndex, block.thinking);
+            } else if (block.type === "tool_call" && !this.#seenToolCallIds.has(block.id)) {
                 this.#seenToolCallIds.add(block.id);
                 this.#appendEntry({
                     id: block.id,
@@ -576,6 +618,7 @@ export class CodingAssistantApp implements Component, Focusable {
             }
         }
 
+        flushText();
         this.#requestRender();
     }
 
@@ -601,6 +644,50 @@ export class CodingAssistantApp implements Component, Focusable {
     #finishStreamText(text: string): void {
         const entry = this.#ensureStreamEntry();
         entry.text = text;
+    }
+
+    #ensureThinkingEntry(contentIndex: number): AppTranscriptEntry {
+        const existingId = this.#thinkingEntryIdsByContentIndex.get(contentIndex);
+        const existing =
+            existingId === undefined
+                ? undefined
+                : this.#entries.find((entry) => entry.id === existingId);
+        if (existing !== undefined) {
+            return existing;
+        }
+
+        const entry = this.#appendEntry({ role: "thinking", text: "" });
+        this.#thinkingEntryIdsByContentIndex.set(contentIndex, entry.id);
+        return entry;
+    }
+
+    #appendThinkingText(contentIndex: number, delta: string): void {
+        if (delta.length === 0) {
+            return;
+        }
+
+        const entry = this.#ensureThinkingEntry(contentIndex);
+        entry.text += delta;
+    }
+
+    #finishThinkingText(contentIndex: number, text: string): void {
+        if (text.length === 0 && !this.#thinkingEntryIdsByContentIndex.has(contentIndex)) {
+            return;
+        }
+
+        const entry = this.#ensureThinkingEntry(contentIndex);
+        entry.text = text;
+    }
+
+    #finishThinkingMessage(messageId: string, contentIndex: number, text: string): void {
+        if (text.length === 0) {
+            return;
+        }
+
+        const entry = this.#ensureThinkingEntry(contentIndex);
+        entry.id = `${messageId}:thinking:${contentIndex}`;
+        entry.text = text;
+        this.#thinkingEntryIdsByContentIndex.set(contentIndex, entry.id);
     }
 
     #finishAssistantMessage(messageId: string, text: string): void {
@@ -657,9 +744,12 @@ export class CodingAssistantApp implements Component, Focusable {
             this.#entries.length === 0
                 ? [{ id: "ready", role: "system" as const, text: "Ready." }]
                 : this.#entries;
+        const entries = this.#showReasoning
+            ? sourceEntries
+            : sourceEntries.filter((entry) => entry.role !== "thinking");
         const lines: string[] = [];
 
-        for (const entry of sourceEntries) {
+        for (const entry of entries) {
             if (lines.length > 0) {
                 lines.push("");
             }
@@ -686,6 +776,9 @@ export class CodingAssistantApp implements Component, Focusable {
         }
         if (entry.role === "assistant") {
             return this.#renderAssistantEntry(entry, width);
+        }
+        if (entry.role === "thinking") {
+            return this.#renderThinkingEntry(entry, width);
         }
         if (entry.role === "tool") {
             return this.#renderToolEntry(entry, width, false);
@@ -734,12 +827,16 @@ export class CodingAssistantApp implements Component, Focusable {
             startIndex,
             startIndex + SLASH_COMMAND_MAX_VISIBLE,
         );
+        const labelWidth = Math.max(
+            8,
+            ...visibleSuggestions.map((item) => visibleWidth(item.label) + 2),
+        );
 
         return visibleSuggestions.map((item, index) => {
             const absoluteIndex = startIndex + index;
             const isSelected = absoluteIndex === selectedIndex;
             const marker = isSelected ? "→ " : "  ";
-            const label = this.#fitAndPadLine(item.label, 8);
+            const label = this.#fitAndPadLine(item.label, labelWidth);
             const description = item.description ?? "";
             const line = isSelected
                 ? `${OH_MY_PI_ORANGE}${marker}${label}${description}${RESET}`
@@ -811,6 +908,52 @@ export class CodingAssistantApp implements Component, Focusable {
                     text: `Model changed to ${model.name} with ${humanizeReasoningLevel(item.value)} reasoning.`,
                 });
                 this.#closeSelectionPanel();
+                this.#requestRender();
+            },
+            onCancel: () => {
+                this.#closeSelectionPanel();
+            },
+        });
+        this.#showSelectionPanel(panel);
+    }
+
+    #openConfigureMenu(): void {
+        if (this.#exiting || this.#stopped) {
+            return;
+        }
+
+        const selectedValue = this.#showReasoning ? "show" : "hide";
+        const panel = createSelectionPanel({
+            title: "Configure",
+            subtitle: "App settings",
+            selectedValue,
+            items: [
+                {
+                    value: "show",
+                    label: "Show reasoning",
+                    description: this.#showReasoning
+                        ? "Current setting"
+                        : "Display reasoning blocks in the transcript.",
+                },
+                {
+                    value: "hide",
+                    label: "Hide reasoning",
+                    description: this.#showReasoning
+                        ? "Hide reasoning blocks from the transcript."
+                        : "Current setting",
+                },
+            ],
+            onSelect: (item) => {
+                const showReasoning = item.value === "show";
+                this.#setShowReasoning(showReasoning);
+                this.#closeSelectionPanel();
+                this.#appendEntry({
+                    role: "event",
+                    title: "settings",
+                    text: showReasoning
+                        ? "Reasoning display enabled."
+                        : "Reasoning display disabled.",
+                });
                 this.#requestRender();
             },
             onCancel: () => {
@@ -986,6 +1129,21 @@ export class CodingAssistantApp implements Component, Focusable {
         );
     }
 
+    #renderThinkingEntry(entry: AppTranscriptEntry, width: number): string[] {
+        const prefix = `${DIM}•${RESET} `;
+        const prefixWidth = visibleWidth(prefix);
+        const contentWidth = Math.max(1, width - prefixWidth);
+        const renderedMarkdown = renderAgentMarkdown({
+            text: entry.text,
+            width: contentWidth,
+            cwd: this.#cwd,
+        });
+        const indent = " ".repeat(prefixWidth);
+        return renderedMarkdown.map((line, index) =>
+            this.#fitLine(`${index === 0 ? prefix : indent}${line}`, width),
+        );
+    }
+
     #renderToolEntry(entry: AppTranscriptEntry, width: number, isError: boolean): string[] {
         const toolName = entry.title ?? "tool";
         const verb = isError ? "Failed" : this.#toolVerb(toolName);
@@ -1094,7 +1252,8 @@ export class CodingAssistantApp implements Component, Focusable {
             lastEntry === undefined ||
             lastEntry.role === "separator" ||
             lastEntry.role === "user" ||
-            lastEntry.role === "system"
+            lastEntry.role === "system" ||
+            (lastEntry.role === "thinking" && !this.#showReasoning)
         );
     }
 
@@ -1156,6 +1315,37 @@ export class CodingAssistantApp implements Component, Focusable {
             this.#onDefaultModelChange({
                 modelId,
                 effort,
+            }),
+        ).catch(() => {
+            if (this.#stopped || this.#exiting) {
+                return;
+            }
+            this.#appendEntry({
+                role: "event",
+                title: "config",
+                text: "Could not update the config file.",
+            });
+            this.#requestRender();
+        });
+    }
+
+    #setShowReasoning(showReasoning: boolean): void {
+        if (this.#showReasoning === showReasoning) {
+            return;
+        }
+
+        this.#showReasoning = showReasoning;
+        this.#persistSettings();
+    }
+
+    #persistSettings(): void {
+        if (this.#onSettingsChange === undefined) {
+            return;
+        }
+
+        void Promise.resolve(
+            this.#onSettingsChange({
+                showReasoning: this.#showReasoning,
             }),
         ).catch(() => {
             if (this.#stopped || this.#exiting) {

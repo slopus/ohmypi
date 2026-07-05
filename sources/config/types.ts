@@ -10,12 +10,22 @@ export interface PartialConfigDefaults {
     modelId?: string;
 }
 
+export interface ConfigSettings {
+    showReasoning: boolean;
+}
+
+export interface PartialConfigSettings {
+    showReasoning?: boolean;
+}
+
 export interface OhMyPiConfig {
     defaults: ConfigDefaults;
+    settings: ConfigSettings;
 }
 
 export interface PartialOhMyPiConfig {
     defaults?: PartialConfigDefaults;
+    settings?: PartialConfigSettings;
 }
 
 export interface ConfigPaths {

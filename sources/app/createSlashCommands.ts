@@ -13,6 +13,12 @@ export function createSlashCommands(): SlashCommandItem[] {
             aliases: [],
         },
         {
+            value: "configure",
+            label: "/configure",
+            description: "Configure app settings.",
+            aliases: ["config", "settings"],
+        },
+        {
             value: "new",
             label: "/new",
             description: "Reset this session and start fresh.",

@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import { createConfigFile } from "./createConfigFile.js";
 import { loadConfig } from "./loadConfig.js";
 import { parseConfigToml } from "./parseConfigToml.js";
+import { writeRuntimeConfig } from "./writeRuntimeConfig.js";
 import { writeRuntimeConfigDefaults } from "./writeRuntimeConfigDefaults.js";
 
 describe("config", () => {
@@ -17,12 +18,18 @@ describe("config", () => {
 model = "openai/gpt-5.4" # keep this comment
 effort = 'high'
 instructions = "Be direct."
+
+[settings]
+show_reasoning = false
 `),
         ).toEqual({
             defaults: {
                 modelId: "openai/gpt-5.4",
                 effort: "high",
                 instructions: "Be direct.",
+            },
+            settings: {
+                showReasoning: false,
             },
         });
     });
@@ -43,6 +50,8 @@ instructions = "Be direct."
 [defaults]
 model = "openai/gpt-5.4"
 effort = "low"
+[settings]
+show_reasoning = false
 `,
                 "utf8",
             );
@@ -51,6 +60,8 @@ effort = "low"
                 `
 [defaults]
 effort = "high"
+[settings]
+show_reasoning = true
 `,
                 "utf8",
             );
@@ -73,6 +84,19 @@ effort = "minimal"
                 modelId: "openai/gpt-5.5",
                 effort: "minimal",
             });
+            expect(loaded.config.settings).toEqual({
+                showReasoning: true,
+            });
+
+            const emptyCwd = join(root, "empty-repo");
+            await mkdir(emptyCwd, { recursive: true });
+            const defaultLoaded = await loadConfig({
+                cwd: emptyCwd,
+                env: { XDG_CONFIG_HOME: join(root, "empty-config-home") } as NodeJS.ProcessEnv,
+            });
+            expect(defaultLoaded.config.settings).toEqual({
+                showReasoning: false,
+            });
             expect(loaded.paths.global).toBe(globalPath);
             expect(loaded.paths.local).toBe(localPath);
             expect(loaded.paths.runtime).toBe(runtimePath);
@@ -92,17 +116,45 @@ effort = "minimal"
                     modelId: "openai/gpt-5.4",
                     effort: "low",
                 },
+                settings: {
+                    showReasoning: true,
+                },
             });
             await writeRuntimeConfigDefaults(runtimePath, {
                 modelId: "openai/gpt-5.5",
                 effort: "high",
             });
+            await writeRuntimeConfig(runtimePath, {
+                defaults: {
+                    modelId: "openai/gpt-5.5",
+                    effort: "high",
+                },
+                settings: {
+                    showReasoning: false,
+                },
+            });
 
             expect(await readFile(configPath, "utf8")).toBe(
-                ["[defaults]", 'model = "openai/gpt-5.4"', 'effort = "low"', ""].join("\n"),
+                [
+                    "[defaults]",
+                    'model = "openai/gpt-5.4"',
+                    'effort = "low"',
+                    "",
+                    "[settings]",
+                    "show_reasoning = true",
+                    "",
+                ].join("\n"),
             );
             expect(await readFile(runtimePath, "utf8")).toBe(
-                ["[defaults]", 'model = "openai/gpt-5.5"', 'effort = "high"', ""].join("\n"),
+                [
+                    "[defaults]",
+                    'model = "openai/gpt-5.5"',
+                    'effort = "high"',
+                    "",
+                    "[settings]",
+                    "show_reasoning = false",
+                    "",
+                ].join("\n"),
             );
         } finally {
             await rm(root, { recursive: true, force: true });

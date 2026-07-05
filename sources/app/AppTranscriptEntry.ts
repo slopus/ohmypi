@@ -2,6 +2,7 @@ export type AppTranscriptRole =
     | "system"
     | "user"
     | "assistant"
+    | "thinking"
     | "tool"
     | "event"
     | "error"

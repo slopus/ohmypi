@@ -1,32 +1,42 @@
 import { parse, TomlDate, type TomlTable, type TomlValue } from "smol-toml";
 
-import type { PartialConfigDefaults, PartialOhMyPiConfig } from "./types.js";
+import type { PartialConfigDefaults, PartialConfigSettings, PartialOhMyPiConfig } from "./types.js";
 
 export function parseConfigToml(source: string): PartialOhMyPiConfig {
     const defaults: PartialConfigDefaults = {};
+    const settings: PartialConfigSettings = {};
     const table = parse(source);
     const defaultsTable = table.defaults;
 
-    if (!isTomlTable(defaultsTable)) {
-        return {};
+    if (isTomlTable(defaultsTable)) {
+        const modelId = readString(defaultsTable, "model");
+        if (modelId !== undefined) {
+            defaults.modelId = modelId;
+        }
+
+        const effort = readString(defaultsTable, "effort");
+        if (effort !== undefined) {
+            defaults.effort = effort;
+        }
+
+        const instructions = readString(defaultsTable, "instructions");
+        if (instructions !== undefined) {
+            defaults.instructions = instructions;
+        }
     }
 
-    const modelId = readString(defaultsTable, "model");
-    if (modelId !== undefined) {
-        defaults.modelId = modelId;
+    const settingsTable = table.settings;
+    if (isTomlTable(settingsTable)) {
+        const showReasoning = readBoolean(settingsTable, "show_reasoning");
+        if (showReasoning !== undefined) {
+            settings.showReasoning = showReasoning;
+        }
     }
 
-    const effort = readString(defaultsTable, "effort");
-    if (effort !== undefined) {
-        defaults.effort = effort;
-    }
-
-    const instructions = readString(defaultsTable, "instructions");
-    if (instructions !== undefined) {
-        defaults.instructions = instructions;
-    }
-
-    return Object.keys(defaults).length === 0 ? {} : { defaults };
+    return {
+        ...(Object.keys(defaults).length > 0 ? { defaults } : {}),
+        ...(Object.keys(settings).length > 0 ? { settings } : {}),
+    };
 }
 
 function isTomlTable(value: TomlValue | undefined): value is TomlTable {
@@ -41,4 +51,9 @@ function isTomlTable(value: TomlValue | undefined): value is TomlTable {
 function readString(table: TomlTable, key: string): string | undefined {
     const value = table[key];
     return typeof value === "string" ? value : undefined;
+}
+
+function readBoolean(table: TomlTable, key: string): boolean | undefined {
+    const value = table[key];
+    return typeof value === "boolean" ? value : undefined;
 }
