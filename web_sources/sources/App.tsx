@@ -1,87 +1,63 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
-import { humanizeModelId } from "./humanizeModelId";
-import { loadDashboard, type DashboardData } from "./loadDashboard";
-import { SessionList } from "./SessionList";
-import "./App.css";
+import { ChatPanel } from "./components/ChatPanel";
+import { InspectorPanel } from "./components/InspectorPanel";
+import { SessionSidebar } from "./components/SessionSidebar";
+import { useActiveSession } from "./hooks/useActiveSession";
+import { useHealth } from "./hooks/useHealth";
+import { useSessionList } from "./hooks/useSessionList";
+import type { ProtocolSession } from "./protocol";
 
 export function App() {
-    const [data, setData] = useState<DashboardData | undefined>();
-    const [errorMessage, setErrorMessage] = useState<string | undefined>();
-    const [isLoading, setIsLoading] = useState(true);
+    const [activeSessionId, setActiveSessionId] = useState<string | undefined>(undefined);
+    const { health, error: healthError } = useHealth();
+    const sessionList = useSessionList();
+    const activeSession = useActiveSession(activeSessionId);
 
-    const refresh = useCallback(async () => {
-        setIsLoading(true);
-        try {
-            setData(await loadDashboard());
-            setErrorMessage(undefined);
-        } catch (error) {
-            setErrorMessage(
-                error instanceof Error ? error.message : "The web UI could not refresh.",
-            );
-        } finally {
-            setIsLoading(false);
-        }
-    }, []);
+    const { refresh: refreshSessions } = sessionList;
 
+    const handleSessionCreated = useCallback(
+        (session: ProtocolSession) => {
+            setActiveSessionId(session.id);
+            refreshSessions();
+        },
+        [refreshSessions],
+    );
+
+    // Keep the sidebar in sync with title/status changes streamed for the
+    // active session (the 5s poll covers everything else).
+    const activeTitle = activeSession.session?.title;
+    const activeStatus = activeSession.session?.status;
     useEffect(() => {
-        void refresh();
-        const timer = window.setInterval(() => {
-            void refresh();
-        }, 5_000);
-        return () => window.clearInterval(timer);
-    }, [refresh]);
+        refreshSessions();
+    }, [activeTitle, activeStatus, refreshSessions]);
 
-    const daemonMessage = useMemo(() => {
-        if (data?.health.ready) {
-            return "The local daemon is ready.";
-        }
-        if (data?.health.status === "starting") {
-            return "The local daemon is starting.";
-        }
-        return data?.health.errorMessage ?? "The local daemon is not ready.";
-    }, [data]);
+    const summary = sessionList.sessions.find((session) => session.id === activeSessionId);
 
     return (
-        <main className="app-shell">
-            <header className="top-bar">
-                <div>
-                    <p className="product-name">Oh My Pi Web</p>
-                    <h1>Local agent control</h1>
-                </div>
-                <button
-                    className="refresh-button"
-                    disabled={isLoading}
-                    onClick={() => void refresh()}
-                >
-                    {isLoading ? "Refreshing" : "Refresh"}
-                </button>
-            </header>
-
-            {errorMessage !== undefined ? <div className="error-banner">{errorMessage}</div> : null}
-
-            <section className="status-grid" aria-label="Daemon status">
-                <div className="status-panel">
-                    <span className={data?.health.ready ? "health-dot ready" : "health-dot"} />
-                    <div>
-                        <h2>Daemon</h2>
-                        <p>{daemonMessage}</p>
-                    </div>
-                </div>
-                <div className="status-panel">
-                    <span className="metric">{data?.health.catalog?.models.length ?? 0}</span>
-                    <div>
-                        <h2>Available models</h2>
-                        <p>
-                            {data?.health.catalog?.defaultModelId === undefined
-                                ? "Waiting for model data"
-                                : humanizeModelId(data.health.catalog.defaultModelId)}
-                        </p>
-                    </div>
-                </div>
-            </section>
-
-            <SessionList sessions={data?.sessions ?? []} />
-        </main>
+        <div className="flex h-screen min-w-[1100px] bg-background text-foreground">
+            <SessionSidebar
+                activeSessionId={activeSessionId}
+                health={health}
+                healthError={healthError}
+                isLoadingSessions={sessionList.isLoading}
+                onSelectSession={setActiveSessionId}
+                onSessionCreated={handleSessionCreated}
+                refreshSessions={refreshSessions}
+                sessionListError={sessionList.error}
+                sessions={sessionList.sessions}
+            />
+            <ChatPanel
+                activeSession={activeSession}
+                daemonReady={health?.ready === true && healthError === undefined}
+                sessionId={activeSessionId}
+            />
+            <InspectorPanel
+                activeSession={activeSession}
+                catalog={health?.catalog}
+                sessionId={activeSessionId}
+                summary={summary}
+            />
+        </div>
     );
 }

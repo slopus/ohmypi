@@ -69,6 +69,16 @@ The `web` command starts or reuses the local daemon, serves the SPA, proxies `/a
 to the daemon socket, and routes the app through Portless at
 `https://web.ohmypi.localhost`.
 
+For web UI development with Vite hot reload, run the daemon and frontend separately:
+
+```sh
+pnpm dev daemon start
+pnpm dev:web
+```
+
+Open the Vite URL printed by `pnpm dev:web`, usually `http://127.0.0.1:5173`.
+The Vite dev server proxies `/api/*` to the local daemon socket.
+
 ## License
 
 MIT License - see [LICENSE](LICENSE) for details.
