@@ -16,8 +16,10 @@
     ],
     "type": "module",
     "scripts": {
-        "build": "tsc -p tsconfig.build.json",
-        "check": "tsc --noEmit",
+        "build": "tsc -p tsconfig.build.json && pnpm run build:web",
+        "build:web": "vite build --config web_sources/vite.config.ts",
+        "check": "tsc --noEmit && pnpm run check:web",
+        "check:web": "tsc -p web_sources/tsconfig.json --noEmit",
         "dev": "tsx sources/main.ts",
         "format": "oxfmt --write .",
         "format:check": "oxfmt --check .",
@@ -26,7 +28,8 @@
         "start:build": "pnpm build && node dist/main.js",
         "test": "vitest run",
         "test:live": "OHMYPI_LIVE_TEST=1 vitest run -c vitest.live.config.ts",
-        "test:watch": "vitest"
+        "test:watch": "vitest",
+        "web": "node dist/main.js web"
     },
     "dependencies": {
         "@anthropic-ai/claude-agent-sdk": "^0.3.201",
@@ -36,15 +39,21 @@
         "@modelcontextprotocol/sdk": "^1.29.0",
         "@paralleldrive/cuid2": "^3.3.0",
         "@sinclair/typebox": "^0.34.49",
+        "portless": "^0.15.1",
         "smol-toml": "^1.7.0",
         "yaml": "^2.9.0",
         "zod": "^4.4.3"
     },
     "devDependencies": {
         "@types/node": "^24.0.10",
+        "@types/react": "^19.2.17",
+        "@types/react-dom": "^19.2.3",
+        "@vitejs/plugin-react": "^5.2.0",
         "just-bash": "^3.0.2",
         "oxfmt": "^0.57.0",
         "oxlint": "^1.72.0",
+        "react": "^19.2.7",
+        "react-dom": "^19.2.7",
         "tsx": "^4.23.0",
         "typescript": "^5.8.3",
         "vite": "^7.0.2",

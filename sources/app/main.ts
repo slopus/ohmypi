@@ -1,9 +1,16 @@
 import { runDaemonCommand, type DaemonCommand } from "./runDaemonCommand.js";
 import { runApp, type RunAppOptions } from "./runApp.js";
 import { runMonit } from "./runMonit.js";
+import { runWebCommand } from "./runWebCommand.js";
+import { runWebServer } from "./web/runWebServer.js";
 import { runLocalProtocolServer } from "../server/index.js";
 
 export async function main(argv: readonly string[] = process.argv.slice(2)): Promise<void> {
+    if (argv.includes("--web-server")) {
+        await runWebServer();
+        return;
+    }
+
     if (argv.includes("--server")) {
         await runLocalProtocolServer({
             ...(process.env.OHMYPI_SERVER_SOCKET_PATH !== undefined
@@ -35,6 +42,10 @@ export async function main(argv: readonly string[] = process.argv.slice(2)): Pro
     }
     if (command === "monit") {
         await runMonit();
+        return;
+    }
+    if (command === "web") {
+        await runWebCommand();
         return;
     }
 

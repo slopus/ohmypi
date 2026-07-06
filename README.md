@@ -58,6 +58,17 @@ pnpm test
 pnpm run build
 ```
 
+The build also compiles the Vite-powered web UI from `web_sources/` into `dist/web`.
+After building, start it with:
+
+```sh
+pnpm run web
+```
+
+The `web` command starts or reuses the local daemon, serves the SPA, proxies `/api/*`
+to the daemon socket, and routes the app through Portless at
+`https://web.ohmypi.localhost`.
+
 ## License
 
 MIT License - see [LICENSE](LICENSE) for details.
