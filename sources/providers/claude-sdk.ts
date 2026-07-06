@@ -4,6 +4,7 @@ import {
     tool as defineSdkTool,
     type EffortLevel,
     type Options as ClaudeSdkOptions,
+    type SDKPartialAssistantMessage,
     type SDKResultMessage,
     type SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk";
@@ -26,6 +27,7 @@ import {
 } from "./models.js";
 import {
     defineProvider,
+    type AssistantContent,
     type AssistantMessage,
     type AssistantMessageEvent,
     type Context,
@@ -91,9 +93,20 @@ export function createClaudeSdkProvider(options: ClaudeSdkProviderOptions) {
 
                 try {
                     const sdkStream = query({ prompt, options: sdkOptions });
+                    const streamState = createClaudeStreamState(partial);
                     let result: SDKResultMessage | undefined;
 
                     for await (const message of sdkStream) {
+                        if (message.type === "stream_event") {
+                            for (const event of applyClaudeStreamEvent(
+                                streamState,
+                                message.event,
+                            )) {
+                                yield event;
+                            }
+                            continue;
+                        }
+
                         if (message.type === "result") {
                             result = message;
                         }
@@ -136,20 +149,14 @@ export function createClaudeSdkProvider(options: ClaudeSdkProviderOptions) {
                     }
                     const message = createAssistantMessage(assistantOptions);
 
-                    if (content.length > 0) {
-                        yield { type: "text_start", contentIndex: 0, partial };
-                        yield {
-                            type: "text_delta",
-                            contentIndex: 0,
-                            delta: content,
-                            partial: message,
-                        };
-                        yield {
-                            type: "text_end",
-                            contentIndex: 0,
-                            content,
-                            partial: message,
-                        };
+                    for (const event of finishClaudeStreamState(streamState)) {
+                        yield event;
+                    }
+
+                    if (!streamState.hasTextContent && content.length > 0) {
+                        for (const event of emitFallbackText(streamState, content)) {
+                            yield event;
+                        }
                     }
 
                     yield { type: "done", reason: assistantOptions.stopReason, message };
@@ -225,6 +232,7 @@ function toClaudeSdkOptions(options: {
         extraArgs: {
             "disable-slash-commands": null,
         },
+        includePartialMessages: true,
         permissionMode: "dontAsk",
         persistSession: false,
         settingSources: [],
@@ -521,6 +529,240 @@ function toClaudeSdkModelId(modelId: string): string {
     return modelId.startsWith("anthropic/")
         ? `claude-${modelId.slice("anthropic/".length)}`
         : modelId;
+}
+
+interface ClaudeStreamBlock {
+    contentIndex: number;
+    ended: boolean;
+    text: string;
+    type: "text" | "thinking";
+}
+
+type ClaudeContentBlockStartEvent = Extract<
+    SDKPartialAssistantMessage["event"],
+    { type: "content_block_start" }
+>;
+
+type ClaudeContentBlockDeltaEvent = Extract<
+    SDKPartialAssistantMessage["event"],
+    { type: "content_block_delta" }
+>;
+
+interface ClaudeStreamState {
+    blocksByRawIndex: Map<number, ClaudeStreamBlock>;
+    hasTextContent: boolean;
+    partial: AssistantMessage;
+}
+
+function createClaudeStreamState(partial: AssistantMessage): ClaudeStreamState {
+    return {
+        blocksByRawIndex: new Map(),
+        hasTextContent: false,
+        partial,
+    };
+}
+
+function applyClaudeStreamEvent(
+    state: ClaudeStreamState,
+    event: SDKPartialAssistantMessage["event"],
+): AssistantMessageEvent[] {
+    if (event.type === "content_block_start") {
+        return startClaudeContentBlock(state, event.index, event.content_block);
+    }
+
+    if (event.type === "content_block_delta") {
+        return appendClaudeContentBlockDelta(state, event.index, event.delta);
+    }
+
+    if (event.type === "content_block_stop") {
+        return finishClaudeContentBlock(state, event.index);
+    }
+
+    return [];
+}
+
+function startClaudeContentBlock(
+    state: ClaudeStreamState,
+    rawIndex: number,
+    contentBlock: ClaudeContentBlockStartEvent["content_block"],
+): AssistantMessageEvent[] {
+    if (contentBlock.type !== "text" && contentBlock.type !== "thinking") {
+        return [];
+    }
+
+    const contentIndex = state.partial.content.length;
+    const text = contentBlock.type === "text" ? contentBlock.text : contentBlock.thinking;
+    const streamBlock: ClaudeStreamBlock = {
+        contentIndex,
+        ended: false,
+        text,
+        type: contentBlock.type,
+    };
+    state.blocksByRawIndex.set(rawIndex, streamBlock);
+    appendPartialContent(
+        state,
+        contentBlock.type === "text"
+            ? { type: "text", text }
+            : { type: "thinking", thinking: text },
+    );
+
+    if (contentBlock.type === "text") {
+        state.hasTextContent = true;
+        return [
+            { type: "text_start", contentIndex, partial: state.partial },
+            ...(text.length > 0
+                ? [
+                      {
+                          type: "text_delta" as const,
+                          contentIndex,
+                          delta: text,
+                          partial: state.partial,
+                      },
+                  ]
+                : []),
+        ];
+    }
+
+    return [
+        { type: "thinking_start", contentIndex, partial: state.partial },
+        ...(text.length > 0
+            ? [
+                  {
+                      type: "thinking_delta" as const,
+                      contentIndex,
+                      delta: text,
+                      partial: state.partial,
+                  },
+              ]
+            : []),
+    ];
+}
+
+function appendClaudeContentBlockDelta(
+    state: ClaudeStreamState,
+    rawIndex: number,
+    delta: ClaudeContentBlockDeltaEvent["delta"],
+): AssistantMessageEvent[] {
+    const block = state.blocksByRawIndex.get(rawIndex);
+    if (block === undefined) {
+        return [];
+    }
+
+    if (delta.type === "text_delta" && block.type === "text") {
+        block.text += delta.text;
+        state.hasTextContent = true;
+        setPartialContent(state, block.contentIndex, { type: "text", text: block.text });
+        return [
+            {
+                type: "text_delta",
+                contentIndex: block.contentIndex,
+                delta: delta.text,
+                partial: state.partial,
+            },
+        ];
+    }
+
+    if (delta.type === "thinking_delta" && block.type === "thinking") {
+        block.text += delta.thinking;
+        const existing = state.partial.content[block.contentIndex];
+        setPartialContent(state, block.contentIndex, {
+            type: "thinking",
+            thinking: block.text,
+            ...(existing?.type === "thinking" && existing.encrypted !== undefined
+                ? { encrypted: existing.encrypted }
+                : {}),
+        });
+        return [
+            {
+                type: "thinking_delta",
+                contentIndex: block.contentIndex,
+                delta: delta.thinking,
+                partial: state.partial,
+            },
+        ];
+    }
+
+    if (delta.type === "signature_delta" && block.type === "thinking") {
+        setPartialContent(state, block.contentIndex, {
+            type: "thinking",
+            thinking: block.text,
+            encrypted: delta.signature,
+        });
+    }
+
+    return [];
+}
+
+function finishClaudeContentBlock(
+    state: ClaudeStreamState,
+    rawIndex: number,
+): AssistantMessageEvent[] {
+    const block = state.blocksByRawIndex.get(rawIndex);
+    if (block === undefined || block.ended) {
+        return [];
+    }
+
+    block.ended = true;
+    if (block.type === "text") {
+        return [
+            {
+                type: "text_end",
+                contentIndex: block.contentIndex,
+                content: block.text,
+                partial: state.partial,
+            },
+        ];
+    }
+
+    return [
+        {
+            type: "thinking_end",
+            contentIndex: block.contentIndex,
+            content: block.text,
+            partial: state.partial,
+        },
+    ];
+}
+
+function finishClaudeStreamState(state: ClaudeStreamState): AssistantMessageEvent[] {
+    return [...state.blocksByRawIndex.keys()].flatMap((rawIndex) =>
+        finishClaudeContentBlock(state, rawIndex),
+    );
+}
+
+function emitFallbackText(state: ClaudeStreamState, text: string): AssistantMessageEvent[] {
+    const contentIndex = state.partial.content.length;
+    appendPartialContent(state, { type: "text", text });
+    state.hasTextContent = true;
+    return [
+        { type: "text_start", contentIndex, partial: state.partial },
+        {
+            type: "text_delta",
+            contentIndex,
+            delta: text,
+            partial: state.partial,
+        },
+        {
+            type: "text_end",
+            contentIndex,
+            content: text,
+            partial: state.partial,
+        },
+    ];
+}
+
+function appendPartialContent(state: ClaudeStreamState, content: AssistantContent): void {
+    state.partial.content = [...state.partial.content, content];
+}
+
+function setPartialContent(
+    state: ClaudeStreamState,
+    contentIndex: number,
+    content: AssistantContent,
+): void {
+    const nextContent = [...state.partial.content];
+    nextContent[contentIndex] = content;
+    state.partial.content = nextContent;
 }
 
 function createInferenceStream(

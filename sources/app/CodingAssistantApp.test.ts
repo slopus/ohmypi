@@ -1172,6 +1172,109 @@ describe("CodingAssistantApp", () => {
         expect(inputLine).toContain("\x1b[48;5;244m\x1b[38;5;232mb\x1b[48;5;236m\x1b[38;5;255m");
     });
 
+    it("inserts bracketed paste into the composer", () => {
+        const model = defineModel({
+            id: "openai/gpt-test",
+            name: "GPT Test",
+            thinkingLevels: ["off"],
+            defaultThinkingLevel: "off",
+        });
+        const provider = defineProvider({
+            id: "codex",
+            models: [model],
+            stream() {
+                return streamText("unused");
+            },
+        });
+        const harness = createJustBashToolHarness();
+        const agent = new Agent({
+            provider,
+            modelId: model.id,
+            context: harness.context,
+            printToConsole: false,
+        });
+        const app = new CodingAssistantApp({
+            agent,
+            cwd: harness.context.fs.cwd,
+            processManager: new NativeProxessManager(),
+            tui: fakeTui(),
+        });
+
+        app.handleInput("\x1b[200~hello from clipboard\x1b[201~");
+
+        expect(stripAnsi(app.render(80).join("\n"))).toContain("› hello from clipboard");
+    });
+
+    it("inserts split bracketed paste chunks into the composer", () => {
+        const model = defineModel({
+            id: "openai/gpt-test",
+            name: "GPT Test",
+            thinkingLevels: ["off"],
+            defaultThinkingLevel: "off",
+        });
+        const provider = defineProvider({
+            id: "codex",
+            models: [model],
+            stream() {
+                return streamText("unused");
+            },
+        });
+        const harness = createJustBashToolHarness();
+        const agent = new Agent({
+            provider,
+            modelId: model.id,
+            context: harness.context,
+            printToConsole: false,
+        });
+        const app = new CodingAssistantApp({
+            agent,
+            cwd: harness.context.fs.cwd,
+            processManager: new NativeProxessManager(),
+            tui: fakeTui(),
+        });
+
+        app.handleInput("\x1b[200~multi ");
+        app.handleInput("chunk");
+        app.handleInput(" paste\x1b[201~");
+
+        expect(stripAnsi(app.render(80).join("\n"))).toContain("› multi chunk paste");
+    });
+
+    it("inserts plain multi-character paste without treating it as shortcuts", () => {
+        const model = defineModel({
+            id: "openai/gpt-test",
+            name: "GPT Test",
+            thinkingLevels: ["off"],
+            defaultThinkingLevel: "off",
+        });
+        const provider = defineProvider({
+            id: "codex",
+            models: [model],
+            stream() {
+                return streamText("unused");
+            },
+        });
+        const harness = createJustBashToolHarness();
+        const agent = new Agent({
+            provider,
+            modelId: model.id,
+            context: harness.context,
+            printToConsole: false,
+        });
+        const app = new CodingAssistantApp({
+            agent,
+            cwd: harness.context.fs.cwd,
+            processManager: new NativeProxessManager(),
+            tui: fakeTui(),
+        });
+
+        app.handleInput("/model");
+
+        const rendered = stripAnsi(app.render(80).join("\n"));
+        expect(rendered).toContain("› /model");
+        expect(rendered).not.toContain("Choose Model");
+    });
+
     it("renders composer padding while typing", () => {
         const model = defineModel({
             id: "openai/gpt-test",

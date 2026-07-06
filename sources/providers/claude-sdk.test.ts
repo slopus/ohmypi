@@ -85,11 +85,111 @@ describe("Claude SDK provider", () => {
         expect(calls[0]?.options?.extraArgs).toEqual({ "disable-slash-commands": null });
         expect(calls[0]?.options?.env?.CLAUDE_CODE_DISABLE_BUNDLED_SKILLS).toBe("1");
         expect(calls[0]?.options?.env?.CLAUDE_AGENT_SDK_MCP_NO_PREFIX).toBe("1");
+        expect(calls[0]?.options?.includePartialMessages).toBe(true);
         expect(calls[0]?.options?.permissionMode).toBe("dontAsk");
         expect(calls[0]?.options?.persistSession).toBe(false);
         expect(calls[0]?.options?.settingSources).toEqual([]);
         expect(calls[0]?.options?.strictMcpConfig).toBe(true);
         expect(calls[0]?.options?.mcpServers).toHaveProperty("ohmypi");
+    });
+
+    it("streams Claude partial assistant text deltas before the final result", async () => {
+        const harness = createJustBashToolHarness();
+        const provider = createClaudeSdkProvider({
+            agentContext: harness.context,
+            tools: [],
+            query: (() =>
+                fakeClaudeQuery([
+                    {
+                        type: "stream_event",
+                        event: {
+                            type: "content_block_start",
+                            index: 0,
+                            content_block: { type: "text", text: "", citations: null },
+                        },
+                        parent_tool_use_id: null,
+                        uuid: "00000000-0000-4000-8000-000000000007",
+                        session_id: "00000000-0000-4000-8000-000000000008",
+                    },
+                    {
+                        type: "stream_event",
+                        event: {
+                            type: "content_block_delta",
+                            index: 0,
+                            delta: { type: "text_delta", text: "hel" },
+                        },
+                        parent_tool_use_id: null,
+                        uuid: "00000000-0000-4000-8000-000000000007",
+                        session_id: "00000000-0000-4000-8000-000000000008",
+                    },
+                    {
+                        type: "stream_event",
+                        event: {
+                            type: "content_block_delta",
+                            index: 0,
+                            delta: { type: "text_delta", text: "lo" },
+                        },
+                        parent_tool_use_id: null,
+                        uuid: "00000000-0000-4000-8000-000000000007",
+                        session_id: "00000000-0000-4000-8000-000000000008",
+                    },
+                    {
+                        type: "stream_event",
+                        event: { type: "content_block_stop", index: 0 },
+                        parent_tool_use_id: null,
+                        uuid: "00000000-0000-4000-8000-000000000007",
+                        session_id: "00000000-0000-4000-8000-000000000008",
+                    },
+                    {
+                        type: "result",
+                        subtype: "success",
+                        duration_ms: 1,
+                        duration_api_ms: 1,
+                        is_error: false,
+                        num_turns: 1,
+                        result: "hello",
+                        stop_reason: "end_turn",
+                        total_cost_usd: 0,
+                        usage: {
+                            input_tokens: 1,
+                            output_tokens: 1,
+                            cache_creation_input_tokens: 0,
+                            cache_read_input_tokens: 0,
+                            server_tool_use: null,
+                            service_tier: null,
+                            cache_creation: null,
+                        },
+                        modelUsage: {},
+                        permission_denials: [],
+                        uuid: "00000000-0000-4000-8000-000000000009",
+                        session_id: "00000000-0000-4000-8000-000000000010",
+                    },
+                ])) as ClaudeSdkQuery,
+        });
+
+        const stream = provider.stream(modelAnthropicFable5, {
+            messages: [{ role: "user", content: "Say hello.", timestamp: 1 }],
+        });
+        const deltas: string[] = [];
+        const eventTypes: string[] = [];
+        for await (const event of stream) {
+            eventTypes.push(event.type);
+            if (event.type === "text_delta") {
+                deltas.push(event.delta);
+            }
+        }
+        const result = await stream.result();
+
+        expect(eventTypes).toEqual([
+            "start",
+            "text_start",
+            "text_delta",
+            "text_delta",
+            "text_end",
+            "done",
+        ]);
+        expect(deltas).toEqual(["hel", "lo"]);
+        expect(result.content).toEqual([{ type: "text", text: "hello" }]);
     });
 
     it("maps latest Anthropic catalog models and reasoning effort to Claude SDK options", async () => {

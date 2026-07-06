@@ -66,6 +66,8 @@ const REASONING_DOWN_RAW_KEYS = new Set(["\x1b,", "\x1b[1;2B"]);
 const REASONING_UP_RAW_KEYS = new Set(["\x1b.", "\x1b[1;2A"]);
 const MODEL_MENU_RAW_KEYS = new Set(["\x1bm", "\x1bM"]);
 const SLASH_COMMAND_MAX_VISIBLE = 6;
+const BRACKETED_PASTE_START = "\x1b[200~";
+const BRACKETED_PASTE_END = "\x1b[201~";
 
 const EDITOR_THEME: EditorTheme = {
     borderColor: (text) => text,
@@ -145,6 +147,7 @@ export class CodingAssistantApp implements Component, Focusable {
     #selectionPanel: Component | undefined;
     #dismissedSlashCommandText: string | undefined;
     #activeSubmission: Promise<void> | undefined;
+    #bracketedPasteBuffer: string | undefined;
     #showReasoning: boolean;
     #sessionBacked: boolean;
     #modelLocked: boolean;
@@ -364,6 +367,10 @@ export class CodingAssistantApp implements Component, Focusable {
             return;
         }
 
+        if (this.#handlePastedInput(data)) {
+            return;
+        }
+
         if (matchesKey(data, "ctrl+c") || data === "\x03") {
             void this.stop();
             return;
@@ -405,6 +412,70 @@ export class CodingAssistantApp implements Component, Focusable {
         this.#syncSlashCommandAutocompleteState();
         const nextSlashCommandSuggestionCount = this.#slashCommandSuggestions().length;
         this.#requestRender(nextSlashCommandSuggestionCount < previousSlashCommandSuggestionCount);
+    }
+
+    #handlePastedInput(data: string): boolean {
+        if (this.#bracketedPasteBuffer !== undefined) {
+            return this.#appendBracketedPaste(data);
+        }
+
+        const startIndex = data.indexOf(BRACKETED_PASTE_START);
+        if (startIndex !== -1) {
+            const beforePaste = data.slice(0, startIndex);
+            if (beforePaste.length > 0) {
+                this.#editor.handleInput(beforePaste);
+            }
+
+            const pastePayload = data.slice(startIndex + BRACKETED_PASTE_START.length);
+            this.#appendBracketedPaste(pastePayload);
+            return true;
+        }
+
+        if (this.#isPlainPastePayload(data)) {
+            this.#insertPaste(data);
+            return true;
+        }
+
+        return false;
+    }
+
+    #appendBracketedPaste(data: string): boolean {
+        const currentBuffer = this.#bracketedPasteBuffer ?? "";
+        const nextBuffer = currentBuffer + data;
+        const endIndex = nextBuffer.indexOf(BRACKETED_PASTE_END);
+
+        if (endIndex === -1) {
+            this.#bracketedPasteBuffer = nextBuffer;
+            return true;
+        }
+
+        const pastedText = nextBuffer.slice(0, endIndex);
+        const remaining = nextBuffer.slice(endIndex + BRACKETED_PASTE_END.length);
+        this.#bracketedPasteBuffer = undefined;
+        this.#insertPaste(pastedText);
+
+        if (remaining.length > 0) {
+            this.handleInput(remaining);
+        }
+
+        return true;
+    }
+
+    #insertPaste(text: string): void {
+        if (text.length === 0) {
+            this.#syncSlashCommandAutocompleteState();
+            this.#requestRender();
+            return;
+        }
+
+        this.#markTypingActivity();
+        this.#editor.handleInput(`${BRACKETED_PASTE_START}${text}${BRACKETED_PASTE_END}`);
+        this.#syncSlashCommandAutocompleteState();
+        this.#requestRender();
+    }
+
+    #isPlainPastePayload(data: string): boolean {
+        return data.length > 1 && !data.includes("\x1b") && !matchesKey(data, "enter");
     }
 
     invalidate(): void {
