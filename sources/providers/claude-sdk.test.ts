@@ -1,6 +1,7 @@
 import { Type } from "@sinclair/typebox";
 import { describe, expect, it } from "vitest";
 
+import { runAgentLoop } from "../agent/loop.js";
 import { defineTool } from "../agent/types.js";
 import { createJustBashToolHarness } from "../tools/testing/createJustBashToolHarness.js";
 import { modelAnthropicFable5, modelAnthropicOpus48, modelAnthropicSonnet5 } from "./models.js";
@@ -87,6 +88,7 @@ describe("Claude SDK provider", () => {
         expect(calls[0]?.options?.env?.CLAUDE_CODE_DISABLE_BUNDLED_SKILLS).toBe("1");
         expect(calls[0]?.options?.env?.CLAUDE_AGENT_SDK_MCP_NO_PREFIX).toBe("1");
         expect(calls[0]?.options?.includePartialMessages).toBe(true);
+        expect(calls[0]?.options?.maxTurns).toBe(1);
         expect(calls[0]?.options?.permissionMode).toBe("dontAsk");
         expect(calls[0]?.options?.pathToClaudeCodeExecutable).toBe("/test/claude");
         expect(calls[0]?.options?.persistSession).toBe(false);
@@ -192,6 +194,218 @@ describe("Claude SDK provider", () => {
         ]);
         expect(deltas).toEqual(["hel", "lo"]);
         expect(result.content).toEqual([{ type: "text", text: "hello" }]);
+    });
+
+    it("returns tool calls and tool results through the shared agent loop", async () => {
+        const harness = createJustBashToolHarness();
+        let executionCount = 0;
+        let queryCount = 0;
+        let firstQueryClosed = false;
+        let continuationPrompt = "";
+        const readTool = defineTool({
+            name: "Read",
+            label: "Read",
+            description: "Read a file through the project tool.",
+            arguments: Type.Object({ path: Type.String() }),
+            returnType: Type.Object({ text: Type.String() }),
+            execute: ({ path }) => {
+                executionCount += 1;
+                return { text: `contents of ${path}` };
+            },
+            toLLM: ({ text }) => [{ type: "text", text }],
+            toUI: ({ text }) => text,
+            locks: [],
+        });
+        const provider = createClaudeSdkProvider({
+            agentContext: harness.context,
+            tools: [readTool],
+            query: ((params) => {
+                queryCount += 1;
+                if (queryCount === 1) {
+                    return fakeClaudeQuery(
+                        [
+                            {
+                                type: "stream_event",
+                                event: {
+                                    type: "message_start",
+                                    message: {
+                                        id: "msg-tool-use",
+                                        model: "claude-fable-5",
+                                        usage: {
+                                            input_tokens: 5,
+                                            output_tokens: 0,
+                                            cache_creation_input_tokens: 0,
+                                            cache_read_input_tokens: 0,
+                                        },
+                                    },
+                                },
+                                parent_tool_use_id: null,
+                                uuid: "00000000-0000-4000-8000-000000000011",
+                                session_id: "00000000-0000-4000-8000-000000000012",
+                            },
+                            {
+                                type: "stream_event",
+                                event: {
+                                    type: "content_block_start",
+                                    index: 0,
+                                    content_block: {
+                                        type: "tool_use",
+                                        id: "tool-read",
+                                        name: "mcp__ohmypi__Read",
+                                        input: {},
+                                    },
+                                },
+                                parent_tool_use_id: null,
+                                uuid: "00000000-0000-4000-8000-000000000011",
+                                session_id: "00000000-0000-4000-8000-000000000012",
+                            },
+                            {
+                                type: "stream_event",
+                                event: {
+                                    type: "content_block_delta",
+                                    index: 0,
+                                    delta: {
+                                        type: "input_json_delta",
+                                        partial_json: '{"path":"README',
+                                    },
+                                },
+                                parent_tool_use_id: null,
+                                uuid: "00000000-0000-4000-8000-000000000011",
+                                session_id: "00000000-0000-4000-8000-000000000012",
+                            },
+                            {
+                                type: "stream_event",
+                                event: {
+                                    type: "content_block_delta",
+                                    index: 0,
+                                    delta: { type: "input_json_delta", partial_json: '.md"}' },
+                                },
+                                parent_tool_use_id: null,
+                                uuid: "00000000-0000-4000-8000-000000000011",
+                                session_id: "00000000-0000-4000-8000-000000000012",
+                            },
+                            {
+                                type: "stream_event",
+                                event: { type: "content_block_stop", index: 0 },
+                                parent_tool_use_id: null,
+                                uuid: "00000000-0000-4000-8000-000000000011",
+                                session_id: "00000000-0000-4000-8000-000000000012",
+                            },
+                            {
+                                type: "stream_event",
+                                event: {
+                                    type: "message_delta",
+                                    delta: { stop_reason: "tool_use", stop_sequence: null },
+                                    usage: { output_tokens: 4 },
+                                },
+                                parent_tool_use_id: null,
+                                uuid: "00000000-0000-4000-8000-000000000011",
+                                session_id: "00000000-0000-4000-8000-000000000012",
+                            },
+                            {
+                                type: "stream_event",
+                                event: { type: "message_stop" },
+                                parent_tool_use_id: null,
+                                uuid: "00000000-0000-4000-8000-000000000011",
+                                session_id: "00000000-0000-4000-8000-000000000012",
+                            },
+                        ],
+                        { onClose: () => (firstQueryClosed = true) },
+                    );
+                }
+
+                continuationPrompt = String(params.prompt);
+                return fakeClaudeQuery([
+                    {
+                        type: "result",
+                        subtype: "success",
+                        duration_ms: 1,
+                        duration_api_ms: 1,
+                        is_error: false,
+                        num_turns: 1,
+                        result: "Finished.",
+                        stop_reason: "end_turn",
+                        total_cost_usd: 0,
+                        usage: {
+                            input_tokens: 8,
+                            output_tokens: 2,
+                            cache_creation_input_tokens: 0,
+                            cache_read_input_tokens: 0,
+                            server_tool_use: null,
+                            service_tier: null,
+                            cache_creation: null,
+                        },
+                        modelUsage: {},
+                        permission_denials: [],
+                        uuid: "00000000-0000-4000-8000-000000000013",
+                        session_id: "00000000-0000-4000-8000-000000000014",
+                    },
+                ]);
+            }) as ClaudeSdkQuery,
+        });
+        const eventTypes: string[] = [];
+
+        const result = await runAgentLoop({
+            provider,
+            modelId: modelAnthropicFable5.id,
+            tools: [readTool],
+            instructions: "Use the available tools.",
+            messages: [
+                {
+                    role: "user",
+                    id: "user-1",
+                    blocks: [{ type: "text", text: "Read README.md." }],
+                },
+            ],
+            context: harness.context,
+            onEvent: (event) => {
+                eventTypes.push(event.type);
+            },
+        });
+
+        expect(firstQueryClosed).toBe(true);
+        expect(executionCount).toBe(1);
+        expect(queryCount).toBe(2);
+        expect(eventTypes).toContain("toolcall_start");
+        expect(eventTypes).toContain("toolcall_delta");
+        expect(eventTypes).toContain("toolcall_end");
+        expect(continuationPrompt).toContain(
+            'Assistant tool call Read (tool-read): {"path":"README.md"}',
+        );
+        expect(continuationPrompt).toContain(
+            "successful tool result from Read (tool-read): contents of README.md",
+        );
+        expect(continuationPrompt).toContain(
+            "Do not restart the conversation or repeat successful tool calls.",
+        );
+        expect(result.stopReason).toBe("stop");
+        expect(result.messages).toHaveLength(4);
+        expect(result.messages[1]).toMatchObject({
+            role: "agent",
+            blocks: [
+                {
+                    type: "tool_call",
+                    id: "tool-read",
+                    name: "Read",
+                    arguments: { path: "README.md" },
+                },
+            ],
+        });
+        expect(result.messages[2]).toMatchObject({
+            role: "agent",
+            blocks: [
+                {
+                    type: "tool_result",
+                    toolCallId: "tool-read",
+                    toolName: "Read",
+                    rendered: [{ type: "text", text: "contents of README.md" }],
+                },
+            ],
+        });
+        expect(result.messages[3]).toMatchObject({
+            role: "agent",
+            blocks: [{ type: "text", text: "Finished." }],
+        });
     });
 
     it("maps latest Anthropic catalog models and reasoning effort to Claude SDK options", async () => {
@@ -300,7 +514,7 @@ describe("Claude SDK provider", () => {
     });
 });
 
-function fakeClaudeQuery(messages: readonly unknown[]) {
+function fakeClaudeQuery(messages: readonly unknown[], options: { onClose?: () => void } = {}) {
     const stream = (async function* () {
         for (const message of messages) {
             yield message;
@@ -334,6 +548,6 @@ function fakeClaudeQuery(messages: readonly unknown[]) {
         streamInput: async () => {},
         stopTask: async () => {},
         backgroundTasks: async () => false,
-        close: () => {},
+        close: () => options.onClose?.(),
     });
 }

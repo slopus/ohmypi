@@ -169,7 +169,7 @@ describe("agent loop live", () => {
                 fs: expect.objectContaining({ cwd: "/workspace" }),
                 bash: expect.objectContaining({ cwd: "/workspace" }),
             }),
-            {},
+            { toolCallId: "call-add" },
         );
         expect(addToLLM).toHaveBeenCalledExactlyOnceWith({ total: 7 });
         expect(addToUI).toHaveBeenCalledExactlyOnceWith(
@@ -185,7 +185,7 @@ describe("agent loop live", () => {
                 fs: expect.objectContaining({ cwd: "/workspace" }),
                 bash: expect.objectContaining({ cwd: "/workspace" }),
             }),
-            {},
+            { toolCallId: "call-shout" },
         );
         expect(shoutToLLM).toHaveBeenCalledExactlyOnceWith({
             shouted: "DUBLIN",

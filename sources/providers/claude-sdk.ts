@@ -10,10 +10,10 @@ import {
 } from "@anthropic-ai/claude-agent-sdk";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import type { TSchema } from "@sinclair/typebox";
-import { Value } from "@sinclair/typebox/value";
+import { parseStreamingJson } from "@mariozechner/pi-ai";
 import { z, type ZodTypeAny } from "zod/v4";
 
-import type { AgentContext, AnyDefinedTool, ContentBlock } from "../agent/index.js";
+import type { AgentContext, AnyDefinedTool } from "../agent/index.js";
 import { claudeCodeTools } from "../tools/claude/index.js";
 import {
     modelAnthropicFable5,
@@ -108,6 +108,32 @@ export function createClaudeSdkProvider(options: ClaudeSdkProviderOptions) {
                                 message.event,
                             )) {
                                 yield event;
+                            }
+
+                            if (
+                                message.event.type === "message_stop" &&
+                                hasClaudeToolCalls(streamState)
+                            ) {
+                                sdkStream.close();
+                                const toolUseMessage = createAssistantMessage({
+                                    model,
+                                    now,
+                                    content: streamState.partial.content,
+                                    ...(streamState.partial.responseId !== undefined
+                                        ? { responseId: streamState.partial.responseId }
+                                        : {}),
+                                    ...(streamState.partial.responseModel !== undefined
+                                        ? { responseModel: streamState.partial.responseModel }
+                                        : {}),
+                                    stopReason: "toolUse",
+                                    usage: streamState.partial.usage,
+                                });
+                                yield {
+                                    type: "done",
+                                    reason: "toolUse",
+                                    message: toolUseMessage,
+                                };
+                                return toolUseMessage;
                             }
                             continue;
                         }
@@ -209,9 +235,7 @@ function toClaudeSdkOptions(options: {
     tools: readonly AnyDefinedTool[];
 }): ClaudeSdkOptions {
     const abortController = toAbortController(options.streamOptions?.signal);
-    const mcpTools = options.tools.map((sourceTool) =>
-        toClaudeSdkTool(sourceTool, options.agentContext, options.streamOptions?.signal),
-    );
+    const mcpTools = options.tools.map(toClaudeSdkTool);
     const mcpToolNames = options.tools.map(
         (sourceTool) => `mcp__${OHMYPI_MCP_SERVER_NAME}__${sourceTool.name}`,
     );
@@ -240,6 +264,7 @@ function toClaudeSdkOptions(options: {
             "disable-slash-commands": null,
         },
         includePartialMessages: true,
+        maxTurns: 1,
         permissionMode: "dontAsk",
         persistSession: false,
         settingSources: [],
@@ -260,33 +285,13 @@ function toClaudeSdkOptions(options: {
     return sdkOptions;
 }
 
-function toClaudeSdkTool(
-    sourceTool: AnyDefinedTool,
-    context: AgentContext,
-    signal: AbortSignal | undefined,
-) {
+function toClaudeSdkTool(sourceTool: AnyDefinedTool) {
     return defineSdkTool(
         sourceTool.name,
         sourceTool.description,
         toZodRawShape(sourceTool.arguments),
-        async (args): Promise<CallToolResult> => {
-            if (!Value.Check(sourceTool.arguments, args)) {
-                return textToolResult(`Invalid arguments for tool '${sourceTool.name}'.`, true);
-            }
-
-            try {
-                const executionOptions = signal === undefined ? {} : { signal };
-                const result = await sourceTool.execute(args as never, context, executionOptions);
-                return {
-                    content: sourceTool.toLLM(result as never).map(toMcpContent),
-                };
-            } catch (error) {
-                return textToolResult(
-                    `Tool '${sourceTool.name}' failed: ${errorToMessage(error)}`,
-                    true,
-                );
-            }
-        },
+        async (): Promise<CallToolResult> =>
+            textToolResult("Tool execution is handled by Oh My Pi.", true),
         { alwaysLoad: true },
     );
 }
@@ -374,21 +379,6 @@ function toZodLiteralValue(value: unknown): string | number | boolean | null {
     return String(value);
 }
 
-function toMcpContent(block: ContentBlock): CallToolResult["content"][number] {
-    if (block.type === "text") {
-        return {
-            type: "text",
-            text: block.text,
-        };
-    }
-
-    return {
-        type: "image",
-        data: block.data,
-        mimeType: block.mediaType,
-    };
-}
-
 function textToolResult(text: string, isError: boolean): CallToolResult {
     return {
         content: [{ type: "text", text }],
@@ -442,6 +432,7 @@ function toClaudeSdkUserMessage(message: UserMessage): SDKUserMessage {
 function serializeProviderTranscript(messages: readonly Context["messages"][number][]): string {
     const lines = [
         "Continue the conversation below. Treat it as prior transcript context and answer the latest user message.",
+        "Tool calls with successful matching results are completed actions. Continue from those results without repeating the calls unless the user explicitly asks for a retry.",
         "",
     ];
 
@@ -449,24 +440,32 @@ function serializeProviderTranscript(messages: readonly Context["messages"][numb
         if (message.role === "user") {
             lines.push(`User: ${userContentToText(message.content)}`);
         } else if (message.role === "assistant") {
-            lines.push(
-                `Assistant: ${message.content
-                    .map((content) => {
-                        if (content.type === "text") return content.text;
-                        if (content.type === "thinking") return "[thinking omitted]";
-                        return `[tool call: ${content.name}]`;
-                    })
-                    .join("")}`,
-            );
+            for (const content of message.content) {
+                if (content.type === "text") {
+                    lines.push(`Assistant: ${content.text}`);
+                } else if (content.type === "toolCall") {
+                    lines.push(
+                        `Assistant tool call ${content.name} (${content.id}): ${JSON.stringify(content.arguments)}`,
+                    );
+                }
+            }
         } else {
+            const resultStatus = message.isError ? "failed" : "successful";
             lines.push(
-                `Tool result from ${message.toolName}: ${message.content
+                `${resultStatus} tool result from ${message.toolName} (${message.toolCallId}): ${message.content
                     .map((content) =>
                         content.type === "text" ? content.text : `[image: ${content.mimeType}]`,
                     )
                     .join("")}`,
             );
         }
+    }
+
+    if (messages.at(-1)?.role === "toolResult") {
+        lines.push(
+            "",
+            "Continue as the assistant from the completed tool results above. Do not restart the conversation or repeat successful tool calls.",
+        );
     }
 
     return lines.join("\n");
@@ -538,12 +537,22 @@ function toClaudeSdkModelId(modelId: string): string {
         : modelId;
 }
 
-interface ClaudeStreamBlock {
+interface ClaudeTextStreamBlock {
     contentIndex: number;
     ended: boolean;
     text: string;
     type: "text" | "thinking";
 }
+
+interface ClaudeToolCallStreamBlock {
+    contentIndex: number;
+    ended: boolean;
+    initialArguments: Record<string, unknown>;
+    partialJson: string;
+    type: "toolCall";
+}
+
+type ClaudeStreamBlock = ClaudeTextStreamBlock | ClaudeToolCallStreamBlock;
 
 type ClaudeContentBlockStartEvent = Extract<
     SDKPartialAssistantMessage["event"],
@@ -573,6 +582,18 @@ function applyClaudeStreamEvent(
     state: ClaudeStreamState,
     event: SDKPartialAssistantMessage["event"],
 ): AssistantMessageEvent[] {
+    if (event.type === "message_start") {
+        state.partial.responseId = event.message.id;
+        state.partial.responseModel = event.message.model;
+        updateClaudeUsage(state.partial.usage, event.message.usage);
+        return [];
+    }
+
+    if (event.type === "message_delta") {
+        updateClaudeUsage(state.partial.usage, event.usage);
+        return [];
+    }
+
     if (event.type === "content_block_start") {
         return startClaudeContentBlock(state, event.index, event.content_block);
     }
@@ -593,13 +614,36 @@ function startClaudeContentBlock(
     rawIndex: number,
     contentBlock: ClaudeContentBlockStartEvent["content_block"],
 ): AssistantMessageEvent[] {
-    if (contentBlock.type !== "text" && contentBlock.type !== "thinking") {
+    if (
+        contentBlock.type !== "text" &&
+        contentBlock.type !== "thinking" &&
+        contentBlock.type !== "tool_use"
+    ) {
         return [];
     }
 
     const contentIndex = state.partial.content.length;
+    if (contentBlock.type === "tool_use") {
+        const initialArguments = toClaudeToolArguments(contentBlock.input);
+        const streamBlock: ClaudeToolCallStreamBlock = {
+            contentIndex,
+            ended: false,
+            initialArguments,
+            partialJson: "",
+            type: "toolCall",
+        };
+        state.blocksByRawIndex.set(rawIndex, streamBlock);
+        appendPartialContent(state, {
+            type: "toolCall",
+            id: contentBlock.id,
+            name: normalizeClaudeToolName(contentBlock.name),
+            arguments: initialArguments,
+        });
+        return [{ type: "toolcall_start", contentIndex, partial: state.partial }];
+    }
+
     const text = contentBlock.type === "text" ? contentBlock.text : contentBlock.thinking;
-    const streamBlock: ClaudeStreamBlock = {
+    const streamBlock: ClaudeTextStreamBlock = {
         contentIndex,
         ended: false,
         text,
@@ -697,6 +741,25 @@ function appendClaudeContentBlockDelta(
         });
     }
 
+    if (delta.type === "input_json_delta" && block.type === "toolCall") {
+        block.partialJson += delta.partial_json;
+        const existing = state.partial.content[block.contentIndex];
+        if (existing?.type === "toolCall") {
+            setPartialContent(state, block.contentIndex, {
+                ...existing,
+                arguments: parseClaudeToolArguments(block.partialJson, block.initialArguments),
+            });
+        }
+        return [
+            {
+                type: "toolcall_delta",
+                contentIndex: block.contentIndex,
+                delta: delta.partial_json,
+                partial: state.partial,
+            },
+        ];
+    }
+
     return [];
 }
 
@@ -710,6 +773,26 @@ function finishClaudeContentBlock(
     }
 
     block.ended = true;
+    if (block.type === "toolCall") {
+        const existing = state.partial.content[block.contentIndex];
+        if (existing?.type !== "toolCall") {
+            return [];
+        }
+        const toolCall = {
+            ...existing,
+            arguments: parseClaudeToolArguments(block.partialJson, block.initialArguments),
+        };
+        setPartialContent(state, block.contentIndex, toolCall);
+        return [
+            {
+                type: "toolcall_end",
+                contentIndex: block.contentIndex,
+                toolCall,
+                partial: state.partial,
+            },
+        ];
+    }
+
     if (block.type === "text") {
         return [
             {
@@ -735,6 +818,55 @@ function finishClaudeStreamState(state: ClaudeStreamState): AssistantMessageEven
     return [...state.blocksByRawIndex.keys()].flatMap((rawIndex) =>
         finishClaudeContentBlock(state, rawIndex),
     );
+}
+
+function hasClaudeToolCalls(state: ClaudeStreamState): boolean {
+    return state.partial.content.some((content) => content.type === "toolCall");
+}
+
+function normalizeClaudeToolName(name: string): string {
+    const mcpPrefix = `mcp__${OHMYPI_MCP_SERVER_NAME}__`;
+    return name.startsWith(mcpPrefix) ? name.slice(mcpPrefix.length) : name;
+}
+
+function parseClaudeToolArguments(
+    partialJson: string,
+    fallback: Record<string, unknown>,
+): Record<string, unknown> {
+    if (partialJson.length === 0) {
+        return fallback;
+    }
+
+    return toClaudeToolArguments(parseStreamingJson(partialJson), fallback);
+}
+
+function toClaudeToolArguments(
+    value: unknown,
+    fallback: Record<string, unknown> = {},
+): Record<string, unknown> {
+    return typeof value === "object" && value !== null && !Array.isArray(value)
+        ? (value as Record<string, unknown>)
+        : fallback;
+}
+
+function updateClaudeUsage(
+    usage: Usage,
+    rawUsage: {
+        cache_creation_input_tokens?: number | null;
+        cache_read_input_tokens?: number | null;
+        input_tokens?: number | null;
+        output_tokens?: number | null;
+    },
+): void {
+    if (rawUsage.input_tokens != null) usage.input = rawUsage.input_tokens;
+    if (rawUsage.output_tokens != null) usage.output = rawUsage.output_tokens;
+    if (rawUsage.cache_read_input_tokens != null) {
+        usage.cacheRead = rawUsage.cache_read_input_tokens;
+    }
+    if (rawUsage.cache_creation_input_tokens != null) {
+        usage.cacheWrite = rawUsage.cache_creation_input_tokens;
+    }
+    usage.totalTokens = usage.input + usage.output + usage.cacheRead + usage.cacheWrite;
 }
 
 function emitFallbackText(state: ClaudeStreamState, text: string): AssistantMessageEvent[] {
@@ -825,9 +957,10 @@ function createInferenceStream(
 function createAssistantMessage(options: {
     model: Model;
     now: () => number;
+    content?: readonly AssistantContent[];
     responseId?: string;
     responseModel?: string;
-    stopReason: Extract<StopReason, "stop" | "length">;
+    stopReason: Extract<StopReason, "stop" | "length" | "toolUse">;
     text?: string;
     usage?: Usage;
 }): AssistantMessage {
@@ -837,9 +970,10 @@ function createAssistantMessage(options: {
         provider: CLAUDE_SDK_PROVIDER_ID,
         model: options.model.id,
         content:
-            options.text === undefined || options.text.length === 0
+            options.content ??
+            (options.text === undefined || options.text.length === 0
                 ? []
-                : [{ type: "text", text: options.text }],
+                : [{ type: "text", text: options.text }]),
         usage: options.usage ?? zeroUsage(),
         stopReason: options.stopReason,
         timestamp: options.now(),
