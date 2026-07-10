@@ -3,6 +3,7 @@ import {
     createNodeAgentContext,
     type AgentOptions,
     type AnyDefinedTool,
+    type PermissionMode,
     type SubagentContext,
 } from "../agent/index.js";
 import type { Message } from "../agent/types.js";
@@ -31,6 +32,7 @@ export interface CreateCodingAssistantAgentOptions {
     modelId?: string;
     providerId?: string;
     processManager?: NativeProxessManager;
+    permissionMode?: PermissionMode;
     subagents?: SubagentContext;
 }
 
@@ -41,6 +43,7 @@ export function createCodingAssistantAgent(
     const context = createNodeAgentContext({
         cwd: options.cwd,
         processManager,
+        ...(options.permissionMode !== undefined ? { permissionMode: options.permissionMode } : {}),
     });
     if (options.subagents !== undefined) {
         context.subagents = options.subagents;

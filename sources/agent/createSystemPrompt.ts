@@ -1,4 +1,5 @@
 import type { AgentContext } from "./context/AgentContext.js";
+import { createPermissionInstructions } from "./createPermissionInstructions.js";
 import { loadAgentsMdInstructions } from "./loadAgentsMdInstructions.js";
 import { selectSystemPromptForModel } from "./selectSystemPromptForModel.js";
 import { loadSkillInstructions } from "./skills/loadSkillInstructions.js";
@@ -41,6 +42,10 @@ export async function createSystemPrompt(
     const skillInstructions = await loadSkillInstructions(options.context.fs);
     if (skillInstructions !== undefined) {
         parts.push(skillInstructions);
+    }
+
+    if (options.context.permissions !== undefined) {
+        parts.push(createPermissionInstructions(options.context.permissions.mode));
     }
 
     return parts.length > 0 ? parts.join("\n\n") : undefined;

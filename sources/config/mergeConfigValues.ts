@@ -17,6 +17,9 @@ export function mergeConfigValues(base: RigConfig, ...configs: PartialRigConfig[
         if (config.defaults?.instructions !== undefined) {
             defaults.instructions = config.defaults.instructions;
         }
+        if (config.defaults?.permissionMode !== undefined) {
+            defaults.permissionMode = config.defaults.permissionMode;
+        }
         if (config.settings?.showReasoning !== undefined) {
             settings.showReasoning = config.settings.showReasoning;
         }

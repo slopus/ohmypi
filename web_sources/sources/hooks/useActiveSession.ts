@@ -4,6 +4,7 @@ import {
     abortRun,
     changeSessionEffort,
     changeSessionModel,
+    changeSessionPermissionMode,
     fetchSession,
     fetchSubagents,
     resetSession,
@@ -15,6 +16,7 @@ import type {
     ContentBlock,
     ImageBlock,
     Message,
+    PermissionMode,
     ProtocolSession,
     SessionEvent,
     SubagentSummary,
@@ -34,6 +36,8 @@ export interface ActiveSessionState {
     changeEffort: (effort: string | undefined) => Promise<void>;
     /** PATCHes the session model (and optionally effort). */
     changeModel: (providerId: string, modelId: string, effort?: string) => Promise<void>;
+    /** PATCHes the session permission mode. */
+    changePermissionMode: (permissionMode: PermissionMode) => Promise<void>;
     /** True after abort was requested and until the run settles. */
     isAborting: boolean;
     /** True while the initial `GET /api/sessions/:id` is in flight. */
@@ -289,6 +293,13 @@ function reduceServerEvent(state: ReducerState, event: SessionEvent): ReducerSta
                 delete session.effort;
             }
             return { ...state, session };
+        }
+        case "permission_mode_changed": {
+            if (state.session === undefined) return state;
+            return {
+                ...state,
+                session: { ...state.session, permissionMode: event.data.permissionMode },
+            };
         }
         case "subagent_changed": {
             return {
@@ -557,6 +568,15 @@ export function useActiveSession(sessionId: string | undefined): ActiveSessionSt
         [sessionId],
     );
 
+    const changePermissionMode = useCallback(
+        async (permissionMode: PermissionMode) => {
+            if (sessionId === undefined) return;
+            const response = await changeSessionPermissionMode(sessionId, { permissionMode });
+            dispatch({ type: "session_updated", session: response.session });
+        },
+        [sessionId],
+    );
+
     const messages = useMemo<readonly Message[]>(() => {
         if (state.optimistic.length === 0) {
             return state.messages;
@@ -572,6 +592,7 @@ export function useActiveSession(sessionId: string | undefined): ActiveSessionSt
         abort,
         changeEffort,
         changeModel,
+        changePermissionMode,
         isAborting: state.isAborting,
         isLoading: state.isLoading,
         isRunning,

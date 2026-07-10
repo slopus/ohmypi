@@ -7,6 +7,7 @@ import { printAgentMessageToConsole, type AgentConsole } from "./printAgentMessa
 import { selectToolsForModel } from "./selectToolsForModel.js";
 import type { AnyDefinedTool, ContentBlock, Message, SystemMessage, UserMessage } from "./types.js";
 import type { Model, Provider } from "../providers/types.js";
+import type { PermissionMode } from "../permissions/index.js";
 
 export type AgentStatus = "idle" | "running" | "aborted";
 
@@ -136,6 +137,10 @@ export class Agent {
         return this.#tools;
     }
 
+    get permissionMode(): PermissionMode {
+        return this.context.permissions?.mode ?? "full_access";
+    }
+
     get canChangeModel(): boolean {
         return (
             this.#messages.length === 0 &&
@@ -166,6 +171,10 @@ export class Agent {
 
     setTools(tools: readonly AnyDefinedTool[]): void {
         this.#tools = tools;
+    }
+
+    setPermissionMode(mode: PermissionMode): void {
+        this.context.permissions?.setMode(mode);
     }
 
     reset(): void {

@@ -6,6 +6,7 @@ import type {
 } from "../agent/index.js";
 import type { Message, UserMessage } from "../agent/types.js";
 import type { Model, StopReason } from "../providers/types.js";
+import type { PermissionMode } from "../permissions/index.js";
 import type { EventId } from "./EventId.js";
 
 export type SessionStatus = "idle" | "queued" | "running" | "completed" | "aborted" | "error";
@@ -63,6 +64,7 @@ export interface ProtocolSession {
     agentId: string;
     cwd: string;
     providerId: string;
+    permissionMode: PermissionMode;
     modelId: string;
     effort?: string;
     modelLocked: boolean;
@@ -95,6 +97,7 @@ export interface SessionSummary {
     cwd: string;
     providerId: string;
     modelId: string;
+    permissionMode: PermissionMode;
     effort?: string;
     status: SessionStatus;
     title?: string;
@@ -113,6 +116,11 @@ export interface CreateSessionRequest {
     instructions?: string;
     modelId?: string;
     providerId?: string;
+    permissionMode?: PermissionMode;
+}
+
+export interface ChangePermissionModeRequest {
+    permissionMode: PermissionMode;
 }
 
 export interface CreateSessionResponse {
@@ -185,6 +193,7 @@ export type SessionEvent =
     | SessionTitleChangedEvent
     | ModelChangedEvent
     | EffortChangedEvent
+    | PermissionModeChangedEvent
     | SubagentChangedEvent;
 
 export interface BaseSessionEvent<TType extends string, TData> {
@@ -275,6 +284,11 @@ export type EffortChangedEvent = BaseSessionEvent<
         modelId: string;
         snapshot: AgentSnapshot;
     }
+>;
+
+export type PermissionModeChangedEvent = BaseSessionEvent<
+    "permission_mode_changed",
+    { permissionMode: PermissionMode }
 >;
 
 export type SubagentChangedEvent = BaseSessionEvent<

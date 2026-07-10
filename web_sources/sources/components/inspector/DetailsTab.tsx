@@ -1,10 +1,17 @@
 import { Separator } from "@/components/ui/separator";
 import { formatRelativeTime } from "@/formatRelativeTime";
-import type { ModelCatalog, ProtocolSession, SessionSummary, SubagentSummary } from "@/protocol";
+import type {
+    ModelCatalog,
+    PermissionMode,
+    ProtocolSession,
+    SessionSummary,
+    SubagentSummary,
+} from "@/protocol";
 
 import { DetailField } from "./DetailField";
 import { EffortSelect } from "./EffortSelect";
 import { ModelSelect } from "./ModelSelect";
+import { PermissionSelect } from "./PermissionSelect";
 import { ResetConversationButton } from "./ResetConversationButton";
 import { SessionStatusBadge } from "./SessionStatusBadge";
 import { SubagentList } from "./SubagentList";
@@ -13,6 +20,7 @@ export interface DetailsTabProps {
     catalog: ModelCatalog | undefined;
     changeEffort: (effort: string | undefined) => Promise<void>;
     changeModel: (providerId: string, modelId: string) => Promise<void>;
+    changePermissionMode: (permissionMode: PermissionMode) => Promise<void>;
     isRunning: boolean;
     messageCount: number;
     onOpenSubagent: (sessionId: string) => void;
@@ -83,6 +91,14 @@ export function DetailsTab(props: DetailsTabProps) {
                     effort={session.effort}
                     levels={currentModel?.thinkingLevels ?? []}
                     onChangeEffort={props.changeEffort}
+                />
+            </DetailField>
+
+            <DetailField label="Permissions">
+                <PermissionSelect
+                    disabled={isSubagent}
+                    onChangePermissionMode={props.changePermissionMode}
+                    permissionMode={session.permissionMode}
                 />
             </DetailField>
 

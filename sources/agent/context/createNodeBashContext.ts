@@ -1,18 +1,34 @@
+import { isAbsolute, resolve } from "node:path";
+
 import type { NativeProxessManager } from "../../processes/index.js";
+import type { PermissionContext } from "../../permissions/index.js";
 import type { BashContext } from "./BashContext.js";
+import { createSandboxedCommand } from "./createSandboxedCommand.js";
 
 export interface CreateNodeBashContextOptions {
     cwd: string;
     processManager: NativeProxessManager;
+    permissions: PermissionContext;
 }
 
 export function createNodeBashContext(options: CreateNodeBashContextOptions): BashContext {
     return {
         cwd: options.cwd,
         async run(runOptions) {
-            const processRunOptions: Parameters<NativeProxessManager["run"]>[0] = {
+            const cwd =
+                runOptions.cwd === undefined
+                    ? options.cwd
+                    : isAbsolute(runOptions.cwd)
+                      ? runOptions.cwd
+                      : resolve(options.cwd, runOptions.cwd);
+            const command = await createSandboxedCommand({
                 command: runOptions.command,
-                cwd: runOptions.cwd ?? options.cwd,
+                cwd: options.cwd,
+                mode: options.permissions.mode,
+            });
+            const processRunOptions: Parameters<NativeProxessManager["run"]>[0] = {
+                command,
+                cwd,
                 timeoutMs: runOptions.timeoutMs ?? 120_000,
                 maxOutputBytes: runOptions.maxOutputBytes ?? 512_000,
             };

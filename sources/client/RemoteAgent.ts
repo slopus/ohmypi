@@ -12,6 +12,7 @@ import type {
 } from "../app/CodingAssistantAgentBackend.js";
 import type { ModelCatalog, ProtocolSession, SessionEvent } from "../protocol/index.js";
 import { defineProvider, type Model, type Provider, type StopReason } from "../providers/types.js";
+import type { PermissionMode } from "../permissions/index.js";
 import { ProtocolHttpClient } from "./ProtocolHttpClient.js";
 
 export interface RemoteAgentOptions {
@@ -71,6 +72,10 @@ export class RemoteAgent implements CodingAssistantAgentBackend {
                 provider.models.map((model) => ({ model, providerId: provider.providerId })),
             ) ?? this.#models.map((model) => ({ model, providerId: this.#providerId }))
         );
+    }
+
+    get permissionMode(): PermissionMode {
+        return this.#session.permissionMode;
     }
 
     async compact(): Promise<AgentCompactionResult> {
@@ -236,6 +241,14 @@ export class RemoteAgent implements CodingAssistantAgentBackend {
             });
     }
 
+    setPermissionMode(permissionMode: PermissionMode): void {
+        this.#session = { ...this.#session, permissionMode };
+        this.context.permissions?.setMode(permissionMode);
+        void this.#client
+            .changePermissionMode(this.#session.id, { permissionMode })
+            .then((response) => this.#replaceSession(response.session));
+    }
+
     snapshot(): AgentSnapshot {
         return this.#session.snapshot;
     }
@@ -318,11 +331,22 @@ export class RemoteAgent implements CodingAssistantAgentBackend {
                 providerId: event.data.snapshot.providerId,
                 snapshot: event.data.snapshot,
             };
+            return;
+        }
+
+        if (event.type === "permission_mode_changed") {
+            this.#session = {
+                ...this.#session,
+                permissionMode: event.data.permissionMode,
+            };
+            this.context.permissions?.setMode(event.data.permissionMode);
+            return;
         }
     }
 
     #replaceSession(session: ProtocolSession): void {
         this.#session = session;
+        this.context.permissions?.setMode(session.permissionMode);
         this.#modelId = session.modelId;
         this.#models = session.models;
         this.#providerId = session.providerId;

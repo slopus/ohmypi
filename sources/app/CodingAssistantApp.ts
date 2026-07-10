@@ -42,6 +42,7 @@ import { FileMentionAutocomplete } from "./FileMentionAutocomplete.js";
 import type { FileMentionContext } from "./findFileMentionContext.js";
 import { formatFileMention } from "./formatFileMention.js";
 import { humanizeReasoningLevel } from "./humanizeReasoningLevel.js";
+import { humanizePermissionMode } from "./humanizePermissionMode.js";
 import {
     readClipboardImage,
     type ClipboardImage,
@@ -381,6 +382,16 @@ export class CodingAssistantApp implements Component, Focusable {
                 title: "reasoning",
                 text: `Reasoning changed to ${humanizeReasoningLevel(event.data.effort ?? "off")}.`,
             });
+            return;
+        }
+
+        if (event.type === "permission_mode_changed") {
+            this.#appendEntry({
+                role: "event",
+                title: "permissions",
+                text: `Permissions changed to ${humanizePermissionMode(event.data.permissionMode)}.`,
+            });
+            this.#requestRender();
             return;
         }
     }
@@ -859,6 +870,11 @@ export class CodingAssistantApp implements Component, Focusable {
 
         if (prompt === "/configure") {
             this.#openConfigureMenu();
+            return true;
+        }
+
+        if (prompt === "/permissions" || prompt === "/permission") {
+            this.#openPermissionsMenu();
             return true;
         }
 
@@ -1638,6 +1654,46 @@ export class CodingAssistantApp implements Component, Focusable {
             onCancel: () => {
                 this.#closeSelectionPanel();
             },
+        });
+        this.#showSelectionPanel(panel);
+    }
+
+    #openPermissionsMenu(): void {
+        const panel = createSelectionPanel({
+            title: "Choose Permissions",
+            subtitle: "Applies to this session and its subagents",
+            selectedValue: this.#agent.permissionMode,
+            items: [
+                {
+                    value: "workspace_write",
+                    label: "Workspace write",
+                    description: "Write in the workspace; block shell network access.",
+                },
+                {
+                    value: "read_only",
+                    label: "Read only",
+                    description: "Keep project files read only; allow temporary files.",
+                },
+                {
+                    value: "full_access",
+                    label: "Full access",
+                    description: "Allow unrestricted filesystem, shell, and network access.",
+                },
+            ],
+            onSelect: (item) => {
+                const mode = item.value as "workspace_write" | "read_only" | "full_access";
+                this.#agent.setPermissionMode(mode);
+                if (!this.#sessionBacked) {
+                    this.#appendEntry({
+                        role: "event",
+                        title: "permissions",
+                        text: `Permissions changed to ${humanizePermissionMode(mode)}.`,
+                    });
+                }
+                this.#closeSelectionPanel();
+                this.#requestRender();
+            },
+            onCancel: () => this.#closeSelectionPanel(),
         });
         this.#showSelectionPanel(panel);
     }

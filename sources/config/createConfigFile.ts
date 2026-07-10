@@ -15,6 +15,7 @@ export async function createConfigFile(
         stringify({
             defaults: {
                 model: config.defaults.modelId,
+                permission_mode: config.defaults.permissionMode,
                 ...(config.defaults.providerId !== undefined
                     ? { provider: config.defaults.providerId }
                     : {}),

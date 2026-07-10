@@ -219,6 +219,8 @@ export type AgentLoopEvent =
 
 export type SessionStatus = "idle" | "queued" | "running" | "completed" | "aborted" | "error";
 
+export type PermissionMode = "workspace_write" | "read_only" | "full_access";
+
 export type SessionTitleStatus = "idle" | "generating" | "ready" | "error";
 
 export type SessionInterruptionReason = "crash" | "shutdown";
@@ -272,6 +274,7 @@ export interface ProtocolSession {
     agentId: string;
     cwd: string;
     providerId: string;
+    permissionMode: PermissionMode;
     modelId: string;
     effort?: string;
     modelLocked: boolean;
@@ -304,6 +307,7 @@ export interface SessionSummary {
     cwd: string;
     providerId: string;
     modelId: string;
+    permissionMode: PermissionMode;
     effort?: string;
     status: SessionStatus;
     title?: string;
@@ -322,6 +326,7 @@ export interface CreateSessionRequest {
     instructions?: string;
     modelId?: string;
     providerId?: string;
+    permissionMode?: PermissionMode;
 }
 
 export interface CreateSessionResponse {
@@ -361,6 +366,10 @@ export interface ChangeEffortResponse {
     session: ProtocolSession;
 }
 
+export interface ChangePermissionModeResponse {
+    session: ProtocolSession;
+}
+
 export interface ShutdownServerResponse {
     shuttingDown: boolean;
 }
@@ -385,6 +394,10 @@ export interface ChangeModelRequest {
 
 export interface ChangeEffortRequest {
     effort?: string;
+}
+
+export interface ChangePermissionModeRequest {
+    permissionMode: PermissionMode;
 }
 
 export interface AbortRunResponse {
@@ -486,6 +499,11 @@ export type EffortChangedEvent = BaseSessionEvent<
     }
 >;
 
+export type PermissionModeChangedEvent = BaseSessionEvent<
+    "permission_mode_changed",
+    { permissionMode: PermissionMode }
+>;
+
 export type SubagentChangedEvent = BaseSessionEvent<
     "subagent_changed",
     {
@@ -506,4 +524,5 @@ export type SessionEvent =
     | SessionTitleChangedEvent
     | ModelChangedEvent
     | EffortChangedEvent
+    | PermissionModeChangedEvent
     | SubagentChangedEvent;

@@ -137,4 +137,24 @@ describe("InMemorySession", () => {
             providerId: "openai",
         });
     });
+
+    it("changes permissions and passes them to subagents", () => {
+        const store = new InMemorySessionStore();
+        const session = store.create({
+            cwd: "/tmp/rig-session-test",
+            permissionMode: "read_only",
+        });
+
+        expect(session.snapshot().permissionMode).toBe("read_only");
+        expect(session.requestForSubagent().permissionMode).toBe("read_only");
+
+        session.changePermissionMode({ permissionMode: "full_access" });
+
+        expect(session.snapshot().permissionMode).toBe("full_access");
+        expect(session.requestForSubagent().permissionMode).toBe("full_access");
+        expect(session.events.since(undefined)?.at(-1)).toMatchObject({
+            data: { permissionMode: "full_access" },
+            type: "permission_mode_changed",
+        });
+    });
 });

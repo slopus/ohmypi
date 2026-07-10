@@ -7,6 +7,7 @@ import { RemoteAgent } from "../client/RemoteAgent.js";
 import { createJustBashToolHarness } from "../tools/testing/createJustBashToolHarness.js";
 import { validJpeg32Base64, validPng32Base64 } from "../tools/testing/validImageFixtures.js";
 import { NativeProxessManager } from "../processes/index.js";
+import { createPermissionContext } from "../permissions/index.js";
 import type { ModelCatalog, ProtocolSession, SessionEvent } from "../protocol/index.js";
 import {
     defineModel,
@@ -382,6 +383,7 @@ describe("CodingAssistantApp", () => {
             modelLocked: false,
             models: [gpt],
             providerId: "codex",
+            permissionMode: "workspace_write",
             snapshot,
             status: "idle",
             titleStatus: "idle",
@@ -610,12 +612,12 @@ describe("CodingAssistantApp", () => {
         expect(rendered).toContain("Change reasoning for this session.");
         expect(rendered).toContain("/configure");
         expect(rendered).toContain("Configure app settings.");
+        expect(rendered).toContain("/permissions");
+        expect(rendered).toContain("Choose filesystem, shell, and network access.");
         expect(rendered).toContain("/new");
         expect(rendered).toContain("Reset this session and start fresh.");
         expect(rendered).toContain("/exit");
         expect(rendered).toContain("Close Rig.");
-        expect(rendered).toContain("/clear");
-        expect(rendered).toContain("Clear the visible conversation.");
         expect(rendered).not.toContain("GPT Test Off •");
         expect(rendered).not.toContain("/quit");
 
@@ -2546,6 +2548,53 @@ describe("CodingAssistantApp", () => {
         expect(rendered).toContain("This reasoning text can be hidden.");
         expect(rendered).toContain("Final answer stays visible.");
         expect(rendered).toContain("Reasoning display enabled.");
+    });
+
+    it("changes the session permission mode from the permissions menu", () => {
+        const model = defineModel({
+            id: "openai/gpt-test",
+            name: "GPT Test",
+            thinkingLevels: ["off"],
+            defaultThinkingLevel: "off",
+        });
+        const provider = defineProvider({
+            id: "codex",
+            models: [model],
+            stream() {
+                return streamText("unused");
+            },
+        });
+        const harness = createJustBashToolHarness();
+        harness.context.permissions = createPermissionContext("workspace_write");
+        const agent = new Agent({
+            provider,
+            modelId: model.id,
+            context: harness.context,
+            printToConsole: false,
+        });
+        const app = new CodingAssistantApp({
+            agent,
+            cwd: harness.context.fs.cwd,
+            processManager: new NativeProxessManager(),
+            tui: fakeTui(),
+        });
+
+        submit(app, "/permissions");
+
+        const menu = stripAnsi(app.render(100).join("\n"));
+        expect(menu).toContain("Choose Permissions");
+        expect(menu).toContain("Workspace write");
+        expect(menu).toContain("Read only");
+        expect(menu).toContain("Full access");
+        expect(menu).toContain("Applies to this session and its subagents");
+
+        app.handleInput("\x1b[B");
+        app.handleInput("\r");
+
+        expect(agent.permissionMode).toBe("read_only");
+        expect(stripAnsi(app.render(100).join("\n"))).toContain(
+            "Permissions changed to Read only.",
+        );
     });
 
     it("keeps activity visible after text_start until the first text delta", async () => {

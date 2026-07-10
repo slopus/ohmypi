@@ -3,6 +3,7 @@ import { runApp, type RunAppOptions } from "./runApp.js";
 import { runMonit } from "./runMonit.js";
 import { runWebCommand } from "./runWebCommand.js";
 import { runWebServer } from "./web/runWebServer.js";
+import { parsePermissionMode } from "../permissions/index.js";
 import { runLocalProtocolServer } from "../server/index.js";
 
 export async function main(argv: readonly string[] = process.argv.slice(2)): Promise<void> {
@@ -60,6 +61,9 @@ export async function main(argv: readonly string[] = process.argv.slice(2)): Pro
     }
     if (process.env.RIG_PROVIDER !== undefined) {
         options.providerId = process.env.RIG_PROVIDER;
+    }
+    if (process.env.RIG_PERMISSION_MODE !== undefined) {
+        options.permissionMode = parsePermissionMode(process.env.RIG_PERMISSION_MODE);
     }
 
     await runApp(options);

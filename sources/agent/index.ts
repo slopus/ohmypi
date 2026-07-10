@@ -42,6 +42,7 @@ export type {
     UserMessage,
 } from "./types.js";
 export type { AgentContext } from "./context/AgentContext.js";
+export type { PermissionMode } from "../permissions/index.js";
 export type { BashContext, BashRunOptions, BashRunResult } from "./context/BashContext.js";
 export type { FileSystemContext, FileSystemStat } from "./context/FileSystemContext.js";
 export type {

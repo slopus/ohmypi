@@ -11,6 +11,7 @@ import { GPT_5_4_SYSTEM_PROMPT } from "./prompts/gpt54SystemPrompt.js";
 import { GPT_5_5_SYSTEM_PROMPT } from "./prompts/gpt55SystemPrompt.js";
 import { KIMI_SYSTEM_PROMPT } from "./prompts/kimiSystemPrompt.js";
 import type { Message } from "./types.js";
+import { createPermissionContext } from "../permissions/index.js";
 import { defineModel, defineProvider, type Model, type Provider } from "../providers/types.js";
 
 const tempDirs: string[] = [];
@@ -109,6 +110,29 @@ describe("createSystemPrompt", () => {
                 context: contextFor(cwd),
             }),
         ).resolves.toBe("Base instructions.");
+    });
+
+    it("tells the model which permission boundary is active", async () => {
+        const cwd = await makeTempDir();
+        const model = defineModel({
+            id: "mock/model",
+            name: "Mock Model",
+            thinkingLevels: ["off"],
+            defaultThinkingLevel: "off",
+        });
+        const context = contextFor(cwd);
+        context.permissions = createPermissionContext("read_only");
+
+        await expect(
+            createSystemPrompt({
+                provider: providerFor("mock", model),
+                model,
+                messages: [],
+                context,
+            }),
+        ).resolves.toContain(
+            "You are in Read only mode. You may inspect files and run non-mutating shell commands.",
+        );
     });
 
     it("uses the Claude Code prompt for modern Anthropic models", async () => {

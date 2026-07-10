@@ -4,6 +4,7 @@ import { createNodeAgentContext } from "../agent/index.js";
 import { ensureLocalProtocolServer, RemoteAgent } from "../client/index.js";
 import { loadConfig, writeRuntimeConfig } from "../config/index.js";
 import { NativeProxessManager } from "../processes/index.js";
+import type { PermissionMode } from "../permissions/index.js";
 import type { SessionEvent } from "../protocol/index.js";
 import { CodingAssistantApp } from "./CodingAssistantApp.js";
 import { type CreateCodingAssistantAgentOptions } from "./createCodingAssistantAgent.js";
@@ -19,6 +20,7 @@ export interface RunAppOptions {
     instructions?: string;
     modelId?: string;
     providerId?: string;
+    permissionMode?: PermissionMode;
     resumeSessionId?: string;
     showReasoning?: boolean;
 }
@@ -29,6 +31,7 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
     const agentOptions: CreateCodingAssistantAgentOptions = {
         cwd,
         modelId: loadedConfig.config.defaults.modelId,
+        permissionMode: loadedConfig.config.defaults.permissionMode,
     };
     if (loadedConfig.config.defaults.providerId !== undefined) {
         agentOptions.providerId = loadedConfig.config.defaults.providerId;
@@ -44,6 +47,7 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
     if (options.instructions !== undefined) agentOptions.instructions = options.instructions;
     if (options.modelId !== undefined) agentOptions.modelId = options.modelId;
     if (options.providerId !== undefined) agentOptions.providerId = options.providerId;
+    if (options.permissionMode !== undefined) agentOptions.permissionMode = options.permissionMode;
     let showReasoning = options.showReasoning ?? loadedConfig.config.settings.showReasoning;
 
     // Keep the terminal in TUI mode while the daemon starts so startup work is visible.
@@ -92,7 +96,11 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
     })();
     const processManager = new NativeProxessManager();
     const sessionCwd = session.session.cwd;
-    const context = createNodeAgentContext({ cwd: sessionCwd, processManager });
+    const context = createNodeAgentContext({
+        cwd: sessionCwd,
+        permissionMode: session.session.permissionMode,
+        processManager,
+    });
     const agent = new RemoteAgent({
         client: localServer.client,
         context,
@@ -111,6 +119,7 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
                     modelId: preference.modelId,
                     providerId: preference.providerId,
                     effort: preference.effort,
+                    permissionMode: agent.permissionMode,
                 },
                 settings: {
                     showReasoning,
@@ -123,6 +132,7 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
                     modelId: agent.model.id,
                     providerId: agent.provider.id,
                     effort: agent.snapshot().effort ?? agent.model.defaultThinkingLevel,
+                    permissionMode: agent.permissionMode,
                 },
                 settings,
             });

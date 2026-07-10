@@ -19,6 +19,7 @@ model = "openai/gpt-5.4" # keep this comment
 provider = "bedrock"
 effort = 'high'
 instructions = "Be direct."
+permission_mode = "read_only"
 
 [settings]
 show_reasoning = false
@@ -29,6 +30,7 @@ show_reasoning = false
                 providerId: "bedrock",
                 effort: "high",
                 instructions: "Be direct.",
+                permissionMode: "read_only",
             },
             settings: {
                 showReasoning: false,
@@ -52,6 +54,7 @@ show_reasoning = false
 [defaults]
 model = "openai/gpt-5.4"
 effort = "low"
+permission_mode = "read_only"
 [settings]
 show_reasoning = false
 `,
@@ -85,6 +88,7 @@ effort = "minimal"
             expect(loaded.config.defaults).toEqual({
                 modelId: "openai/gpt-5.5",
                 effort: "minimal",
+                permissionMode: "read_only",
             });
             expect(loaded.config.settings).toEqual({
                 showReasoning: true,
@@ -99,6 +103,7 @@ effort = "minimal"
             expect(defaultLoaded.config.settings).toEqual({
                 showReasoning: false,
             });
+            expect(defaultLoaded.config.defaults.permissionMode).toBe("workspace_write");
             expect(loaded.paths.global).toBe(globalPath);
             expect(loaded.paths.local).toBe(localPath);
             expect(loaded.paths.runtime).toBe(runtimePath);
@@ -118,6 +123,7 @@ effort = "minimal"
                     modelId: "openai/gpt-5.4",
                     providerId: "bedrock",
                     effort: "low",
+                    permissionMode: "workspace_write",
                 },
                 settings: {
                     showReasoning: true,
@@ -132,6 +138,7 @@ effort = "minimal"
                     modelId: "openai/gpt-5.5",
                     providerId: "bedrock",
                     effort: "high",
+                    permissionMode: "workspace_write",
                 },
                 settings: {
                     showReasoning: false,
@@ -142,6 +149,7 @@ effort = "minimal"
                 [
                     "[defaults]",
                     'model = "openai/gpt-5.4"',
+                    'permission_mode = "workspace_write"',
                     'provider = "bedrock"',
                     'effort = "low"',
                     "",
@@ -156,6 +164,7 @@ effort = "minimal"
                     'model = "openai/gpt-5.5"',
                     'provider = "bedrock"',
                     'effort = "high"',
+                    'permission_mode = "workspace_write"',
                     "",
                     "[settings]",
                     "show_reasoning = false",

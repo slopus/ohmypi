@@ -17,6 +17,7 @@ import {
 import type {
     ChangeEffortRequest,
     ChangeModelRequest,
+    ChangePermissionModeRequest,
     CreateSessionRequest,
     EventId,
     ModelCatalog,
@@ -32,6 +33,11 @@ import type {
     SubmitMessageResponse,
 } from "../protocol/index.js";
 import type { Model, StopReason } from "../providers/types.js";
+import {
+    DEFAULT_PERMISSION_MODE,
+    parsePermissionMode,
+    type PermissionMode,
+} from "../permissions/index.js";
 import { generateSessionTitle } from "./generateSessionTitle.js";
 import { getProviderIdForModel } from "./getProviderIdForModel.js";
 import { resolveInitialModelSelection } from "./resolveInitialModelSelection.js";
@@ -67,6 +73,7 @@ export interface PersistedSessionState {
     modelId: string;
     models: readonly Model[];
     providerId: string;
+    permissionMode: PermissionMode;
     queuedRuns: readonly PersistedQueuedRun[];
     status: SessionStatus;
     title?: string;
@@ -137,6 +144,7 @@ export class InMemorySession {
     #partialPositions = new Set<number>();
     #persistence: InMemorySessionPersistence | undefined;
     #providerId: string;
+    #permissionMode: PermissionMode;
     #queue: PersistedQueuedRun[] = [];
     #request: CreateSessionRequest;
     #restoredActiveRunId: string | undefined;
@@ -177,6 +185,11 @@ export class InMemorySession {
         );
         this.#modelId = selection.model.id;
         this.#providerId = selection.providerId;
+        this.#permissionMode = parsePermissionMode(
+            options.restore?.permissionMode ??
+                options.request.permissionMode ??
+                DEFAULT_PERMISSION_MODE,
+        );
         const requestedEffort = options.restore?.effort ?? options.request.effort;
         this.#effort =
             requestedEffort !== undefined &&
@@ -314,6 +327,14 @@ export class InMemorySession {
         return this.snapshot();
     }
 
+    changePermissionMode(request: ChangePermissionModeRequest): ProtocolSession {
+        const permissionMode = parsePermissionMode(request.permissionMode);
+        this.#permissionMode = permissionMode;
+        this.#runtime?.context.permissions?.setMode(permissionMode);
+        this.#append("permission_mode_changed", { permissionMode });
+        return this.snapshot();
+    }
+
     emitCreatedEvent(): void {
         this.#append("session_created", { session: this.snapshot() });
     }
@@ -396,6 +417,7 @@ export class InMemorySession {
             ...(this.#instructions !== undefined ? { instructions: this.#instructions } : {}),
             modelId: this.#modelId,
             ...(this.#request.apiKey !== undefined ? { apiKey: this.#request.apiKey } : {}),
+            permissionMode: this.#permissionMode,
         };
     }
 
@@ -407,6 +429,7 @@ export class InMemorySession {
             agentId: this.#agentId,
             cwd: this.#request.cwd,
             providerId: this.#providerId,
+            permissionMode: this.#permissionMode,
             modelId: this.#modelId,
             modelLocked: this.#modelLocked(),
             models: this.#models,
@@ -427,6 +450,7 @@ export class InMemorySession {
             id: this.id,
             cwd: this.#request.cwd,
             providerId: this.#providerId,
+            permissionMode: this.#permissionMode,
             modelId: this.#modelId,
             ...(this.#effort !== undefined ? { effort: this.#effort } : {}),
             status: this.#status,
@@ -464,6 +488,7 @@ export class InMemorySession {
             modelId: this.#modelId,
             models: this.#models,
             providerId: this.#providerId,
+            permissionMode: this.#permissionMode,
             queuedRuns: [...this.#queue],
             status: this.#status,
             ...(this.#title !== undefined ? { title: this.#title } : {}),
@@ -699,6 +724,7 @@ export class InMemorySession {
             cwd: this.#request.cwd,
             messages: this.#committedMessages(),
             modelId: this.#modelId,
+            permissionMode: this.#permissionMode,
             providerId: this.#providerId,
         };
         if (this.#contextMessages !== undefined) {

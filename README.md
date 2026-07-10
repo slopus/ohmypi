@@ -110,6 +110,31 @@ pnpm dev:web
 Open the Vite URL printed by `pnpm dev:web`, usually `http://127.0.0.1:5173`.
 The Vite dev server proxies `/api/*` to the local daemon socket.
 
+### Permission modes
+
+New sessions start in **Workspace write** mode. File tools can edit the working
+directory, while shell writes outside it and shell network access are blocked.
+Git metadata and temporary files remain writable so normal development commands
+continue to work.
+
+Use `/permissions` in the terminal or the Permissions control in the web
+inspector to switch the current session and its subagents between:
+
+- **Workspace write** — write in the working directory with shell network access blocked.
+- **Read only** — keep project files read only; shell commands may write temporary files.
+- **Full access** — allow unrestricted filesystem, shell, and network access.
+
+Set the terminal default in global or project-local `rig.toml`:
+
+```toml
+[defaults]
+permission_mode = "workspace_write"
+```
+
+`RIG_PERMISSION_MODE` overrides the configured default for a newly created
+terminal session. Accepted values are `workspace_write`, `read_only`, and
+`full_access`.
+
 ## Publishing
 
 Authenticate with npm once using `pnpm login`, then publish from a clean, up-to-date

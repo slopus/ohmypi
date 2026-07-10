@@ -27,6 +27,7 @@ function subagentSession(): ProtocolSession {
         modelLocked: true,
         models: [],
         providerId: "codex",
+        permissionMode: "workspace_write",
         snapshot: {
             id: "agent-2",
             messages: [],

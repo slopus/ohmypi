@@ -4,6 +4,7 @@ import type {
     AbortRunResponse,
     ChangeEffortRequest,
     ChangeModelRequest,
+    ChangePermissionModeRequest,
     CompactSessionResponse,
     CreateSessionRequest,
     CreateSessionResponse,
@@ -63,6 +64,17 @@ export class ProtocolHttpClient {
         return this.#requestJson(
             "PATCH",
             `/sessions/${encodeURIComponent(sessionId)}/effort`,
+            request,
+        );
+    }
+
+    changePermissionMode(
+        sessionId: string,
+        request: ChangePermissionModeRequest,
+    ): Promise<{ session: ProtocolSession }> {
+        return this.#requestJson(
+            "PATCH",
+            `/sessions/${encodeURIComponent(sessionId)}/permissions`,
             request,
         );
     }

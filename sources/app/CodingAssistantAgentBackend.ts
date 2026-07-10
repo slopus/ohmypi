@@ -7,6 +7,7 @@ import type {
     ContentBlock,
 } from "../agent/index.js";
 import type { Model, Provider } from "../providers/types.js";
+import type { PermissionMode } from "../permissions/index.js";
 
 export interface CodingAssistantModelChoice {
     model: Model;
@@ -20,6 +21,7 @@ export interface CodingAssistantAgentBackend {
     readonly provider: Provider;
     readonly model: Model;
     readonly modelChoices?: readonly CodingAssistantModelChoice[];
+    readonly permissionMode: PermissionMode;
     compact(signal?: AbortSignal): Promise<AgentCompactionResult>;
     reset(): void;
     send(
@@ -28,5 +30,6 @@ export interface CodingAssistantAgentBackend {
     ): Promise<AgentRunResult>;
     setEffort(effort: string | undefined): void;
     setModel(modelId: string, effort: string | undefined, providerId?: string): void;
+    setPermissionMode(mode: PermissionMode): void;
     snapshot(): AgentSnapshot;
 }

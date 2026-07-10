@@ -25,6 +25,12 @@ export function createSlashCommands(): SlashCommandItem[] {
             aliases: ["config", "settings"],
         },
         {
+            value: "permissions",
+            label: "/permissions",
+            description: "Choose filesystem, shell, and network access.",
+            aliases: ["permission"],
+        },
+        {
             value: "new",
             label: "/new",
             description: "Reset this session and start fresh.",

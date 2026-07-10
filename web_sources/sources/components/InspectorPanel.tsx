@@ -116,6 +116,7 @@ export function InspectorPanel(props: InspectorPanelProps) {
                         catalog={props.catalog}
                         changeEffort={activeSession.changeEffort}
                         changeModel={activeSession.changeModel}
+                        changePermissionMode={activeSession.changePermissionMode}
                         isRunning={activeSession.isRunning}
                         messageCount={messageCount}
                         onOpenSubagent={props.onOpenSubagent}

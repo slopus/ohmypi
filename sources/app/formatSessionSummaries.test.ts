@@ -38,6 +38,7 @@ function sessionSummary(overrides: Partial<SessionSummary> = {}): SessionSummary
         id: "session-1",
         lastMessageAt: 1_700_000_000_000,
         modelId: "openai/gpt-5.5",
+        permissionMode: "workspace_write",
         providerId: "codex",
         status: "completed",
         titleStatus: "ready",

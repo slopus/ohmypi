@@ -11,6 +11,8 @@ import type {
     ChangeEffortResponse,
     ChangeModelRequest,
     ChangeModelResponse,
+    ChangePermissionModeRequest,
+    ChangePermissionModeResponse,
     CreateSessionRequest,
     CreateSessionResponse,
     EventId,
@@ -159,6 +161,16 @@ export function changeSessionEffort(
 ): Promise<ChangeEffortResponse> {
     return patchJson<ChangeEffortResponse>(
         `/sessions/${encodeURIComponent(sessionId)}/effort`,
+        request,
+    );
+}
+
+export function changeSessionPermissionMode(
+    sessionId: string,
+    request: ChangePermissionModeRequest,
+): Promise<ChangePermissionModeResponse> {
+    return patchJson<ChangePermissionModeResponse>(
+        `/sessions/${encodeURIComponent(sessionId)}/permissions`,
         request,
     );
 }

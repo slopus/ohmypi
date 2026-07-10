@@ -5,6 +5,7 @@ import type {
     AbortRunResponse,
     ChangeEffortRequest,
     ChangeModelRequest,
+    ChangePermissionModeRequest,
     CompactSessionResponse,
     CreateSessionRequest,
     CreateSessionResponse,
@@ -24,6 +25,7 @@ import { createModelCatalog } from "./createModelCatalog.js";
 import { FileSearchService, type FileSearchServiceContract } from "./FileSearchService.js";
 import type { SessionEventLog } from "./SessionEventLog.js";
 import type { SessionStore } from "./SessionStore.js";
+import { isPermissionMode } from "../permissions/index.js";
 
 export interface ProtocolHttpServerOptions {
     initialization?: Promise<ModelCatalog>;
@@ -113,6 +115,12 @@ async function handleRequest(
 
     if (request.method === "POST" && route.name === "sessions") {
         const body = await readJson<CreateSessionRequest>(request);
+        if (body.permissionMode !== undefined && !isPermissionMode(body.permissionMode)) {
+            sendJson(response, 400, {
+                error: "Permission mode must be Workspace write, Read only, or Full access.",
+            });
+            return;
+        }
         const session = store.create(body);
         sendJson<CreateSessionResponse>(response, 201, { session: session.snapshot() });
         return;
@@ -202,6 +210,18 @@ async function handleRequest(
     if (request.method === "PATCH" && route.name === "model") {
         const body = await readJson<ChangeModelRequest>(request);
         sendJson(response, 200, { session: session.changeModel(body) });
+        return;
+    }
+
+    if (request.method === "PATCH" && route.name === "permissions") {
+        const body = await readJson<ChangePermissionModeRequest>(request);
+        if (!isPermissionMode(body.permissionMode)) {
+            sendJson(response, 400, {
+                error: "Permission mode must be Workspace write, Read only, or Full access.",
+            });
+            return;
+        }
+        sendJson(response, 200, { session: session.changePermissionMode(body) });
         return;
     }
 
@@ -316,6 +336,7 @@ function matchRoute(pathname: string):
               | "files"
               | "messages"
               | "model"
+              | "permissions"
               | "reset"
               | "session"
               | "stream"
@@ -344,6 +365,7 @@ function matchRoute(pathname: string):
     if (parts[2] === "files") return { name: "files", sessionId };
     if (parts[2] === "messages") return { name: "messages", sessionId };
     if (parts[2] === "model") return { name: "model", sessionId };
+    if (parts[2] === "permissions") return { name: "permissions", sessionId };
     if (parts[2] === "reset") return { name: "reset", sessionId };
     if (parts[2] === "stream") return { name: "stream", sessionId };
     if (parts[2] === "subagents") return { name: "subagents", sessionId };
@@ -353,7 +375,7 @@ function matchRoute(pathname: string):
 function isSessionMutation(routeName: string, method: string | undefined): boolean {
     return (
         (method === "POST" && ["abort", "compact", "messages", "reset"].includes(routeName)) ||
-        (method === "PATCH" && ["effort", "model"].includes(routeName))
+        (method === "PATCH" && ["effort", "model", "permissions"].includes(routeName))
     );
 }
 

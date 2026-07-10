@@ -14,10 +14,17 @@ import {
     DialogTrigger,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
 import { decodeProviderModelSelection } from "@/decodeProviderModelSelection";
 import { encodeProviderModelSelection } from "@/encodeProviderModelSelection";
-import type { ModelCatalog, ProtocolSession } from "@/protocol";
+import { permissionModeOptions } from "@/permissionModeOptions";
+import type { ModelCatalog, PermissionMode, ProtocolSession } from "@/protocol";
 
 export interface NewSessionDialogProps {
     /** Model catalog from health; the model select is empty until it arrives. */
@@ -39,8 +46,12 @@ export function NewSessionDialog(props: NewSessionDialogProps) {
     const [open, setOpen] = useState(false);
     const [cwd, setCwd] = useState("");
     const [modelSelection, setModelSelection] = useState("");
+    const [permissionMode, setPermissionMode] = useState<PermissionMode>("workspace_write");
     const [isCreating, setIsCreating] = useState(false);
     const [error, setError] = useState<string | undefined>(undefined);
+    const selectedPermissionMode = permissionModeOptions.find(
+        (option) => option.value === permissionMode,
+    );
 
     const handleOpenChange = useCallback(
         (nextOpen: boolean) => {
@@ -57,6 +68,7 @@ export function NewSessionDialog(props: NewSessionDialogProps) {
                 );
                 setError(undefined);
                 setIsCreating(false);
+                setPermissionMode("workspace_write");
             }
         },
         [catalog, defaultCwd],
@@ -73,6 +85,7 @@ export function NewSessionDialog(props: NewSessionDialogProps) {
             const selection = decodeProviderModelSelection(modelSelection);
             const response = await createSession({
                 cwd: trimmedCwd,
+                permissionMode,
                 ...(selection !== undefined
                     ? { modelId: selection.modelId, providerId: selection.providerId }
                     : {}),
@@ -88,7 +101,7 @@ export function NewSessionDialog(props: NewSessionDialogProps) {
             );
             setIsCreating(false);
         }
-    }, [cwd, isCreating, modelSelection, onSessionCreated, refreshSessions]);
+    }, [cwd, isCreating, modelSelection, onSessionCreated, permissionMode, refreshSessions]);
 
     const canCreate = cwd.trim().length > 0 && !isCreating;
 
@@ -159,6 +172,35 @@ export function NewSessionDialog(props: NewSessionDialogProps) {
                                     )}
                                 </SelectContent>
                             </Select>
+                        </div>
+                        <div className="flex flex-col gap-1.5">
+                            <label
+                                htmlFor="new-session-permissions"
+                                className="text-xs font-medium text-muted-foreground"
+                            >
+                                Permissions
+                            </label>
+                            <Select
+                                onValueChange={(value) =>
+                                    setPermissionMode(value as PermissionMode)
+                                }
+                                value={permissionMode}
+                            >
+                                <SelectTrigger id="new-session-permissions" className="w-full">
+                                    <SelectValue placeholder="Workspace write" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {permissionModeOptions.map((option) => (
+                                        <SelectItem key={option.value} value={option.value}>
+                                            {option.label}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                            <p className="text-xs leading-relaxed text-muted-foreground">
+                                {selectedPermissionMode?.description ??
+                                    "Writes stay in the working directory."}
+                            </p>
                         </div>
                         {error !== undefined && (
                             <p className="text-[13px] leading-5 text-destructive">{error}</p>

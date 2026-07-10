@@ -13,6 +13,7 @@ export async function writeRuntimeConfig(path: string, config: PartialRigConfig)
             instructions?: string;
             model?: string;
             provider?: string;
+            permission_mode?: string;
         };
         settings?: {
             show_reasoning?: boolean;
@@ -32,6 +33,9 @@ export async function writeRuntimeConfig(path: string, config: PartialRigConfig)
         }
         if (defaults.instructions !== undefined) {
             document.defaults.instructions = defaults.instructions;
+        }
+        if (defaults.permissionMode !== undefined) {
+            document.defaults.permission_mode = defaults.permissionMode;
         }
     }
 

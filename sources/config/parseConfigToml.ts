@@ -1,6 +1,7 @@
 import { parse, TomlDate, type TomlTable, type TomlValue } from "smol-toml";
 
 import type { PartialConfigDefaults, PartialConfigSettings, PartialRigConfig } from "./types.js";
+import { isPermissionMode, type PermissionMode } from "../permissions/index.js";
 
 export function parseConfigToml(source: string): PartialRigConfig {
     const defaults: PartialConfigDefaults = {};
@@ -28,6 +29,9 @@ export function parseConfigToml(source: string): PartialRigConfig {
         if (instructions !== undefined) {
             defaults.instructions = instructions;
         }
+
+        const permissionMode = readPermissionMode(defaultsTable, "permission_mode");
+        if (permissionMode !== undefined) defaults.permissionMode = permissionMode;
     }
 
     const settingsTable = table.settings;
@@ -42,6 +46,11 @@ export function parseConfigToml(source: string): PartialRigConfig {
         ...(Object.keys(defaults).length > 0 ? { defaults } : {}),
         ...(Object.keys(settings).length > 0 ? { settings } : {}),
     };
+}
+
+function readPermissionMode(table: TomlTable, key: string): PermissionMode | undefined {
+    const value = readString(table, key);
+    return isPermissionMode(value) ? value : undefined;
 }
 
 function isTomlTable(value: TomlValue | undefined): value is TomlTable {

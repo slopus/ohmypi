@@ -17,6 +17,7 @@ import type {
 } from "../protocol/index.js";
 import type { Message } from "../agent/types.js";
 import type { Model } from "../providers/types.js";
+import { parsePermissionMode } from "../permissions/index.js";
 import {
     InMemorySession,
     type InMemorySessionPersistence,
@@ -174,6 +175,7 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
                     cwd,
                     provider_id,
                     model_id,
+                    permission_mode,
                     effort,
                     status,
                     title,
@@ -205,6 +207,7 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
                 cwd: readString(row, "cwd"),
                 providerId: readString(row, "provider_id"),
                 modelId: readString(row, "model_id"),
+                permissionMode: parsePermissionMode(readString(row, "permission_mode")),
                 ...(effort !== undefined ? { effort } : {}),
                 status: readString(row, "status") as SessionSummary["status"],
                 titleStatus: readString(row, "title_status") as SessionTitleStatus,
@@ -317,6 +320,7 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
                     instructions,
                     status,
                     active_run_id,
+                    permission_mode,
                     context_messages_json,
                     models_json,
                     tools_json,
@@ -329,7 +333,7 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
                     created_at_ms,
                     updated_at_ms
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                     agent_id = excluded.agent_id,
                     session_kind = excluded.session_kind,
@@ -345,6 +349,7 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
                     instructions = excluded.instructions,
                     status = excluded.status,
                     active_run_id = excluded.active_run_id,
+                    permission_mode = excluded.permission_mode,
                     context_messages_json = excluded.context_messages_json,
                     models_json = excluded.models_json,
                     tools_json = excluded.tools_json,
@@ -373,6 +378,7 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
                 state.instructions ?? null,
                 state.status,
                 state.activeRunId ?? null,
+                state.permissionMode,
                 state.contextMessages === undefined ? null : JSON.stringify(state.contextMessages),
                 JSON.stringify(state.models),
                 JSON.stringify(state.tools),
@@ -481,6 +487,7 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
                 status TEXT NOT NULL,
                 active_run_id TEXT,
                 last_event_id TEXT,
+                permission_mode TEXT NOT NULL DEFAULT 'workspace_write',
                 context_messages_json TEXT,
                 models_json TEXT NOT NULL,
                 tools_json TEXT NOT NULL,
@@ -542,6 +549,7 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
         this.#ensureSessionColumn("parent_tool_call_id", "TEXT");
         this.#ensureSessionColumn("description", "TEXT");
         this.#ensureSessionColumn("context_messages_json", "TEXT");
+        this.#ensureSessionColumn("permission_mode", "TEXT NOT NULL DEFAULT 'workspace_write'");
         this.#database.exec(`
             CREATE INDEX IF NOT EXISTS sessions_parent_created
                 ON sessions(parent_session_id, created_at_ms)
@@ -635,6 +643,7 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
         const titleError = readOptionalString(row, "title_error");
         const activeRunId = readOptionalString(row, "active_run_id");
         const contextMessagesJson = readOptionalString(row, "context_messages_json");
+        const permissionMode = parsePermissionMode(readString(row, "permission_mode"));
         const parentSessionId = readOptionalString(row, "parent_session_id");
         const parentToolCallId = readOptionalString(row, "parent_tool_call_id");
         const description = readOptionalString(row, "description");
@@ -665,6 +674,7 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
             modelId,
             models: JSON.parse(readString(row, "models_json")) as Model[],
             providerId: readString(row, "provider_id"),
+            permissionMode,
             queuedRuns: this.#loadQueuedRuns(sessionId),
             status: readString(row, "status") as PersistedSessionState["status"],
             ...(title !== undefined ? { title } : {}),

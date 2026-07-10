@@ -71,6 +71,43 @@ describe("createProtocolHttpServer", () => {
         }
     });
 
+    it("changes session permissions through a dedicated endpoint", async () => {
+        const { client, close } = await startServer();
+        try {
+            const created = await client.createSession({ cwd: "/tmp/rig-protocol-test" });
+
+            const changed = await client.changePermissionMode(created.session.id, {
+                permissionMode: "read_only",
+            });
+            const events = await client.getEvents(created.session.id, created.session.lastEventId);
+
+            expect(changed.session.permissionMode).toBe("read_only");
+            expect(events.events.at(-1)).toMatchObject({
+                data: { permissionMode: "read_only" },
+                type: "permission_mode_changed",
+            });
+        } finally {
+            await close();
+        }
+    });
+
+    it("rejects unknown permission modes", async () => {
+        const { client, close } = await startServer();
+        try {
+            const created = await client.createSession({ cwd: "/tmp/rig-protocol-test" });
+
+            await expect(
+                client.changePermissionMode(created.session.id, {
+                    permissionMode: "unrestricted" as "full_access",
+                }),
+            ).rejects.toThrow(
+                "Permission mode must be Workspace write, Read only, or Full access.",
+            );
+        } finally {
+            await close();
+        }
+    });
+
     it("compacts sessions through a dedicated endpoint", async () => {
         const { client, close } = await startServer();
         try {
@@ -282,6 +319,7 @@ function readOnlySubagentState(): PersistedSessionState {
         modelId: modelOpenaiGpt55.id,
         models: [],
         providerId: "codex",
+        permissionMode: "workspace_write",
         queuedRuns: [],
         status: "completed",
         title: "Inspect the protocol",

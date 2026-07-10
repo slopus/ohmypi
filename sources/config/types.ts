@@ -1,8 +1,11 @@
+import type { PermissionMode } from "../permissions/index.js";
+
 export interface ConfigDefaults {
     effort?: string;
     instructions?: string;
     modelId: string;
     providerId?: string;
+    permissionMode: PermissionMode;
 }
 
 export interface PartialConfigDefaults {
@@ -10,6 +13,7 @@ export interface PartialConfigDefaults {
     instructions?: string;
     modelId?: string;
     providerId?: string;
+    permissionMode?: PermissionMode;
 }
 
 export interface ConfigSettings {

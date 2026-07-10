@@ -68,6 +68,26 @@ describe("PersistentSessionStore", () => {
         }
     });
 
+    it("persists the permission mode in session details and summaries", async () => {
+        const { cleanup, databasePath } = await createDatabasePath();
+        try {
+            const store = new PersistentSessionStore({ databasePath });
+            const state = sessionState({ permissionMode: "read_only" });
+            store.saveSession(state);
+            store.close();
+
+            const restoredStore = new PersistentSessionStore({ databasePath });
+            try {
+                expect(restoredStore.get(state.id)?.snapshot().permissionMode).toBe("read_only");
+                expect(restoredStore.list().at(0)?.permissionMode).toBe("read_only");
+            } finally {
+                restoredStore.close();
+            }
+        } finally {
+            await cleanup();
+        }
+    });
+
     it("persists a fallback when a restored model is no longer available", async () => {
         const { cleanup, databasePath } = await createDatabasePath();
         const availableModel = defineModel({
@@ -571,6 +591,7 @@ function sessionState(overrides: Partial<PersistedSessionState> = {}): Persisted
         modelId: "openai/gpt-5.5",
         models: [],
         providerId: "codex",
+        permissionMode: "workspace_write",
         queuedRuns: [],
         status: "idle",
         titleStatus: "idle",
