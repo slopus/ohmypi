@@ -9,7 +9,6 @@ export type { CodingAssistantRuntime } from "./CodingAssistantRuntime.js";
 export { createCodingAssistantAgent } from "./createCodingAssistantAgent.js";
 export type { CreateCodingAssistantAgentOptions } from "./createCodingAssistantAgent.js";
 export { createDefaultInstructions } from "./createDefaultInstructions.js";
-export { isMainModule } from "./isMainModule.js";
 export { main } from "./main.js";
 export { runDaemonCommand } from "./runDaemonCommand.js";
 export { runMonit } from "./runMonit.js";
