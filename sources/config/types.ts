@@ -1,4 +1,5 @@
 import type { PermissionMode } from "../permissions/index.js";
+import type { McpServerConfig } from "../mcp/types.js";
 
 export interface ConfigDefaults {
     effort?: string;
@@ -26,11 +27,13 @@ export interface PartialConfigSettings {
 
 export interface RigConfig {
     defaults: ConfigDefaults;
+    mcpServers: Readonly<Record<string, McpServerConfig>>;
     settings: ConfigSettings;
 }
 
 export interface PartialRigConfig {
     defaults?: PartialConfigDefaults;
+    mcpServers?: Readonly<Record<string, McpServerConfig>>;
     settings?: PartialConfigSettings;
 }
 

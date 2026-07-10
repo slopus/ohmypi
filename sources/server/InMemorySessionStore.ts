@@ -12,8 +12,10 @@ import { AgentSessionManager } from "./AgentSessionManager.js";
 import { InMemorySession } from "./InMemorySession.js";
 import { createModelCatalog } from "./createModelCatalog.js";
 import type { SessionStore } from "./SessionStore.js";
+import type { McpToolProvider } from "../mcp/index.js";
 
 export interface InMemorySessionStoreOptions {
+    mcpToolProvider?: McpToolProvider;
     modelCatalog?: ModelCatalog;
 }
 
@@ -21,10 +23,12 @@ export class InMemorySessionStore implements SessionStore {
     #agentManager: AgentSessionManager;
     #createEventId = createEventIdFactory();
     #modelCatalog: ModelCatalog;
+    #mcpToolProvider: McpToolProvider | undefined;
     #sessions = new Map<string, InMemorySession>();
 
     constructor(options: InMemorySessionStoreOptions = {}) {
         this.#modelCatalog = options.modelCatalog ?? createModelCatalog();
+        this.#mcpToolProvider = options.mcpToolProvider;
         this.#agentManager = new AgentSessionManager({
             repository: {
                 createSubagent: (request, metadata) => this.#createSession(request, metadata),
@@ -55,6 +59,9 @@ export class InMemorySessionStore implements SessionStore {
             agentManager: this.#agentManager,
             createEventId: this.#createEventId,
             modelCatalog: this.#modelCatalog,
+            ...(this.#mcpToolProvider !== undefined
+                ? { mcpToolProvider: this.#mcpToolProvider }
+                : {}),
             ...(metadata !== undefined ? { metadata } : {}),
             request,
         });

@@ -34,6 +34,7 @@ import type {
 } from "../protocol/index.js";
 import type { Model, StopReason } from "../providers/types.js";
 import type { UserInputRequest, UserInputResponse } from "../user-input/index.js";
+import { mergeMcpTools, type McpServerSummary, type McpToolProvider } from "../mcp/index.js";
 import {
     DEFAULT_PERMISSION_MODE,
     parsePermissionMode,
@@ -99,6 +100,7 @@ export interface InMemorySessionOptions {
     now?: () => number;
     modelCatalog: ModelCatalog;
     metadata?: SessionAgentMetadata;
+    mcpToolProvider?: McpToolProvider;
     onAppendEvent?: (event: SessionEvent) => void;
     persistence?: InMemorySessionPersistence;
     request: CreateSessionRequest;
@@ -145,6 +147,9 @@ export class InMemorySession {
     #interruption: SessionInterruption | undefined;
     #lastMessageAt: number | undefined;
     #messages: PersistedSessionMessage[] = [];
+    #mcpLoaded = false;
+    #mcpServers: readonly McpServerSummary[] = [];
+    #mcpToolProvider: McpToolProvider | undefined;
     #modelCatalog: ModelCatalog;
     #modelId: string;
     #models: readonly Model[];
@@ -168,6 +173,7 @@ export class InMemorySession {
         this.#agentManager = options.agentManager;
         this.#createEventId = options.createEventId;
         this.#now = options.now ?? Date.now;
+        this.#mcpToolProvider = options.mcpToolProvider;
         this.#modelCatalog = options.modelCatalog;
         this.#persistence = options.persistence;
         this.#request = { ...options.request };
@@ -529,6 +535,7 @@ export class InMemorySession {
             pendingUserInputs: [...this.#pendingUserInputs.values()].map(
                 (pending) => pending.request,
             ),
+            mcpServers: this.#mcpServers,
             ...(snapshot.effort !== undefined ? { effort: snapshot.effort } : {}),
             ...(this.#title !== undefined ? { title: this.#title } : {}),
             ...(this.#titleError !== undefined ? { titleError: this.#titleError } : {}),
@@ -715,6 +722,24 @@ export class InMemorySession {
             return "aborted";
         }
         return "idle";
+    }
+
+    async #ensureMcpTools(runtime: CodingAssistantRuntime): Promise<void> {
+        if (this.#mcpLoaded) return;
+        if (this.#mcpToolProvider === undefined) {
+            this.#mcpLoaded = true;
+            return;
+        }
+
+        const loaded = await this.#mcpToolProvider.load(this.#request.cwd);
+        const merged = mergeMcpTools(runtime.agent.tools, loaded);
+        runtime.agent.setTools(merged.tools);
+        this.#tools = runtime.agent.tools.map((tool) => tool.name);
+        this.#mcpServers = merged.servers;
+        this.#mcpLoaded = true;
+        if (merged.servers.length > 0) {
+            this.#append("mcp_servers_changed", { servers: merged.servers });
+        }
     }
 
     #append<TType extends SessionEvent["type"]>(
@@ -959,6 +984,7 @@ export class InMemorySession {
 
         try {
             const runtime = this.#ensureRuntime();
+            await this.#ensureMcpTools(runtime);
             runtime.agent.enqueueMessage(queued.userMessage);
             if (this.#contextMessages !== undefined) {
                 this.#contextMessages = [...this.#contextMessages, queued.userMessage];

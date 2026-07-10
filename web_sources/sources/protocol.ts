@@ -243,6 +243,13 @@ export interface UserInputResponse {
     answers: Readonly<Record<string, readonly string[]>>;
 }
 
+export interface McpServerSummary {
+    errorMessage?: string;
+    name: string;
+    status: "connected" | "disabled" | "failed";
+    toolCount: number;
+}
+
 export type SessionTitleStatus = "idle" | "generating" | "ready" | "error";
 
 export type SessionInterruptionReason = "crash" | "shutdown";
@@ -310,6 +317,7 @@ export interface ProtocolSession {
     agent: SessionAgentMetadata;
     snapshot: AgentSnapshot;
     pendingUserInputs: readonly UserInputRequest[];
+    mcpServers: readonly McpServerSummary[];
 }
 
 export interface SubagentSummary {
@@ -544,6 +552,11 @@ export type UserInputResolvedEvent = BaseSessionEvent<
     }
 >;
 
+export type McpServersChangedEvent = BaseSessionEvent<
+    "mcp_servers_changed",
+    { servers: readonly McpServerSummary[] }
+>;
+
 export type SubagentChangedEvent = BaseSessionEvent<
     "subagent_changed",
     {
@@ -567,4 +580,5 @@ export type SessionEvent =
     | PermissionModeChangedEvent
     | UserInputRequestedEvent
     | UserInputResolvedEvent
+    | McpServersChangedEvent
     | SubagentChangedEvent;

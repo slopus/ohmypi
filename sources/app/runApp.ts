@@ -112,6 +112,7 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
         agent,
         cwd: sessionCwd,
         initialSessionEvents: history.events,
+        initialMcpServers: session.session.mcpServers,
         initialUserInputs: session.session.pendingUserInputs,
         modelLocked: session.session.modelLocked,
         onDefaultModelChange: (preference) =>

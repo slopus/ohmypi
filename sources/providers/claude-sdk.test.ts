@@ -98,6 +98,35 @@ describe("Claude SDK provider", () => {
         expect(calls[0]?.options?.mcpServers).toHaveProperty("rig");
     });
 
+    it("exposes tools added to the agent after the provider is created", async () => {
+        const harness = createJustBashToolHarness();
+        const calls: Parameters<ClaudeSdkQuery>[0][] = [];
+        const provider = createClaudeSdkProvider({
+            agentContext: harness.context,
+            pathToClaudeCodeExecutable: "/test/claude",
+            tools: [],
+            query: ((params) => {
+                calls.push(params);
+                return fakeClaudeQuery([successfulResult("ok")]);
+            }) as ClaudeSdkQuery,
+        });
+
+        await provider
+            .stream(modelAnthropicFable5, {
+                messages: [{ role: "user", content: "Use the dynamic tool.", timestamp: 1 }],
+                tools: [
+                    {
+                        description: "A dynamically discovered MCP tool.",
+                        name: "mcp__docs__search",
+                        parameters: Type.Object({ query: Type.String() }),
+                    },
+                ],
+            })
+            .result();
+
+        expect(calls[0]?.options?.allowedTools).toEqual(["mcp__rig__mcp__docs__search"]);
+    });
+
     it("streams Claude partial assistant text deltas before the final result", async () => {
         const harness = createJustBashToolHarness();
         const provider = createClaudeSdkProvider({

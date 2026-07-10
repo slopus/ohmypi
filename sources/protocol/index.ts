@@ -1,4 +1,5 @@
 export type { EventId } from "./EventId.js";
+export type { McpServerSummary } from "../mcp/index.js";
 export { createEventIdFactory, type EventIdFactoryOptions } from "./createEventIdFactory.js";
 export type {
     AbortRequestedEvent,
@@ -21,6 +22,7 @@ export type {
     HealthResponse,
     ModelCatalog,
     MessageSubmittedEvent,
+    McpServersChangedEvent,
     ModelChangedEvent,
     PermissionModeChangedEvent,
     ProviderModelCatalog,

@@ -1,6 +1,7 @@
 import { parse, TomlDate, type TomlTable, type TomlValue } from "smol-toml";
 
 import type { PartialConfigDefaults, PartialConfigSettings, PartialRigConfig } from "./types.js";
+import type { McpServerConfig } from "../mcp/types.js";
 import { isPermissionMode, type PermissionMode } from "../permissions/index.js";
 
 export function parseConfigToml(source: string): PartialRigConfig {
@@ -42,10 +43,113 @@ export function parseConfigToml(source: string): PartialRigConfig {
         }
     }
 
+    const mcpServers = readMcpServers(table.mcp_servers);
+
     return {
         ...(Object.keys(defaults).length > 0 ? { defaults } : {}),
+        ...(mcpServers !== undefined ? { mcpServers } : {}),
         ...(Object.keys(settings).length > 0 ? { settings } : {}),
     };
+}
+
+function readMcpServers(value: TomlValue | undefined): Record<string, McpServerConfig> | undefined {
+    if (!isTomlTable(value)) return undefined;
+    const servers: Record<string, McpServerConfig> = {};
+    for (const [name, rawServer] of Object.entries(value)) {
+        if (!isTomlTable(rawServer)) {
+            throw new Error(`MCP server "${name}" must be a TOML table.`);
+        }
+        servers[name] = readMcpServer(name, rawServer);
+    }
+    return servers;
+}
+
+function readMcpServer(name: string, table: TomlTable): McpServerConfig {
+    const command = readString(table, "command");
+    const url = readString(table, "url");
+    if ((command === undefined) === (url === undefined)) {
+        throw new Error(`MCP server "${name}" must configure either command or url.`);
+    }
+
+    const common = {
+        ...readOptionalBoolean(table, "enabled"),
+        ...readOptionalSeconds(table, "startup_timeout_sec", "startupTimeoutMs"),
+        ...readOptionalSeconds(table, "tool_timeout_sec", "toolTimeoutMs"),
+        ...readOptionalStringArray(table, "enabled_tools", "enabledTools"),
+        ...readOptionalStringArray(table, "disabled_tools", "disabledTools"),
+    };
+    if (command !== undefined) {
+        return {
+            ...common,
+            ...readOptionalStringArray(table, "args", "args"),
+            ...readOptionalStringRecord(table, "env", "env"),
+            ...readOptionalString(table, "cwd", "cwd"),
+            command,
+            transport: "stdio",
+        };
+    }
+    return {
+        ...common,
+        ...readOptionalStringRecord(table, "http_headers", "headers"),
+        ...readOptionalString(table, "bearer_token_env_var", "bearerTokenEnvVar"),
+        transport: "http",
+        url: url ?? "",
+    };
+}
+
+function readOptionalBoolean(table: TomlTable, key: string): { enabled?: boolean } {
+    const value = table[key];
+    return typeof value === "boolean" ? { enabled: value } : {};
+}
+
+function readOptionalSeconds<TKey extends "startupTimeoutMs" | "toolTimeoutMs">(
+    table: TomlTable,
+    key: string,
+    outputKey: TKey,
+): Partial<Record<TKey, number>> {
+    const value = table[key];
+    if (value === undefined) return {};
+    if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+        throw new Error(`${key} must be a positive number.`);
+    }
+    return { [outputKey]: value * 1_000 } as Partial<Record<TKey, number>>;
+}
+
+function readOptionalString<TKey extends string>(
+    table: TomlTable,
+    key: string,
+    outputKey: TKey,
+): Partial<Record<TKey, string>> {
+    const value = readString(table, key);
+    return value === undefined ? {} : ({ [outputKey]: value } as Partial<Record<TKey, string>>);
+}
+
+function readOptionalStringArray<TKey extends string>(
+    table: TomlTable,
+    key: string,
+    outputKey: TKey,
+): Partial<Record<TKey, readonly string[]>> {
+    const value = table[key];
+    if (value === undefined) return {};
+    if (!Array.isArray(value) || value.some((entry) => typeof entry !== "string")) {
+        throw new Error(`${key} must be an array of strings.`);
+    }
+    return { [outputKey]: value } as unknown as Partial<Record<TKey, readonly string[]>>;
+}
+
+function readOptionalStringRecord<TKey extends string>(
+    table: TomlTable,
+    key: string,
+    outputKey: TKey,
+): Partial<Record<TKey, Readonly<Record<string, string>>>> {
+    const value = table[key];
+    if (value === undefined) return {};
+    if (!isTomlTable(value) || Object.values(value).some((entry) => typeof entry !== "string")) {
+        throw new Error(`${key} must contain string values.`);
+    }
+    return { [outputKey]: value as Record<string, string> } as Partial<
+        Record<TKey, Readonly<Record<string, string>>>
+    >;
 }
 
 function readPermissionMode(table: TomlTable, key: string): PermissionMode | undefined {

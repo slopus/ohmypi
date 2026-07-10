@@ -3,6 +3,7 @@ import { dirname } from "node:path";
 import { stringify } from "smol-toml";
 
 import { DEFAULT_RIG_CONFIG } from "./defaultConfig.js";
+import { serializeMcpServers } from "./serializeMcpServers.js";
 import type { RigConfig } from "./types.js";
 
 export async function createConfigFile(
@@ -27,6 +28,9 @@ export async function createConfigFile(
             settings: {
                 show_reasoning: config.settings.showReasoning,
             },
+            ...(Object.keys(config.mcpServers).length > 0
+                ? { mcp_servers: serializeMcpServers(config.mcpServers) }
+                : {}),
         }),
         { encoding: "utf8", flag: "wx" },
     );

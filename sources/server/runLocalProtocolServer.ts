@@ -7,6 +7,7 @@ import { prepareLocalServerDirectory } from "./prepareLocalServerDirectory.js";
 import { PersistentSessionStore } from "./PersistentSessionStore.js";
 import { readLocalServerToken } from "./readLocalServerToken.js";
 import { removeStaleSocket } from "./removeStaleSocket.js";
+import { McpClientManager } from "../mcp/index.js";
 
 export interface RunLocalProtocolServerOptions {
     socketPath?: string;
@@ -24,7 +25,12 @@ export async function runLocalProtocolServer(
     await removeStaleSocket(socketPath);
 
     const modelCatalog = createModelCatalog({ cwd: process.cwd() });
-    const store = new PersistentSessionStore({ databasePath: paths.databasePath, modelCatalog });
+    const mcpToolProvider = new McpClientManager();
+    const store = new PersistentSessionStore({
+        databasePath: paths.databasePath,
+        mcpToolProvider,
+        modelCatalog,
+    });
     let stopServer: (() => void) | undefined;
     const server = createProtocolHttpServer({
         modelCatalog,
@@ -76,7 +82,17 @@ export async function runLocalProtocolServer(
         });
     } finally {
         stopServer = undefined;
-        store.close();
+        try {
+            await mcpToolProvider.close();
+        } catch (error) {
+            console.error(
+                error instanceof Error
+                    ? `Failed to close MCP connections: ${error.message}`
+                    : `Failed to close MCP connections: ${String(error)}`,
+            );
+        } finally {
+            store.close();
+        }
     }
 }
 

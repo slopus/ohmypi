@@ -384,6 +384,7 @@ describe("CodingAssistantApp", () => {
             models: [gpt],
             providerId: "codex",
             permissionMode: "workspace_write",
+            mcpServers: [],
             pendingUserInputs: [],
             snapshot,
             status: "idle",
@@ -615,10 +616,10 @@ describe("CodingAssistantApp", () => {
         expect(rendered).toContain("Configure app settings.");
         expect(rendered).toContain("/permissions");
         expect(rendered).toContain("Choose filesystem, shell, and network access.");
+        expect(rendered).toContain("/mcp");
+        expect(rendered).toContain("Show configured MCP server connections.");
         expect(rendered).toContain("/new");
         expect(rendered).toContain("Reset this session and start fresh.");
-        expect(rendered).toContain("/exit");
-        expect(rendered).toContain("Close Rig.");
         expect(rendered).not.toContain("GPT Test Off •");
         expect(rendered).not.toContain("/quit");
 
@@ -626,6 +627,49 @@ describe("CodingAssistantApp", () => {
         const modelPicker = stripAnsi(app.render(80).join("\n"));
         expect(modelPicker).toContain("Choose Model");
         expect(modelPicker).not.toContain("/model");
+    });
+
+    it("shows MCP connection diagnostics from the mcp command", () => {
+        const model = defineModel({
+            id: "openai/gpt-test",
+            name: "GPT Test",
+            thinkingLevels: ["off"],
+            defaultThinkingLevel: "off",
+        });
+        const provider = defineProvider({
+            id: "codex",
+            models: [model],
+            stream() {
+                return streamText("unused");
+            },
+        });
+        const harness = createJustBashToolHarness();
+        const app = new CodingAssistantApp({
+            agent: new Agent({
+                provider,
+                modelId: model.id,
+                context: harness.context,
+                printToConsole: false,
+            }),
+            cwd: harness.context.fs.cwd,
+            initialMcpServers: [
+                { name: "docs", status: "connected", toolCount: 2 },
+                {
+                    errorMessage: "The server process exited.",
+                    name: "issues",
+                    status: "failed",
+                    toolCount: 0,
+                },
+            ],
+            processManager: new NativeProxessManager(),
+            tui: fakeTui(),
+        });
+
+        submit(app, "/mcp");
+
+        const rendered = stripAnsi(app.render(100).join("\n"));
+        expect(rendered).toContain("docs: connected with 2 tools");
+        expect(rendered).toContain("issues: could not connect — The server process exited.");
     });
 
     it("compacts conversation history from the compact command", async () => {

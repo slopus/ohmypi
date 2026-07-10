@@ -2,6 +2,7 @@ import type { RigConfig, PartialRigConfig } from "./types.js";
 
 export function mergeConfigValues(base: RigConfig, ...configs: PartialRigConfig[]): RigConfig {
     const defaults = { ...base.defaults };
+    const mcpServers = { ...base.mcpServers };
     const settings = { ...base.settings };
 
     for (const config of configs) {
@@ -23,7 +24,10 @@ export function mergeConfigValues(base: RigConfig, ...configs: PartialRigConfig[
         if (config.settings?.showReasoning !== undefined) {
             settings.showReasoning = config.settings.showReasoning;
         }
+        if (config.mcpServers !== undefined) {
+            Object.assign(mcpServers, config.mcpServers);
+        }
     }
 
-    return { defaults, settings };
+    return { defaults, mcpServers, settings };
 }

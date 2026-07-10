@@ -31,6 +31,12 @@ export function createSlashCommands(): SlashCommandItem[] {
             aliases: ["permission"],
         },
         {
+            value: "mcp",
+            label: "/mcp",
+            description: "Show configured MCP server connections.",
+            aliases: [],
+        },
+        {
             value: "new",
             label: "/new",
             description: "Reset this session and start fresh.",

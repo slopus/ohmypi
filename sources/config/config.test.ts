@@ -128,6 +128,7 @@ effort = "minimal"
                 settings: {
                     showReasoning: true,
                 },
+                mcpServers: {},
             });
             await writeRuntimeConfigDefaults(runtimePath, {
                 modelId: "openai/gpt-5.5",

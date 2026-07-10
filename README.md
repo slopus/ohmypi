@@ -27,6 +27,7 @@ rig stays close to pi and to upstream vendor behavior, but adds a curated defaul
 - Bundled subagents for common coding workflows.
 - Provider-aligned task planning with Codex `update_plan` and Claude `TodoWrite`.
 - Structured user questions with provider-aligned tools and terminal or web answer controls.
+- MCP tool servers over stdio or streamable HTTP, with Codex- and Claude-compatible configuration.
 - Background workers for longer-running or asynchronous tasks.
 - Workflow presets for repeated engineering operations.
 - Auto mode for hands-off execution when a project allows it.
@@ -135,6 +136,45 @@ permission_mode = "workspace_write"
 `RIG_PERMISSION_MODE` overrides the configured default for a newly created
 terminal session. Accepted values are `workspace_write`, `read_only`, and
 `full_access`.
+
+### MCP tool servers
+
+Rig discovers tools from MCP servers when a workspace first runs. Codex-style
+servers can be configured globally in `~/.config/rig/config.toml` or locally in
+`rig.toml`:
+
+```toml
+[mcp_servers.docs]
+command = "docs-mcp-server"
+args = ["--stdio"]
+tool_timeout_sec = 30
+
+[mcp_servers.issues]
+url = "https://example.com/mcp"
+bearer_token_env_var = "ISSUES_MCP_TOKEN"
+```
+
+Claude-style project configuration is also supported in `.mcp.json`:
+
+```json
+{
+    "mcpServers": {
+        "docs": {
+            "type": "stdio",
+            "command": "docs-mcp-server",
+            "args": ["--stdio"]
+        }
+    }
+}
+```
+
+Use `/mcp` in the terminal or the MCP servers section in the web inspector to
+check connection failures and discovered tool counts. Restart the daemon after
+changing MCP configuration. OAuth, legacy SSE transports, MCP prompts, and MCP
+resources are not yet supported.
+
+Only configure servers you trust. Stdio servers are local processes that receive
+the daemon environment and are not restricted by the session filesystem sandbox.
 
 ## Publishing
 

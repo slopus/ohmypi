@@ -333,6 +333,13 @@ function reduceServerEvent(state: ReducerState, event: SessionEvent): ReducerSta
                 },
             };
         }
+        case "mcp_servers_changed": {
+            if (state.session === undefined) return state;
+            return {
+                ...state,
+                session: { ...state.session, mcpServers: event.data.servers },
+            };
+        }
         case "subagent_changed": {
             return {
                 ...state,

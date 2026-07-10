@@ -102,6 +102,37 @@ export function DetailsTab(props: DetailsTabProps) {
                 />
             </DetailField>
 
+            {session.mcpServers.length > 0 && (
+                <DetailField label="MCP servers">
+                    <div className="space-y-2">
+                        {session.mcpServers.map((server) => (
+                            <div
+                                className="rounded-md border border-border/60 px-2.5 py-2"
+                                key={server.name}
+                            >
+                                <div className="flex items-center justify-between gap-3">
+                                    <span className="truncate font-mono text-xs text-foreground/90">
+                                        {server.name}
+                                    </span>
+                                    <span className="text-xs text-muted-foreground">
+                                        {server.status === "connected"
+                                            ? `${server.toolCount} tool${server.toolCount === 1 ? "" : "s"}`
+                                            : server.status === "disabled"
+                                              ? "Disabled"
+                                              : "Connection failed"}
+                                    </span>
+                                </div>
+                                {server.errorMessage !== undefined && (
+                                    <p className="mt-1 text-xs leading-relaxed text-destructive">
+                                        {server.errorMessage}
+                                    </p>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                </DetailField>
+            )}
+
             <Separator className="bg-border/60" />
 
             <div className="grid grid-cols-2 gap-4">

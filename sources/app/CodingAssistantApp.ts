@@ -26,7 +26,7 @@ import {
 } from "../agent/index.js";
 import { parseSkillFrontmatter } from "../agent/skills/parseSkillFrontmatter.js";
 import type { NativeProxessManager } from "../processes/index.js";
-import type { FileSearchResult, SessionEvent } from "../protocol/index.js";
+import type { FileSearchResult, McpServerSummary, SessionEvent } from "../protocol/index.js";
 import type { UserInputRequest, UserInputResponse } from "../user-input/index.js";
 import type { AppTranscriptEntry } from "./AppTranscriptEntry.js";
 import type {
@@ -44,6 +44,7 @@ import type { FileMentionContext } from "./findFileMentionContext.js";
 import { formatFileMention } from "./formatFileMention.js";
 import { humanizeReasoningLevel } from "./humanizeReasoningLevel.js";
 import { humanizePermissionMode } from "./humanizePermissionMode.js";
+import { humanizeToolName } from "./humanizeToolName.js";
 import {
     readClipboardImage,
     type ClipboardImage,
@@ -105,6 +106,7 @@ const MAX_TRANSCRIPT_ENTRIES = 500;
 export interface CodingAssistantAppOptions {
     agent: CodingAssistantAgentBackend;
     cwd: string;
+    initialMcpServers?: readonly McpServerSummary[];
     initialSessionEvents?: readonly SessionEvent[];
     initialUserInputs?: readonly UserInputRequest[];
     modelLocked?: boolean;
@@ -215,6 +217,7 @@ export class CodingAssistantApp implements Component, Focusable {
     #showReasoning: boolean;
     #sessionBacked: boolean;
     #modelLocked: boolean;
+    #mcpServers: readonly McpServerSummary[];
     #slashCommandSelectionIndex = 0;
     readonly #slashCommands = createSlashCommands();
     #skillCommands: SlashCommandItem[] = [];
@@ -247,6 +250,7 @@ export class CodingAssistantApp implements Component, Focusable {
         this.#sessionBacked = options.sessionBacked ?? false;
         this.#showReasoning = options.showReasoning ?? false;
         this.#modelLocked = options.modelLocked ?? !options.agent.canChangeModel;
+        this.#mcpServers = options.initialMcpServers ?? [];
         this.#tui = options.tui;
         this.#version = options.version ?? "0.0.0";
         this.#editor = new Editor(this.#tui, EDITOR_THEME, { paddingX: 0 });
@@ -364,6 +368,12 @@ export class CodingAssistantApp implements Component, Focusable {
 
         if (event.type === "user_input_resolved") {
             this.#removeUserInputRequest(event.data.requestId);
+            return;
+        }
+
+        if (event.type === "mcp_servers_changed") {
+            this.#mcpServers = event.data.servers;
+            this.#requestRender();
             return;
         }
 
@@ -944,6 +954,11 @@ export class CodingAssistantApp implements Component, Focusable {
             return true;
         }
 
+        if (prompt === "/mcp") {
+            this.#showMcpStatus();
+            return true;
+        }
+
         if (prompt === "/new") {
             this.#resetSession();
             return true;
@@ -975,6 +990,27 @@ export class CodingAssistantApp implements Component, Focusable {
         }
 
         return false;
+    }
+
+    #showMcpStatus(): void {
+        if (this.#mcpServers.length === 0) {
+            this.#appendEntry({
+                role: "event",
+                title: "MCP servers",
+                text: "No MCP servers have connected in this session.",
+            });
+            return;
+        }
+        const text = this.#mcpServers
+            .map((server) => {
+                if (server.status === "connected") {
+                    return `${server.name}: connected with ${server.toolCount} tool${server.toolCount === 1 ? "" : "s"}`;
+                }
+                if (server.status === "disabled") return `${server.name}: disabled`;
+                return `${server.name}: could not connect${server.errorMessage === undefined ? "" : ` — ${server.errorMessage}`}`;
+            })
+            .join("\n");
+        this.#appendEntry({ role: "event", title: "MCP servers", text });
     }
 
     async #compactSession(): Promise<void> {
@@ -2048,10 +2084,7 @@ export class CodingAssistantApp implements Component, Focusable {
     }
 
     #toolDisplayName(toolName: string): string {
-        const normalized = toolName.toLowerCase();
-        return normalized === "request_user_input" || normalized === "askuserquestion"
-            ? "Question"
-            : toolName;
+        return humanizeToolName(toolName);
     }
 
     #formatToolResult(block: ToolResultBlock): string {

@@ -28,9 +28,11 @@ import {
 import { AgentSessionManager } from "./AgentSessionManager.js";
 import { createModelCatalog } from "./createModelCatalog.js";
 import type { SessionStore } from "./SessionStore.js";
+import type { McpToolProvider } from "../mcp/index.js";
 
 export interface PersistentSessionStoreOptions {
     databasePath: string;
+    mcpToolProvider?: McpToolProvider;
     modelCatalog?: ModelCatalog;
     now?: () => number;
 }
@@ -40,11 +42,13 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
     #createEventId = createEventIdFactory();
     #database: DatabaseSync;
     #modelCatalog: ModelCatalog;
+    #mcpToolProvider: McpToolProvider | undefined;
     #now: () => number;
     #sessions = new Map<string, InMemorySession>();
 
     constructor(options: PersistentSessionStoreOptions) {
         this.#modelCatalog = options.modelCatalog ?? createModelCatalog();
+        this.#mcpToolProvider = options.mcpToolProvider;
         this.#now = options.now ?? Date.now;
         if (options.databasePath !== ":memory:") {
             mkdirSync(dirname(options.databasePath), { mode: 0o700, recursive: true });
@@ -108,6 +112,9 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
             createEventId: this.#createEventId,
             emitCreatedEvent: false,
             modelCatalog: this.#modelCatalog,
+            ...(this.#mcpToolProvider !== undefined
+                ? { mcpToolProvider: this.#mcpToolProvider }
+                : {}),
             ...(metadata !== undefined ? { metadata } : {}),
             onAppendEvent: (event) => this.#appendEvent(event),
             persistence: this,
@@ -698,6 +705,9 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
             createEventId: this.#createEventId,
             events: this.#loadEvents(sessionId),
             modelCatalog: this.#modelCatalog,
+            ...(this.#mcpToolProvider !== undefined
+                ? { mcpToolProvider: this.#mcpToolProvider }
+                : {}),
             onAppendEvent: (event) => this.#appendEvent(event),
             persistence: this,
             request,

@@ -37,6 +37,7 @@ import {
     type Model,
     type StopReason,
     type StreamOptions,
+    type Tool as ProviderTool,
     type Usage,
     type UserMessage,
 } from "./types.js";
@@ -218,13 +219,15 @@ export function createClaudeSdkProvider(options: ClaudeSdkProviderOptions) {
 function toolsForProviderContext(
     tools: readonly AnyDefinedTool[],
     context: Context,
-): readonly AnyDefinedTool[] {
-    if (context.tools === undefined) {
-        return tools;
-    }
-
-    const selectedToolNames = new Set(context.tools.map((tool) => tool.name));
-    return tools.filter((tool) => selectedToolNames.has(tool.name));
+): readonly ProviderTool[] {
+    return (
+        context.tools ??
+        tools.map((tool) => ({
+            description: tool.description,
+            name: tool.name,
+            parameters: tool.arguments,
+        }))
+    );
 }
 
 function toClaudeSdkOptions(options: {
@@ -233,7 +236,7 @@ function toClaudeSdkOptions(options: {
     model: Model;
     pathToClaudeCodeExecutable: string;
     streamOptions: StreamOptions | undefined;
-    tools: readonly AnyDefinedTool[];
+    tools: readonly ProviderTool[];
 }): ClaudeSdkOptions {
     const abortController = toAbortController(options.streamOptions?.signal);
     const mcpTools = options.tools.map(toClaudeSdkTool);
@@ -286,11 +289,11 @@ function toClaudeSdkOptions(options: {
     return sdkOptions;
 }
 
-function toClaudeSdkTool(sourceTool: AnyDefinedTool) {
+function toClaudeSdkTool(sourceTool: ProviderTool) {
     return defineSdkTool(
         sourceTool.name,
         sourceTool.description,
-        toZodRawShape(sourceTool.arguments),
+        toZodRawShape(sourceTool.parameters),
         async (): Promise<CallToolResult> =>
             textToolResult("Tool execution is handled by Rig.", true),
         { alwaysLoad: true },
