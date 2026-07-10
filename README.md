@@ -108,6 +108,22 @@ pnpm dev:web
 Open the Vite URL printed by `pnpm dev:web`, usually `http://127.0.0.1:5173`.
 The Vite dev server proxies `/api/*` to the local daemon socket.
 
+## Publishing
+
+Authenticate with npm once using `pnpm login`, then publish from a clean, up-to-date
+`main` branch with a single command:
+
+```sh
+pnpm release 0.1.0
+```
+
+The release command also accepts semantic version bumps such as `patch`, `minor`,
+and `major`. It checks npm authentication, runs the type checks and tests, builds
+the package, creates the release commit and tag, previews the package contents,
+pushes the release to `main`, publishes it publicly, and verifies the published
+version. If publishing is interrupted after the tag is pushed, rerun the command
+with the exact version to resume safely.
+
 ## License
 
 MIT License - see [LICENSE](LICENSE) for details.

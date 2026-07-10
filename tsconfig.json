@@ -23,5 +23,5 @@
         "types": ["node", "vitest/importMeta"],
         "verbatimModuleSyntax": true
     },
-    "include": ["sources/**/*.ts", "vite.config.ts"]
+    "include": ["scripts/**/*.ts", "sources/**/*.ts", "vite.config.ts"]
 }

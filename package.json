@@ -15,6 +15,9 @@
         "dist"
     ],
     "type": "module",
+    "publishConfig": {
+        "access": "public"
+    },
     "scripts": {
         "build": "tsc -p tsconfig.build.json && pnpm run build:web",
         "build:web": "vite build --config web_sources/vite.config.ts",
@@ -25,6 +28,7 @@
         "format": "oxfmt --write .",
         "format:check": "oxfmt --check .",
         "lint": "oxlint .",
+        "release": "tsx scripts/release.ts",
         "start": "node dist/main.js",
         "start:build": "pnpm build && node dist/main.js",
         "test": "vitest run",
