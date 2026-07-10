@@ -10,6 +10,7 @@ import type {
     HealthResponse,
     ListModelsResponse,
     ListSessionsResponse,
+    ListSubagentsResponse,
     ProtocolSession,
     SessionEvent,
     ShutdownServerResponse,
@@ -80,6 +81,10 @@ export class ProtocolHttpClient {
         const path =
             limit === undefined ? "/sessions" : `/sessions?limit=${encodeURIComponent(limit)}`;
         return this.#requestJson("GET", path);
+    }
+
+    listSubagents(sessionId: string): Promise<ListSubagentsResponse> {
+        return this.#requestJson("GET", `/sessions/${encodeURIComponent(sessionId)}/subagents`);
     }
 
     getSession(sessionId: string): Promise<{ session: ProtocolSession }> {

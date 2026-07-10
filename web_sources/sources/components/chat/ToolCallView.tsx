@@ -1,6 +1,9 @@
+import { ArrowRightIcon } from "lucide-react";
+
 import { Tool, ToolContent, ToolHeader, ToolInput, ToolOutput } from "@/components/ai/tool";
 import type { ToolState } from "@/components/ai/types";
-import type { ImageBlock, TextBlock, ToolResultBlock } from "@/protocol";
+import { Button } from "@/components/ui/button";
+import type { ImageBlock, SubagentSummary, TextBlock, ToolResultBlock } from "@/protocol";
 
 export interface ToolCallViewProps {
     /** Tool call arguments (may be partial while the call is still streaming). */
@@ -16,6 +19,10 @@ export interface ToolCallViewProps {
     name: string;
     /** Matching tool_result block, if the tool has finished. */
     result: ToolResultBlock | undefined;
+    /** Child session created by this tool call, when available. */
+    subagent?: SubagentSummary | undefined;
+    /** Opens the child session's read-only history. */
+    onOpenSubagent?: ((sessionId: string) => void) | undefined;
 }
 
 function toolStateFor(
@@ -42,7 +49,9 @@ export function ToolCallView({
     isSessionRunning = true,
     isStreamingArgs = false,
     name,
+    onOpenSubagent,
     result,
+    subagent,
 }: ToolCallViewProps) {
     const state = toolStateFor(result, isStreamingArgs, isSessionRunning);
 
@@ -60,10 +69,27 @@ export function ToolCallView({
 
     return (
         <Tool className="mb-0 w-full">
-            <ToolHeader state={state} title={name} />
+            <ToolHeader state={state} title={name === "Agent" ? "Subagent" : name} />
             {result !== undefined && result.display !== "" && (
                 <div className="border-t px-3 py-2 font-mono text-muted-foreground text-xs">
                     {result.display}
+                </div>
+            )}
+            {subagent !== undefined && onOpenSubagent !== undefined && (
+                <div className="flex items-center justify-between gap-3 border-t px-3 py-2">
+                    <span className="min-w-0 truncate text-xs text-muted-foreground">
+                        {subagent.description}
+                    </span>
+                    <Button
+                        className="shrink-0 gap-1.5"
+                        onClick={() => onOpenSubagent(subagent.id)}
+                        size="sm"
+                        type="button"
+                        variant="ghost"
+                    >
+                        View history
+                        <ArrowRightIcon className="size-3.5" />
+                    </Button>
                 </div>
             )}
             <ToolContent>

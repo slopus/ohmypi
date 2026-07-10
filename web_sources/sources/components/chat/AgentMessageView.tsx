@@ -3,7 +3,7 @@ import { Message, MessageContent } from "@/components/ai/message";
 import { Reasoning, ReasoningContent, ReasoningTrigger } from "@/components/ai/reasoning";
 import { Response } from "@/components/ai/response";
 import { ToolCallView } from "@/components/chat/ToolCallView";
-import type { AgentBlock, AgentMessage, ToolResultBlock } from "@/protocol";
+import type { AgentBlock, AgentMessage, SubagentSummary, ToolResultBlock } from "@/protocol";
 
 export interface AgentMessageViewProps {
     /** True while the session's run is active (idle result-less tool calls render as interrupted). */
@@ -11,6 +11,8 @@ export interface AgentMessageViewProps {
     message: AgentMessage;
     /** tool_result blocks from the whole transcript, keyed by toolCallId. */
     toolResults: ReadonlyMap<string, ToolResultBlock>;
+    subagentsByToolCallId?: ReadonlyMap<string, SubagentSummary>;
+    onOpenSubagent?: (sessionId: string) => void;
 }
 
 type VisibleAgentBlock = Exclude<AgentBlock, ToolResultBlock>;
@@ -24,6 +26,8 @@ type VisibleAgentBlock = Exclude<AgentBlock, ToolResultBlock>;
 export function AgentMessageView({
     isSessionRunning,
     message,
+    onOpenSubagent,
+    subagentsByToolCallId,
     toolResults,
 }: AgentMessageViewProps) {
     const visibleBlocks = message.blocks.filter(
@@ -71,7 +75,9 @@ export function AgentMessageView({
                                     isSessionRunning={isSessionRunning}
                                     key={block.id}
                                     name={block.name}
+                                    onOpenSubagent={onOpenSubagent}
                                     result={toolResults.get(block.id)}
+                                    subagent={subagentsByToolCallId?.get(block.id)}
                                 />
                             );
                         }

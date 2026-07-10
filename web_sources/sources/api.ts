@@ -18,6 +18,7 @@ import type {
     HealthResponse,
     ListModelsResponse,
     ListSessionsResponse,
+    ListSubagentsResponse,
     ResetSessionResponse,
     SessionEvent,
     SubmitMessageRequest,
@@ -91,6 +92,12 @@ export function fetchModels(): Promise<ListModelsResponse> {
 export function fetchSessions(limit?: number): Promise<ListSessionsResponse> {
     const query = limit !== undefined ? `?limit=${limit}` : "";
     return requestJson<ListSessionsResponse>(`/sessions${query}`);
+}
+
+export function fetchSubagents(sessionId: string): Promise<ListSubagentsResponse> {
+    return requestJson<ListSubagentsResponse>(
+        `/sessions/${encodeURIComponent(sessionId)}/subagents`,
+    );
 }
 
 export function createSession(request: CreateSessionRequest): Promise<CreateSessionResponse> {

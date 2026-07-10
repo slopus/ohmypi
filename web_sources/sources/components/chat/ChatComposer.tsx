@@ -1,4 +1,4 @@
-import { Loader2Icon, SquareIcon } from "lucide-react";
+import { Loader2Icon, LockKeyholeIcon, SquareIcon } from "lucide-react";
 import { useCallback, useState } from "react";
 
 import {
@@ -32,6 +32,8 @@ export interface ChatComposerProps {
      * Resolves false when the send failed (the composer keeps the input).
      */
     onSubmit: (text: string, images: readonly ImageBlock[]) => Promise<boolean>;
+    /** Locks the composer while a subagent history is being viewed. */
+    readOnly: boolean;
 }
 
 interface ComposerActionsProps {
@@ -40,6 +42,7 @@ interface ComposerActionsProps {
     isAborting: boolean;
     isRunning: boolean;
     onAbort: () => void;
+    readOnly: boolean;
 }
 
 function ComposerActions({
@@ -48,8 +51,24 @@ function ComposerActions({
     isAborting,
     isRunning,
     onAbort,
+    readOnly,
 }: ComposerActionsProps) {
     const attachments = usePromptInputAttachments();
+
+    if (readOnly) {
+        return (
+            <Button
+                aria-label="Subagent history is read-only"
+                className="rounded-lg"
+                disabled
+                size="icon-sm"
+                type="button"
+                variant="outline"
+            >
+                <LockKeyholeIcon className="size-4" />
+            </Button>
+        );
+    }
 
     if (isRunning) {
         return (
@@ -94,13 +113,14 @@ export function ChatComposer({
     isRunning,
     onAbort,
     onSubmit,
+    readOnly,
 }: ChatComposerProps) {
     const [hasText, setHasText] = useState(false);
     const [attachmentError, setAttachmentError] = useState<string | undefined>(undefined);
 
     const handleSubmit = useCallback(
         async (message: PromptInputMessage) => {
-            if (isRunning) {
+            if (isRunning || readOnly) {
                 return;
             }
             const text = message.text.trim();
@@ -123,7 +143,7 @@ export function ChatComposer({
                 throw new Error("The message could not be sent.");
             }
         },
-        [isRunning, onSubmit],
+        [isRunning, onSubmit, readOnly],
     );
 
     const handleAttachmentError = useCallback(
@@ -148,18 +168,20 @@ export function ChatComposer({
                         {(attachment) => <PromptInputAttachment data={attachment} />}
                     </PromptInputAttachments>
                     <PromptInputTextarea
-                        disabled={!daemonReady}
+                        disabled={!daemonReady || readOnly}
                         onChange={(event) => setHasText(event.currentTarget.value.trim() !== "")}
                         placeholder={
-                            daemonReady
-                                ? "Message the agent…"
-                                : "Waiting for the daemon to become ready…"
+                            readOnly
+                                ? "Subagent history is read-only."
+                                : daemonReady
+                                  ? "Message the agent…"
+                                  : "Waiting for the daemon to become ready…"
                         }
                     />
                 </PromptInputBody>
                 <PromptInputToolbar>
                     <PromptInputTools>
-                        <PromptInputActionAddAttachments disabled={!daemonReady} />
+                        <PromptInputActionAddAttachments disabled={!daemonReady || readOnly} />
                     </PromptInputTools>
                     <ComposerActions
                         daemonReady={daemonReady}
@@ -167,12 +189,15 @@ export function ChatComposer({
                         isAborting={isAborting}
                         isRunning={isRunning}
                         onAbort={onAbort}
+                        readOnly={readOnly}
                     />
                 </PromptInputToolbar>
             </PromptInput>
             <div className="flex items-center justify-between px-1">
                 <p className="text-muted-foreground/70 text-xs">
-                    Enter to send · Shift+Enter for a new line · paste or attach images
+                    {readOnly
+                        ? "Subagent histories cannot receive follow-up messages."
+                        : "Enter to send · Shift+Enter for a new line · paste or attach images"}
                 </p>
                 {attachmentError !== undefined && (
                     <p className="text-destructive text-xs">{attachmentError}</p>

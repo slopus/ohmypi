@@ -17,6 +17,7 @@ import { AgentMessageView } from "@/components/chat/AgentMessageView";
 import { buildToolResultIndex } from "@/components/buildToolResultIndex";
 import { ChatComposer } from "@/components/chat/ChatComposer";
 import { StreamingMessageView } from "@/components/chat/StreamingMessageView";
+import { SubagentHistoryHeader } from "@/components/chat/SubagentHistoryHeader";
 import { UserMessageBubble } from "@/components/chat/UserMessageBubble";
 import type { ActiveSessionState } from "@/hooks/useActiveSession";
 import type { SessionInterruption } from "@/protocol";
@@ -29,8 +30,14 @@ export interface ChatPanelProps {
     activeSession: ActiveSessionState;
     /** True when the daemon reports ready; gates message submission. */
     daemonReady: boolean;
+    /** Navigation depth, available before child metadata finishes loading. */
+    historyDepth: number;
     /** Selected session id; undefined renders the "no session selected" state. */
     sessionId: string | undefined;
+    /** Returns from a subagent history to its immediate parent. */
+    onBackToParent: () => void;
+    /** Opens a direct child's read-only history. */
+    onOpenSubagent: (sessionId: string) => void;
 }
 
 function interruptionTitle(interruption: SessionInterruption): string {
@@ -39,7 +46,14 @@ function interruptionTitle(interruption: SessionInterruption): string {
         : "The daemon was shut down during a run";
 }
 
-export function ChatPanel({ activeSession, daemonReady, sessionId }: ChatPanelProps) {
+export function ChatPanel({
+    activeSession,
+    daemonReady,
+    historyDepth,
+    onBackToParent,
+    onOpenSubagent,
+    sessionId,
+}: ChatPanelProps) {
     const toolResults = useMemo(
         () => buildToolResultIndex(activeSession.messages),
         [activeSession.messages],
@@ -47,6 +61,17 @@ export function ChatPanel({ activeSession, daemonReady, sessionId }: ChatPanelPr
     const visibleMessages = useMemo(
         () => activeSession.messages.filter((message) => message.role !== "system"),
         [activeSession.messages],
+    );
+    const subagentsByToolCallId = useMemo(
+        () =>
+            new Map(
+                activeSession.subagents.flatMap((subagent) =>
+                    subagent.parentToolCallId === undefined
+                        ? []
+                        : [[subagent.parentToolCallId, subagent] as const],
+                ),
+            ),
+        [activeSession.subagents],
     );
 
     if (sessionId === undefined) {
@@ -65,20 +90,38 @@ export function ChatPanel({ activeSession, daemonReady, sessionId }: ChatPanelPr
 
     if (activeSession.isLoading) {
         return (
-            <section className="flex min-w-0 flex-1 flex-col items-center justify-center gap-3">
-                <Loader className="text-muted-foreground" size={20} />
-                <p className="text-muted-foreground text-sm">Loading conversation…</p>
+            <section className="flex min-w-0 flex-1 flex-col">
+                {historyDepth > 0 && (
+                    <SubagentHistoryHeader
+                        depth={historyDepth}
+                        description="Subagent history"
+                        onBack={onBackToParent}
+                    />
+                )}
+                <div className="flex flex-1 flex-col items-center justify-center gap-3">
+                    <Loader className="text-muted-foreground" size={20} />
+                    <p className="text-muted-foreground text-sm">Loading conversation…</p>
+                </div>
             </section>
         );
     }
 
     if (activeSession.loadError !== undefined) {
         return (
-            <section className="flex min-w-0 flex-1 flex-col items-center justify-center gap-3 p-8 text-center">
-                <CircleAlertIcon className="size-6 text-destructive" />
-                <div className="space-y-1">
-                    <h2 className="font-medium text-sm">The session could not be loaded</h2>
-                    <p className="text-muted-foreground text-sm">{activeSession.loadError}</p>
+            <section className="flex min-w-0 flex-1 flex-col">
+                {historyDepth > 0 && (
+                    <SubagentHistoryHeader
+                        depth={historyDepth}
+                        description="Subagent history"
+                        onBack={onBackToParent}
+                    />
+                )}
+                <div className="flex flex-1 flex-col items-center justify-center gap-3 p-8 text-center">
+                    <CircleAlertIcon className="size-6 text-destructive" />
+                    <div className="space-y-1">
+                        <h2 className="font-medium text-sm">The session could not be loaded</h2>
+                        <p className="text-muted-foreground text-sm">{activeSession.loadError}</p>
+                    </div>
                 </div>
             </section>
         );
@@ -88,6 +131,8 @@ export function ChatPanel({ activeSession, daemonReady, sessionId }: ChatPanelPr
     const hasPartialContent = partial !== undefined && partial.content.length > 0;
     const showLoader = activeSession.isRunning && !hasPartialContent;
     const interruption = activeSession.session?.interruption;
+    const session = activeSession.session;
+    const isSubagent = historyDepth > 0 || session?.agent.type === "subagent";
     const isEmpty =
         visibleMessages.length === 0 &&
         !hasPartialContent &&
@@ -98,6 +143,13 @@ export function ChatPanel({ activeSession, daemonReady, sessionId }: ChatPanelPr
 
     return (
         <section className="flex min-w-0 flex-1 flex-col">
+            {isSubagent && session !== undefined && (
+                <SubagentHistoryHeader
+                    depth={session.agent.depth}
+                    description={session.agent.description ?? session.title ?? "Delegated task"}
+                    onBack={onBackToParent}
+                />
+            )}
             {isEmpty ? (
                 <div className="flex flex-1 flex-col items-center justify-center gap-3 p-8 text-center">
                     <MessageSquareIcon className="size-6 text-muted-foreground" />
@@ -119,6 +171,8 @@ export function ChatPanel({ activeSession, daemonReady, sessionId }: ChatPanelPr
                                     isSessionRunning={activeSession.isRunning}
                                     key={message.id}
                                     message={message}
+                                    onOpenSubagent={onOpenSubagent}
+                                    subagentsByToolCallId={subagentsByToolCallId}
                                     toolResults={toolResults}
                                 />
                             ),
@@ -173,6 +227,7 @@ export function ChatPanel({ activeSession, daemonReady, sessionId }: ChatPanelPr
                         isRunning={activeSession.isRunning}
                         onAbort={() => void activeSession.abort()}
                         onSubmit={activeSession.submit}
+                        readOnly={isSubagent}
                     />
                 </div>
             </div>

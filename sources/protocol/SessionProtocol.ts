@@ -9,6 +9,17 @@ export type SessionTitleStatus = "idle" | "generating" | "ready" | "error";
 
 export type SessionInterruptionReason = "crash" | "shutdown";
 
+export type SessionAgentType = "primary" | "subagent";
+
+export interface SessionAgentMetadata {
+    depth: number;
+    rootSessionId: string;
+    type: SessionAgentType;
+    description?: string;
+    parentSessionId?: string;
+    parentToolCallId?: string;
+}
+
 export interface SessionInterruption {
     interruptedAt: number;
     message: string;
@@ -56,7 +67,21 @@ export interface ProtocolSession {
     titleStatus: SessionTitleStatus;
     interruption?: SessionInterruption;
     lastEventId?: EventId;
+    agent: SessionAgentMetadata;
     snapshot: AgentSnapshot;
+}
+
+export interface SubagentSummary {
+    agentId: string;
+    createdAt: number;
+    depth: number;
+    description: string;
+    id: string;
+    modelId: string;
+    parentSessionId: string;
+    parentToolCallId?: string;
+    status: SessionStatus;
+    updatedAt: number;
 }
 
 export interface SessionSummary {
@@ -89,6 +114,10 @@ export interface CreateSessionResponse {
 
 export interface ListSessionsResponse {
     sessions: readonly SessionSummary[];
+}
+
+export interface ListSubagentsResponse {
+    subagents: readonly SubagentSummary[];
 }
 
 export interface ShutdownServerResponse {
@@ -133,7 +162,8 @@ export type SessionEvent =
     | SessionResetEvent
     | SessionTitleChangedEvent
     | ModelChangedEvent
-    | EffortChangedEvent;
+    | EffortChangedEvent
+    | SubagentChangedEvent;
 
 export interface BaseSessionEvent<TType extends string, TData> {
     createdAt: number;
@@ -222,5 +252,12 @@ export type EffortChangedEvent = BaseSessionEvent<
         effort?: string;
         modelId: string;
         snapshot: AgentSnapshot;
+    }
+>;
+
+export type SubagentChangedEvent = BaseSessionEvent<
+    "subagent_changed",
+    {
+        subagent: SubagentSummary;
     }
 >;

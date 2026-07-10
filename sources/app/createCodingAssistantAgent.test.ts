@@ -49,4 +49,23 @@ describe("createCodingAssistantAgent", () => {
             "WebSearch",
         ]);
     });
+
+    it("exposes the Agent tool only while another nested level is available", () => {
+        const spawn = async () => ({
+            output: "done",
+            sessionId: "subagent-1",
+            status: "completed" as const,
+        });
+        const parent = createCodingAssistantAgent({
+            cwd: "/tmp/ohmypi-app-test",
+            subagents: { canSpawn: true, depth: 0, maxDepth: 3, spawn },
+        });
+        const deepest = createCodingAssistantAgent({
+            cwd: "/tmp/ohmypi-app-test",
+            subagents: { canSpawn: false, depth: 3, maxDepth: 3, spawn },
+        });
+
+        expect(parent.agent.tools.map((tool) => tool.name)).toContain("Agent");
+        expect(deepest.agent.tools.map((tool) => tool.name)).not.toContain("Agent");
+    });
 });

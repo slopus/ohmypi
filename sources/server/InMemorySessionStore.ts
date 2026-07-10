@@ -4,8 +4,11 @@ import type {
     ChangeModelRequest,
     CreateSessionRequest,
     ModelCatalog,
+    SessionAgentMetadata,
     SessionSummary,
+    SubagentSummary,
 } from "../protocol/index.js";
+import { AgentSessionManager } from "./AgentSessionManager.js";
 import { InMemorySession } from "./InMemorySession.js";
 import { createModelCatalog } from "./createModelCatalog.js";
 import type { SessionStore } from "./SessionStore.js";
@@ -15,12 +18,19 @@ export interface InMemorySessionStoreOptions {
 }
 
 export class InMemorySessionStore implements SessionStore {
+    #agentManager: AgentSessionManager;
     #createEventId = createEventIdFactory();
     #modelCatalog: ModelCatalog;
     #sessions = new Map<string, InMemorySession>();
 
     constructor(options: InMemorySessionStoreOptions = {}) {
         this.#modelCatalog = options.modelCatalog ?? createModelCatalog();
+        this.#agentManager = new AgentSessionManager({
+            repository: {
+                createSubagent: (request, metadata) => this.#createSession(request, metadata),
+                get: (sessionId) => this.get(sessionId),
+            },
+        });
     }
 
     changeEffort(sessionId: string, request: ChangeEffortRequest): InMemorySession | undefined {
@@ -34,9 +44,18 @@ export class InMemorySessionStore implements SessionStore {
     }
 
     create(request: CreateSessionRequest): InMemorySession {
+        return this.#createSession(request);
+    }
+
+    #createSession(
+        request: CreateSessionRequest,
+        metadata?: SessionAgentMetadata,
+    ): InMemorySession {
         const session = new InMemorySession({
+            agentManager: this.#agentManager,
             createEventId: this.#createEventId,
             modelCatalog: this.#modelCatalog,
+            ...(metadata !== undefined ? { metadata } : {}),
             request,
         });
         this.#sessions.set(session.id, session);
@@ -49,9 +68,17 @@ export class InMemorySessionStore implements SessionStore {
 
     list(options: { limit?: number } = {}): readonly SessionSummary[] {
         const sessions = [...this.#sessions.values()]
+            .filter((session) => !session.isSubagent())
             .map((session) => session.summary())
             .sort((left, right) => sortSummariesByActivity(left, right));
         return options.limit === undefined ? sessions : sessions.slice(0, options.limit);
+    }
+
+    listSubagents(parentSessionId: string): readonly SubagentSummary[] {
+        return [...this.#sessions.values()]
+            .filter((session) => session.agentMetadata().parentSessionId === parentSessionId)
+            .map((session) => session.subagentSummary())
+            .sort((left, right) => left.createdAt - right.createdAt);
     }
 
     changeModel(sessionId: string, request: ChangeModelRequest): InMemorySession | undefined {

@@ -13,6 +13,7 @@ describe("Claude SDK provider", () => {
         const calls: Parameters<ClaudeSdkQuery>[0][] = [];
         const provider = createClaudeSdkProvider({
             agentContext: harness.context,
+            pathToClaudeCodeExecutable: "/test/claude",
             tools: [
                 defineTool({
                     name: "Read",
@@ -87,6 +88,7 @@ describe("Claude SDK provider", () => {
         expect(calls[0]?.options?.env?.CLAUDE_AGENT_SDK_MCP_NO_PREFIX).toBe("1");
         expect(calls[0]?.options?.includePartialMessages).toBe(true);
         expect(calls[0]?.options?.permissionMode).toBe("dontAsk");
+        expect(calls[0]?.options?.pathToClaudeCodeExecutable).toBe("/test/claude");
         expect(calls[0]?.options?.persistSession).toBe(false);
         expect(calls[0]?.options?.settingSources).toEqual([]);
         expect(calls[0]?.options?.strictMcpConfig).toBe(true);

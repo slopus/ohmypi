@@ -25,6 +25,8 @@ export interface InspectorPanelProps {
      * ProtocolSession lacks). Undefined until the session list contains it.
      */
     summary: SessionSummary | undefined;
+    /** Opens a direct child's read-only history. */
+    onOpenSubagent: (sessionId: string) => void;
 }
 
 function PanelShell(props: { children: ReactNode }) {
@@ -116,8 +118,10 @@ export function InspectorPanel(props: InspectorPanelProps) {
                         changeModel={activeSession.changeModel}
                         isRunning={activeSession.isRunning}
                         messageCount={messageCount}
+                        onOpenSubagent={props.onOpenSubagent}
                         reset={activeSession.reset}
                         session={session}
+                        subagents={activeSession.subagents}
                         summary={props.summary}
                         toolCallCount={activity.length}
                     />

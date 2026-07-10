@@ -21,9 +21,11 @@ import type {
     ModelCatalog,
     ProtocolSession,
     SessionEvent,
+    SessionAgentMetadata,
     SessionInterruption,
     SessionStatus,
     SessionSummary,
+    SubagentSummary,
     SessionTitleStatus,
     SubmitMessageRequest,
     SubmitMessageResponse,
@@ -32,6 +34,7 @@ import type { Model, StopReason } from "../providers/types.js";
 import { generateSessionTitle } from "./generateSessionTitle.js";
 import { getProviderIdForModel } from "./getProviderIdForModel.js";
 import { SessionEventLog } from "./SessionEventLog.js";
+import type { AgentSessionManager } from "./AgentSessionManager.js";
 
 export interface PersistedSessionMessage {
     isPartial: boolean;
@@ -49,6 +52,7 @@ export interface PersistedQueuedRun {
 
 export interface PersistedSessionState {
     activeRunId?: string;
+    agent: SessionAgentMetadata;
     agentId: string;
     cwd: string;
     effort?: string;
@@ -77,11 +81,13 @@ export interface InMemorySessionPersistence {
 }
 
 export interface InMemorySessionOptions {
+    agentManager?: AgentSessionManager;
     createEventId: () => EventId;
     emitCreatedEvent?: boolean;
     events?: readonly SessionEvent[];
     now?: () => number;
     modelCatalog: ModelCatalog;
+    metadata?: SessionAgentMetadata;
     onAppendEvent?: (event: SessionEvent) => void;
     persistence?: InMemorySessionPersistence;
     request: CreateSessionRequest;
@@ -99,12 +105,19 @@ interface PartialMessageState {
     runId: string;
 }
 
+export interface SessionRunCompletion {
+    errorMessage?: string;
+    status: "aborted" | "completed" | "error";
+}
+
 export class InMemorySession {
     readonly events: SessionEventLog;
     readonly id: string;
 
     #activePartial: PartialMessageState | undefined;
     #activeRun: ActiveRun | undefined;
+    #agentManager: AgentSessionManager | undefined;
+    #agentMetadata: SessionAgentMetadata;
     #agentId: string;
     #createEventId: () => EventId;
     #draining: Promise<void> | undefined;
@@ -131,12 +144,19 @@ export class InMemorySession {
     #tools: readonly string[] = [];
 
     constructor(options: InMemorySessionOptions) {
+        this.#agentManager = options.agentManager;
         this.#createEventId = options.createEventId;
         this.#now = options.now ?? Date.now;
         this.#modelCatalog = options.modelCatalog;
         this.#persistence = options.persistence;
         this.#request = { ...options.request };
         this.id = options.restore?.id ?? createId();
+        this.#agentMetadata = options.restore?.agent ??
+            options.metadata ?? {
+                depth: 0,
+                rootSessionId: this.id,
+                type: "primary",
+            };
         this.#agentId = options.restore?.agentId ?? createId();
         this.#modelId =
             options.restore?.modelId ??
@@ -155,9 +175,11 @@ export class InMemorySession {
         this.#status = options.restore?.status ?? "idle";
         this.#lastMessageAt = options.restore?.lastMessageAt;
         this.#restoredActiveRunId = options.restore?.activeRunId;
-        this.#title = options.restore?.title;
+        this.#title = options.restore?.title ?? this.#agentMetadata.description;
         this.#titleError = options.restore?.titleError;
-        this.#titleStatus = options.restore?.titleStatus ?? "idle";
+        this.#titleStatus =
+            options.restore?.titleStatus ??
+            (this.#agentMetadata.description !== undefined ? "ready" : "idle");
         this.#tools = options.restore?.tools ?? [];
         this.#interruption = options.restore?.interruption;
         this.#queue = [...(options.restore?.queuedRuns ?? [])];
@@ -208,6 +230,10 @@ export class InMemorySession {
             });
         }
         return { aborted: true, eventId: event.id };
+    }
+
+    agentMetadata(): SessionAgentMetadata {
+        return { ...this.#agentMetadata };
     }
 
     changeModel(request: ChangeModelRequest): ProtocolSession {
@@ -310,6 +336,24 @@ export class InMemorySession {
         return this.snapshot();
     }
 
+    isSubagent(): boolean {
+        return this.#agentMetadata.type === "subagent";
+    }
+
+    recordSubagentChanged(subagent: SubagentSummary): void {
+        this.#append("subagent_changed", { subagent });
+    }
+
+    requestForSubagent(): CreateSessionRequest {
+        return {
+            cwd: this.#request.cwd,
+            ...(this.#effort !== undefined ? { effort: this.#effort } : {}),
+            ...(this.#instructions !== undefined ? { instructions: this.#instructions } : {}),
+            modelId: this.#modelId,
+            ...(this.#request.apiKey !== undefined ? { apiKey: this.#request.apiKey } : {}),
+        };
+    }
+
     snapshot(): ProtocolSession {
         const snapshot = this.#agentSnapshot();
         const lastEventId = this.events.lastEventId();
@@ -324,6 +368,7 @@ export class InMemorySession {
             status: this.#status,
             snapshot,
             titleStatus: this.#titleStatus,
+            agent: this.agentMetadata(),
             ...(snapshot.effort !== undefined ? { effort: snapshot.effort } : {}),
             ...(this.#title !== undefined ? { title: this.#title } : {}),
             ...(this.#titleError !== undefined ? { titleError: this.#titleError } : {}),
@@ -353,6 +398,7 @@ export class InMemorySession {
     state(): PersistedSessionState {
         const activeRunId = this.#activeRun?.runId ?? this.#restoredActiveRunId;
         const state: PersistedSessionState = {
+            agent: this.agentMetadata(),
             agentId: this.#agentId,
             cwd: this.#request.cwd,
             ...(this.#effort !== undefined ? { effort: this.#effort } : {}),
@@ -413,6 +459,56 @@ export class InMemorySession {
             runId,
             sessionId: this.id,
         };
+    }
+
+    subagentSummary(): SubagentSummary {
+        if (
+            this.#agentMetadata.type !== "subagent" ||
+            this.#agentMetadata.parentSessionId === undefined
+        ) {
+            throw new Error("Only subagent sessions have subagent summaries.");
+        }
+
+        return {
+            agentId: this.#agentId,
+            createdAt: this.events.firstCreatedAt() ?? this.#now(),
+            depth: this.#agentMetadata.depth,
+            description: this.#agentMetadata.description ?? "Delegated task",
+            id: this.id,
+            modelId: this.#modelId,
+            parentSessionId: this.#agentMetadata.parentSessionId,
+            ...(this.#agentMetadata.parentToolCallId !== undefined
+                ? { parentToolCallId: this.#agentMetadata.parentToolCallId }
+                : {}),
+            status: this.#status,
+            updatedAt: this.events.lastCreatedAt() ?? this.#now(),
+        };
+    }
+
+    waitForRun(runId: string): Promise<SessionRunCompletion> {
+        const completed = this.#completionForRun(runId);
+        if (completed !== undefined) {
+            return Promise.resolve(completed);
+        }
+
+        return new Promise((resolve) => {
+            const unsubscribe = this.events.subscribe((event) => {
+                if (
+                    (event.type !== "run_finished" && event.type !== "run_error") ||
+                    event.data.runId !== runId
+                ) {
+                    return;
+                }
+                unsubscribe();
+                resolve(
+                    event.type === "run_error"
+                        ? { errorMessage: event.data.errorMessage, status: "error" }
+                        : {
+                              status: event.data.stopReason === "aborted" ? "aborted" : "completed",
+                          },
+                );
+            });
+        });
     }
 
     #agentSnapshot(): AgentSnapshot {
@@ -536,6 +632,16 @@ export class InMemorySession {
         if (this.#effort !== undefined) options.effort = this.#effort;
         if (this.#instructions !== undefined) options.instructions = this.#instructions;
         if (this.#request.apiKey !== undefined) options.apiKey = this.#request.apiKey;
+        if (this.#agentManager !== undefined) {
+            options.subagents = {
+                canSpawn: this.#agentMetadata.depth < this.#agentManager.maxDepth,
+                depth: this.#agentMetadata.depth,
+                maxDepth: this.#agentManager.maxDepth,
+                spawn: (request, signal) =>
+                    this.#agentManager?.spawn(this.id, request, signal) ??
+                    Promise.reject(new Error("Subagent management is unavailable.")),
+            };
+        }
         const runtime = createCodingAssistantAgent(options);
         const snapshot = runtime.agent.snapshot();
         this.#runtime = runtime;
@@ -568,6 +674,27 @@ export class InMemorySession {
 
     #saveSession(): void {
         this.#persistence?.saveSession(this.state());
+    }
+
+    #completionForRun(runId: string): SessionRunCompletion | undefined {
+        const events = this.events.since(undefined) ?? [];
+        for (let index = events.length - 1; index >= 0; index -= 1) {
+            const event = events[index];
+            if (
+                event === undefined ||
+                (event.type !== "run_finished" && event.type !== "run_error") ||
+                event.data.runId !== runId
+            ) {
+                continue;
+            }
+            if (event.type === "run_error") {
+                return { errorMessage: event.data.errorMessage, status: "error" };
+            }
+            return {
+                status: event.data.stopReason === "aborted" ? "aborted" : "completed",
+            };
+        }
+        return undefined;
     }
 
     #modelLocked(): boolean {
@@ -617,13 +744,13 @@ export class InMemorySession {
 
     async #runQueued(queued: PersistedQueuedRun): Promise<void> {
         const controller = new AbortController();
-        const runtime = this.#ensureRuntime();
         this.#activeRun = { controller, runId: queued.runId };
         this.#restoredActiveRunId = undefined;
         this.#status = "running";
         this.#append("run_started", { runId: queued.runId });
 
         try {
+            const runtime = this.#ensureRuntime();
             runtime.agent.enqueueMessage(queued.userMessage);
             const result = await runtime.agent.run({
                 signal: controller.signal,

@@ -10,6 +10,7 @@ import type {
     HealthResponse,
     ListModelsResponse,
     ListSessionsResponse,
+    ListSubagentsResponse,
     ModelCatalog,
     SessionEvent,
     ShutdownServerResponse,
@@ -130,6 +131,20 @@ async function handleRequest(
 
     if (request.method === "GET" && route.name === "session") {
         sendJson(response, 200, { session: session.snapshot() });
+        return;
+    }
+
+    if (request.method === "GET" && route.name === "subagents") {
+        sendJson<ListSubagentsResponse>(response, 200, {
+            subagents: store.listSubagents(sessionId),
+        });
+        return;
+    }
+
+    if (session.isSubagent() && isSessionMutation(route.name, request.method)) {
+        sendJson(response, 409, {
+            error: "Subagent histories are read-only and cannot be resumed.",
+        });
         return;
     }
 
@@ -260,7 +275,8 @@ function matchRoute(pathname: string):
               | "model"
               | "reset"
               | "session"
-              | "stream";
+              | "stream"
+              | "subagents";
           sessionId: string;
       }
     | undefined {
@@ -285,7 +301,15 @@ function matchRoute(pathname: string):
     if (parts[2] === "model") return { name: "model", sessionId };
     if (parts[2] === "reset") return { name: "reset", sessionId };
     if (parts[2] === "stream") return { name: "stream", sessionId };
+    if (parts[2] === "subagents") return { name: "subagents", sessionId };
     return undefined;
+}
+
+function isSessionMutation(routeName: string, method: string | undefined): boolean {
+    return (
+        (method === "POST" && ["abort", "messages", "reset"].includes(routeName)) ||
+        (method === "PATCH" && ["effort", "model"].includes(routeName))
+    );
 }
 
 async function readJson<T>(request: IncomingMessage): Promise<T> {

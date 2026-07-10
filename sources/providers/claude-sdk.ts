@@ -25,6 +25,7 @@ import {
     modelAnthropicSonnet46,
     modelAnthropicSonnet461m,
 } from "./models.js";
+import { resolveClaudeCodeExecutablePath } from "./resolveClaudeCodeExecutablePath.js";
 import {
     defineProvider,
     type AssistantContent,
@@ -47,6 +48,7 @@ export type ClaudeSdkQuery = typeof defaultClaudeSdkQuery;
 
 export interface ClaudeSdkProviderOptions {
     agentContext: AgentContext;
+    pathToClaudeCodeExecutable?: string;
     tools?: readonly AnyDefinedTool[];
     query?: ClaudeSdkQuery;
     now?: () => number;
@@ -56,6 +58,8 @@ export function createClaudeSdkProvider(options: ClaudeSdkProviderOptions) {
     const query = options.query ?? defaultClaudeSdkQuery;
     const tools = options.tools ?? claudeCodeTools;
     const now = options.now ?? Date.now;
+    const pathToClaudeCodeExecutable =
+        options.pathToClaudeCodeExecutable ?? resolveClaudeCodeExecutablePath();
 
     return defineProvider({
         id: CLAUDE_SDK_PROVIDER_ID,
@@ -75,6 +79,7 @@ export function createClaudeSdkProvider(options: ClaudeSdkProviderOptions) {
                 agentContext: options.agentContext,
                 context,
                 model,
+                pathToClaudeCodeExecutable,
                 streamOptions,
                 tools: activeTools,
             });
@@ -199,6 +204,7 @@ function toClaudeSdkOptions(options: {
     agentContext: AgentContext;
     context: Context;
     model: Model;
+    pathToClaudeCodeExecutable: string;
     streamOptions: StreamOptions | undefined;
     tools: readonly AnyDefinedTool[];
 }): ClaudeSdkOptions {
@@ -224,6 +230,7 @@ function toClaudeSdkOptions(options: {
             }),
         },
         model: toClaudeSdkModelId(options.model.id),
+        pathToClaudeCodeExecutable: options.pathToClaudeCodeExecutable,
         env: {
             ...process.env,
             CLAUDE_CODE_DISABLE_BUNDLED_SKILLS: "1",

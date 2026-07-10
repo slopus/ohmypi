@@ -2,6 +2,7 @@ import type {
     ChangeEffortRequest,
     ChangeModelRequest,
     CreateSessionRequest,
+    SubagentSummary,
     SessionSummary,
 } from "../protocol/index.js";
 import type { InMemorySession } from "./InMemorySession.js";
@@ -12,4 +13,5 @@ export interface SessionStore {
     create(request: CreateSessionRequest): InMemorySession;
     get(sessionId: string): InMemorySession | undefined;
     list(options?: { limit?: number }): readonly SessionSummary[];
+    listSubagents(parentSessionId: string): readonly SubagentSummary[];
 }

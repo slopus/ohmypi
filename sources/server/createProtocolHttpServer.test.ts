@@ -8,6 +8,9 @@ import { ProtocolHttpClient } from "../client/ProtocolHttpClient.js";
 import { createEventIdFactory, type SessionEvent } from "../protocol/index.js";
 import { modelOpenaiGpt55 } from "../providers/models.js";
 import { InMemorySessionStore } from "./InMemorySessionStore.js";
+import type { PersistedSessionState } from "./InMemorySession.js";
+import { PersistentSessionStore } from "./PersistentSessionStore.js";
+import type { SessionStore } from "./SessionStore.js";
 import { createProtocolHttpServer } from "./createProtocolHttpServer.js";
 
 describe("createProtocolHttpServer", () => {
@@ -151,17 +154,40 @@ describe("createProtocolHttpServer", () => {
             await close();
         }
     });
+
+    it("serves subagent history but rejects attempts to resume it", async () => {
+        const store = new PersistentSessionStore({ databasePath: ":memory:" });
+        store.saveSession(readOnlySubagentState());
+        const { client, close } = await startServer({ store });
+        try {
+            const loaded = await client.getSession("subagent-1");
+
+            expect(loaded.session.agent).toMatchObject({
+                parentSessionId: "session-1",
+                type: "subagent",
+            });
+            await expect(
+                client.submitMessage("subagent-1", { text: "Continue working." }),
+            ).rejects.toThrow("read-only");
+            await expect(client.reset("subagent-1")).rejects.toThrow("read-only");
+        } finally {
+            await close();
+            store.close();
+        }
+    });
 });
 
-async function startServer(options: { onShutdown?: () => void } = {}): Promise<{
+async function startServer(
+    options: { onShutdown?: () => void; store?: SessionStore } = {},
+): Promise<{
     client: ProtocolHttpClient;
     close: () => Promise<void>;
     socketPath: string;
-    store: InMemorySessionStore;
+    store: SessionStore;
 }> {
     const directory = await mkdtemp(join(tmpdir(), "ohmypi-server-test-"));
     const socketPath = join(directory, "server.sock");
-    const store = new InMemorySessionStore();
+    const store = options.store ?? new InMemorySessionStore();
     const server = createProtocolHttpServer({
         ...(options.onShutdown !== undefined ? { onShutdown: options.onShutdown } : {}),
         store,
@@ -183,6 +209,30 @@ async function startServer(options: { onShutdown?: () => void } = {}): Promise<{
             await new Promise<void>((resolve) => server.close(() => resolve()));
             await rm(directory, { recursive: true, force: true });
         },
+    };
+}
+
+function readOnlySubagentState(): PersistedSessionState {
+    return {
+        agent: {
+            depth: 1,
+            description: "Inspect the protocol",
+            parentSessionId: "session-1",
+            rootSessionId: "session-1",
+            type: "subagent",
+        },
+        agentId: "agent-2",
+        cwd: "/tmp/ohmypi-protocol-test",
+        id: "subagent-1",
+        messages: [],
+        modelId: modelOpenaiGpt55.id,
+        models: [],
+        providerId: "codex",
+        queuedRuns: [],
+        status: "completed",
+        title: "Inspect the protocol",
+        titleStatus: "ready",
+        tools: [],
     };
 }
 

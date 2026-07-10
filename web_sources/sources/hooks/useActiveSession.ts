@@ -5,6 +5,7 @@ import {
     changeSessionEffort,
     changeSessionModel,
     fetchSession,
+    fetchSubagents,
     resetSession,
     streamSessionEvents,
     submitMessage,
@@ -16,8 +17,10 @@ import type {
     Message,
     ProtocolSession,
     SessionEvent,
+    SubagentSummary,
     UserMessage,
 } from "../protocol";
+import { upsertSubagentSummary } from "../upsertSubagentSummary";
 
 /**
  * Return value of {@link useActiveSession}. Instantiate ONCE (in App.tsx) and
@@ -55,6 +58,8 @@ export interface ActiveSessionState {
     streamingPartial: AssistantMessage | undefined;
     /** Set when the daemon permanently rejected the event stream. */
     streamError: string | undefined;
+    /** Direct child agents whose histories can be opened from this session. */
+    subagents: readonly SubagentSummary[];
     /**
      * Submits a user message. Images become leading ImageBlocks in `content`
      * (base64 data without the `data:` prefix), followed by the text block
@@ -81,13 +86,18 @@ interface ReducerState {
     session: ProtocolSession | undefined;
     streamError: string | undefined;
     streamingPartial: AssistantMessage | undefined;
+    subagents: readonly SubagentSummary[];
     /** Run ids already echoed via message_submitted (guards submit/echo races). */
     submittedRunIds: readonly string[];
 }
 
 type ReducerAction =
     | { type: "reset_for_session" }
-    | { type: "session_loaded"; session: ProtocolSession }
+    | {
+          type: "session_loaded";
+          session: ProtocolSession;
+          subagents: readonly SubagentSummary[];
+      }
     | { type: "load_failed"; errorMessage: string }
     | { type: "server_event"; event: SessionEvent }
     | { type: "stream_rejected"; errorMessage: string }
@@ -107,6 +117,7 @@ const initialState: ReducerState = {
     session: undefined,
     streamError: undefined,
     streamingPartial: undefined,
+    subagents: [],
     submittedRunIds: [],
 };
 
@@ -279,6 +290,12 @@ function reduceServerEvent(state: ReducerState, event: SessionEvent): ReducerSta
             }
             return { ...state, session };
         }
+        case "subagent_changed": {
+            return {
+                ...state,
+                subagents: upsertSubagentSummary(state.subagents, event.data.subagent),
+            };
+        }
     }
 }
 
@@ -293,6 +310,7 @@ function reduce(state: ReducerState, action: ReducerAction): ReducerState {
                 isLoading: false,
                 messages: action.session.snapshot.messages,
                 session: action.session,
+                subagents: action.subagents,
             };
         }
         case "load_failed": {
@@ -388,8 +406,18 @@ export function useActiveSession(sessionId: string | undefined): ActiveSessionSt
         const run = async () => {
             let session: ProtocolSession;
             try {
-                const response = await fetchSession(sessionId);
+                const [response, subagentsResponse] = await Promise.all([
+                    fetchSession(sessionId),
+                    fetchSubagents(sessionId),
+                ]);
                 session = response.session;
+                if (!controller.signal.aborted) {
+                    dispatch({
+                        type: "session_loaded",
+                        session,
+                        subagents: subagentsResponse.subagents,
+                    });
+                }
             } catch (error) {
                 if (!controller.signal.aborted) {
                     dispatch({
@@ -402,7 +430,6 @@ export function useActiveSession(sessionId: string | undefined): ActiveSessionSt
             if (controller.signal.aborted) {
                 return;
             }
-            dispatch({ type: "session_loaded", session });
 
             await streamSessionEvents(
                 sessionId,
@@ -415,11 +442,18 @@ export function useActiveSession(sessionId: string | undefined): ActiveSessionSt
                     // The daemon forgot our cursor (event log wiped): reseed
                     // the transcript and reconnect from the fresh cursor.
                     onCursorInvalid: async () => {
-                        const response = await fetchSession(sessionId);
+                        const [response, subagentsResponse] = await Promise.all([
+                            fetchSession(sessionId),
+                            fetchSubagents(sessionId),
+                        ]);
                         if (controller.signal.aborted) {
                             return undefined;
                         }
-                        dispatch({ type: "session_loaded", session: response.session });
+                        dispatch({
+                            type: "session_loaded",
+                            session: response.session,
+                            subagents: subagentsResponse.subagents,
+                        });
                         return response.session.lastEventId;
                     },
                     onStreamRejected: (status) => {
@@ -441,7 +475,7 @@ export function useActiveSession(sessionId: string | undefined): ActiveSessionSt
 
     const submit = useCallback(
         async (text: string, images?: readonly ImageBlock[]) => {
-            if (sessionId === undefined) {
+            if (sessionId === undefined || state.session?.agent.type === "subagent") {
                 return false;
             }
             const localId = `optimistic-${crypto.randomUUID()}`;
@@ -477,7 +511,7 @@ export function useActiveSession(sessionId: string | undefined): ActiveSessionSt
                 return false;
             }
         },
-        [sessionId],
+        [sessionId, state.session?.agent.type],
     );
 
     const abort = useCallback(async () => {
@@ -548,6 +582,7 @@ export function useActiveSession(sessionId: string | undefined): ActiveSessionSt
         session: state.session,
         streamError: state.streamError,
         streamingPartial: state.streamingPartial,
+        subagents: state.subagents,
         submit,
     };
 }

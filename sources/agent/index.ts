@@ -20,6 +20,8 @@ export { selectSystemPromptForModel } from "./selectSystemPromptForModel.js";
 export { printAgentMessageToConsole } from "./printAgentMessageToConsole.js";
 export type { AgentConsole } from "./printAgentMessageToConsole.js";
 export { agentMessageToText } from "./agentMessageToText.js";
+export { createSubagentInstructions } from "./createSubagentInstructions.js";
+export { findLastAgentResponseText } from "./findLastAgentResponseText.js";
 export { contentBlockToText } from "./contentBlockToText.js";
 export { selectToolsForModel } from "./selectToolsForModel.js";
 export type { SelectToolsForModelOptions } from "./selectToolsForModel.js";
@@ -41,6 +43,12 @@ export type {
 export type { AgentContext } from "./context/AgentContext.js";
 export type { BashContext, BashRunOptions, BashRunResult } from "./context/BashContext.js";
 export type { FileSystemContext, FileSystemStat } from "./context/FileSystemContext.js";
+export type {
+    SpawnSubagentRequest,
+    SpawnSubagentResult,
+    SubagentContext,
+    SubagentRunStatus,
+} from "./context/SubagentContext.js";
 export { createJustBashAgentContext } from "./context/createJustBashAgentContext.js";
 export { createJustBashBashContext } from "./context/createJustBashBashContext.js";
 export { createJustBashFileSystemContext } from "./context/createJustBashFileSystemContext.js";

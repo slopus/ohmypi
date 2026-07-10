@@ -88,6 +88,50 @@ describe("PersistentSessionStore", () => {
         }
     });
 
+    it("publishes a repaired child status to its parent after a restart", async () => {
+        const { cleanup, databasePath } = await createDatabasePath();
+        try {
+            const store = new PersistentSessionStore({ databasePath });
+            store.saveSession(sessionState());
+            store.saveSession(
+                sessionState({
+                    activeRunId: "child-run-1",
+                    agent: {
+                        depth: 1,
+                        description: "Inspect the crash path",
+                        parentSessionId: "session-1",
+                        rootSessionId: "session-1",
+                        type: "subagent",
+                    },
+                    agentId: "agent-2",
+                    id: "subagent-1",
+                    status: "running",
+                }),
+            );
+            store.close();
+
+            const restoredStore = new PersistentSessionStore({ databasePath });
+            try {
+                const parentEvents = restoredStore.get("session-1")?.events.since(undefined) ?? [];
+                const changed = parentEvents.find((event) => event.type === "subagent_changed");
+
+                expect(changed).toMatchObject({
+                    data: {
+                        subagent: {
+                            id: "subagent-1",
+                            status: "error",
+                        },
+                    },
+                    type: "subagent_changed",
+                });
+            } finally {
+                restoredStore.close();
+            }
+        } finally {
+            await cleanup();
+        }
+    });
+
     it("updates partial messages in place while streaming", async () => {
         const { cleanup, databasePath } = await createDatabasePath();
         try {
@@ -332,6 +376,58 @@ describe("PersistentSessionStore", () => {
             await cleanup();
         }
     });
+
+    it("persists subagent lineage while keeping child histories out of the main list", async () => {
+        const { cleanup, databasePath } = await createDatabasePath();
+        try {
+            const store = new PersistentSessionStore({ databasePath });
+            store.saveSession(sessionState());
+            store.saveSession(
+                sessionState({
+                    agent: {
+                        depth: 1,
+                        description: "Inspect the persistence layer",
+                        parentSessionId: "session-1",
+                        parentToolCallId: "tool-1",
+                        rootSessionId: "session-1",
+                        type: "subagent",
+                    },
+                    agentId: "agent-2",
+                    id: "subagent-1",
+                    status: "completed",
+                    title: "Inspect the persistence layer",
+                    titleStatus: "ready",
+                }),
+            );
+            store.close();
+
+            const restoredStore = new PersistentSessionStore({ databasePath });
+            try {
+                expect(restoredStore.list().map((session) => session.id)).toEqual(["session-1"]);
+                expect(restoredStore.listSubagents("session-1")).toEqual([
+                    expect.objectContaining({
+                        depth: 1,
+                        description: "Inspect the persistence layer",
+                        id: "subagent-1",
+                        parentToolCallId: "tool-1",
+                        status: "completed",
+                    }),
+                ]);
+                expect(restoredStore.get("subagent-1")?.snapshot().agent).toEqual({
+                    depth: 1,
+                    description: "Inspect the persistence layer",
+                    parentSessionId: "session-1",
+                    parentToolCallId: "tool-1",
+                    rootSessionId: "session-1",
+                    type: "subagent",
+                });
+            } finally {
+                restoredStore.close();
+            }
+        } finally {
+            await cleanup();
+        }
+    });
 });
 
 async function createDatabasePath(): Promise<{
@@ -370,6 +466,11 @@ function testModelCatalog(): ModelCatalog {
 
 function sessionState(overrides: Partial<PersistedSessionState> = {}): PersistedSessionState {
     return {
+        agent: {
+            depth: 0,
+            rootSessionId: "session-1",
+            type: "primary",
+        },
         agentId: "agent-1",
         cwd: "/tmp/ohmypi-persistent-session-test",
         id: "session-1",

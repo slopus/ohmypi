@@ -1,12 +1,13 @@
 import { Separator } from "@/components/ui/separator";
 import { formatRelativeTime } from "@/formatRelativeTime";
-import type { ModelCatalog, ProtocolSession, SessionSummary } from "@/protocol";
+import type { ModelCatalog, ProtocolSession, SessionSummary, SubagentSummary } from "@/protocol";
 
 import { DetailField } from "./DetailField";
 import { EffortSelect } from "./EffortSelect";
 import { ModelSelect } from "./ModelSelect";
 import { ResetConversationButton } from "./ResetConversationButton";
 import { SessionStatusBadge } from "./SessionStatusBadge";
+import { SubagentList } from "./SubagentList";
 
 export interface DetailsTabProps {
     catalog: ModelCatalog | undefined;
@@ -14,9 +15,11 @@ export interface DetailsTabProps {
     changeModel: (modelId: string) => Promise<void>;
     isRunning: boolean;
     messageCount: number;
+    onOpenSubagent: (sessionId: string) => void;
     reset: () => Promise<void>;
     session: ProtocolSession;
     summary: SessionSummary | undefined;
+    subagents: readonly SubagentSummary[];
     toolCallCount: number;
 }
 
@@ -27,6 +30,7 @@ function exactTime(timestamp: number): string {
 /** The Details tab of the inspector: identity, model controls, stats, reset. */
 export function DetailsTab(props: DetailsTabProps) {
     const { catalog, session, summary } = props;
+    const isSubagent = session.agent.type === "subagent";
 
     const currentModel =
         catalog?.models.find((model) => model.id === session.modelId) ??
@@ -41,6 +45,11 @@ export function DetailsTab(props: DetailsTabProps) {
                         : "Untitled session"}
                 </h2>
                 <SessionStatusBadge status={session.status} />
+                {isSubagent && (
+                    <p className="text-xs text-muted-foreground">
+                        Subagent history · Level {session.agent.depth}
+                    </p>
+                )}
             </div>
 
             <Separator className="bg-border/60" />
@@ -54,20 +63,22 @@ export function DetailsTab(props: DetailsTabProps) {
             <DetailField label="Model">
                 <ModelSelect
                     catalog={catalog}
-                    disabled={session.modelLocked}
+                    disabled={session.modelLocked || isSubagent}
                     modelId={session.modelId}
                     onChangeModel={props.changeModel}
                 />
-                {session.modelLocked && (
+                {(session.modelLocked || isSubagent) && (
                     <p className="text-xs text-muted-foreground">
-                        The model is locked for this session.
+                        {isSubagent
+                            ? "The model cannot be changed for a completed subagent step."
+                            : "The model is locked for this session."}
                     </p>
                 )}
             </DetailField>
 
             <DetailField label="Reasoning effort">
                 <EffortSelect
-                    disabled={false}
+                    disabled={isSubagent}
                     effort={session.effort}
                     levels={currentModel?.thinkingLevels ?? []}
                     onChangeEffort={props.changeEffort}
@@ -107,7 +118,23 @@ export function DetailsTab(props: DetailsTabProps) {
 
             <Separator className="bg-border/60" />
 
-            <ResetConversationButton disabled={props.isRunning} onReset={props.reset} />
+            {props.subagents.length > 0 && (
+                <>
+                    <SubagentList
+                        onOpenSubagent={props.onOpenSubagent}
+                        subagents={props.subagents}
+                    />
+                    <Separator className="bg-border/60" />
+                </>
+            )}
+
+            {isSubagent ? (
+                <p className="text-xs leading-relaxed text-muted-foreground">
+                    This subagent history is read-only and cannot be resumed or reset.
+                </p>
+            ) : (
+                <ResetConversationButton disabled={props.isRunning} onReset={props.reset} />
+            )}
         </div>
     );
 }

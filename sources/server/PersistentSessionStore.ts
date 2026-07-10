@@ -9,8 +9,10 @@ import type {
     CreateSessionRequest,
     ModelCatalog,
     SessionEvent,
+    SessionAgentMetadata,
     SessionInterruption,
     SessionSummary,
+    SubagentSummary,
     SessionTitleStatus,
 } from "../protocol/index.js";
 import type { Message } from "../agent/types.js";
@@ -22,6 +24,7 @@ import {
     type PersistedSessionMessage,
     type PersistedSessionState,
 } from "./InMemorySession.js";
+import { AgentSessionManager } from "./AgentSessionManager.js";
 import { createModelCatalog } from "./createModelCatalog.js";
 import type { SessionStore } from "./SessionStore.js";
 
@@ -32,6 +35,7 @@ export interface PersistentSessionStoreOptions {
 }
 
 export class PersistentSessionStore implements SessionStore, InMemorySessionPersistence {
+    #agentManager: AgentSessionManager;
     #createEventId = createEventIdFactory();
     #database: DatabaseSync;
     #modelCatalog: ModelCatalog;
@@ -49,6 +53,12 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
             timeout: 5_000,
         });
         this.#initialize();
+        this.#agentManager = new AgentSessionManager({
+            repository: {
+                createSubagent: (request, metadata) => this.#createSession(request, metadata),
+                get: (sessionId) => this.get(sessionId),
+            },
+        });
         if (options.databasePath !== ":memory:") {
             chmodSync(options.databasePath, 0o600);
         }
@@ -85,10 +95,19 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
     }
 
     create(request: CreateSessionRequest): InMemorySession {
+        return this.#createSession(request);
+    }
+
+    #createSession(
+        request: CreateSessionRequest,
+        metadata?: SessionAgentMetadata,
+    ): InMemorySession {
         const session = new InMemorySession({
+            agentManager: this.#agentManager,
             createEventId: this.#createEventId,
             emitCreatedEvent: false,
             modelCatalog: this.#modelCatalog,
+            ...(metadata !== undefined ? { metadata } : {}),
             onAppendEvent: (event) => this.#appendEvent(event),
             persistence: this,
             request,
@@ -165,6 +184,7 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
                     updated_at_ms,
                     last_message_at_ms
                 FROM sessions
+                WHERE parent_session_id IS NULL
                 ORDER BY
                     last_message_at_ms IS NULL ASC,
                     last_message_at_ms DESC,
@@ -200,6 +220,44 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
         });
     }
 
+    listSubagents(parentSessionId: string): readonly SubagentSummary[] {
+        return this.#database
+            .prepare(
+                `
+                SELECT
+                    id,
+                    agent_id,
+                    model_id,
+                    status,
+                    parent_session_id,
+                    parent_tool_call_id,
+                    depth,
+                    description,
+                    created_at_ms,
+                    updated_at_ms
+                FROM sessions
+                WHERE parent_session_id = ?
+                ORDER BY created_at_ms ASC
+                `,
+            )
+            .all(parentSessionId)
+            .map((row) => {
+                const parentToolCallId = readOptionalString(row, "parent_tool_call_id");
+                return {
+                    agentId: readString(row, "agent_id"),
+                    createdAt: readNumber(row, "created_at_ms"),
+                    depth: readNumber(row, "depth"),
+                    description: readOptionalString(row, "description") ?? "Delegated task",
+                    id: readString(row, "id"),
+                    modelId: readString(row, "model_id"),
+                    parentSessionId: readString(row, "parent_session_id"),
+                    ...(parentToolCallId !== undefined ? { parentToolCallId } : {}),
+                    status: readString(row, "status") as SubagentSummary["status"],
+                    updatedAt: readNumber(row, "updated_at_ms"),
+                };
+            });
+    }
+
     repairInterruptedSessions(reason: SessionInterruption["reason"]): void {
         const rows = this.#database
             .prepare(
@@ -232,6 +290,10 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
                 reason,
                 ...(runId !== undefined ? { runId } : {}),
             });
+            const parentSessionId = session.agentMetadata().parentSessionId;
+            if (parentSessionId !== undefined) {
+                this.get(parentSessionId)?.recordSubagentChanged(session.subagentSummary());
+            }
         }
     }
 
@@ -242,6 +304,12 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
                 INSERT INTO sessions (
                     id,
                     agent_id,
+                    session_kind,
+                    parent_session_id,
+                    root_session_id,
+                    depth,
+                    parent_tool_call_id,
+                    description,
                     cwd,
                     provider_id,
                     model_id,
@@ -260,9 +328,15 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
                     created_at_ms,
                     updated_at_ms
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                     agent_id = excluded.agent_id,
+                    session_kind = excluded.session_kind,
+                    parent_session_id = excluded.parent_session_id,
+                    root_session_id = excluded.root_session_id,
+                    depth = excluded.depth,
+                    parent_tool_call_id = excluded.parent_tool_call_id,
+                    description = excluded.description,
                     cwd = excluded.cwd,
                     provider_id = excluded.provider_id,
                     model_id = excluded.model_id,
@@ -284,6 +358,12 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
             .run(
                 state.id,
                 state.agentId,
+                state.agent.type,
+                state.agent.parentSessionId ?? null,
+                state.agent.rootSessionId,
+                state.agent.depth,
+                state.agent.parentToolCallId ?? null,
+                state.agent.description ?? null,
                 state.cwd,
                 state.providerId,
                 state.modelId,
@@ -384,6 +464,12 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
             CREATE TABLE IF NOT EXISTS sessions (
                 id TEXT PRIMARY KEY,
                 agent_id TEXT NOT NULL,
+                session_kind TEXT NOT NULL DEFAULT 'primary',
+                parent_session_id TEXT,
+                root_session_id TEXT,
+                depth INTEGER NOT NULL DEFAULT 0,
+                parent_tool_call_id TEXT,
+                description TEXT,
                 cwd TEXT NOT NULL,
                 provider_id TEXT NOT NULL,
                 model_id TEXT NOT NULL,
@@ -445,6 +531,16 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
         this.#ensureSessionColumn("title_status", "TEXT NOT NULL DEFAULT 'idle'");
         this.#ensureSessionColumn("title_error", "TEXT");
         this.#ensureSessionColumn("last_message_at_ms", "INTEGER");
+        this.#ensureSessionColumn("session_kind", "TEXT NOT NULL DEFAULT 'primary'");
+        this.#ensureSessionColumn("parent_session_id", "TEXT");
+        this.#ensureSessionColumn("root_session_id", "TEXT");
+        this.#ensureSessionColumn("depth", "INTEGER NOT NULL DEFAULT 0");
+        this.#ensureSessionColumn("parent_tool_call_id", "TEXT");
+        this.#ensureSessionColumn("description", "TEXT");
+        this.#database.exec(`
+            CREATE INDEX IF NOT EXISTS sessions_parent_created
+                ON sessions(parent_session_id, created_at_ms)
+        `);
     }
 
     #loadEvents(sessionId: string): SessionEvent[] {
@@ -533,11 +629,24 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
         const title = readOptionalString(row, "title");
         const titleError = readOptionalString(row, "title_error");
         const activeRunId = readOptionalString(row, "active_run_id");
+        const parentSessionId = readOptionalString(row, "parent_session_id");
+        const parentToolCallId = readOptionalString(row, "parent_tool_call_id");
+        const description = readOptionalString(row, "description");
+        const id = readString(row, "id");
+        const agent: SessionAgentMetadata = {
+            depth: readNumber(row, "depth"),
+            rootSessionId: readOptionalString(row, "root_session_id") ?? id,
+            type: readString(row, "session_kind") as SessionAgentMetadata["type"],
+            ...(description !== undefined ? { description } : {}),
+            ...(parentSessionId !== undefined ? { parentSessionId } : {}),
+            ...(parentToolCallId !== undefined ? { parentToolCallId } : {}),
+        };
         const restore: PersistedSessionState = {
+            agent,
             agentId: readString(row, "agent_id"),
             cwd: readString(row, "cwd"),
             ...(effort !== undefined ? { effort } : {}),
-            id: readString(row, "id"),
+            id,
             ...(instructions !== undefined ? { instructions } : {}),
             ...(interruptionJson !== undefined
                 ? { interruption: JSON.parse(interruptionJson) as SessionInterruption }
@@ -565,6 +674,7 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
             modelId,
         };
         return new InMemorySession({
+            agentManager: this.#agentManager,
             createEventId: this.#createEventId,
             events: this.#loadEvents(sessionId),
             modelCatalog: this.#modelCatalog,

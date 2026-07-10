@@ -403,7 +403,9 @@ async function executeToolCall(
         ) => Promise<unknown> | unknown;
         const toLLM = tool.toLLM as (result: unknown) => readonly ContentBlock[];
         const toUI = tool.toUI as (result: unknown, args: unknown) => string;
-        const executionOptions: { signal?: AbortSignal } = {};
+        const executionOptions: { signal?: AbortSignal; toolCallId?: string } = {
+            toolCallId: toolCall.id,
+        };
         if (signal !== undefined) executionOptions.signal = signal;
         const result = await execute(toolCall.arguments, context, executionOptions);
 

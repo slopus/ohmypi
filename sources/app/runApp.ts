@@ -8,6 +8,7 @@ import type { SessionEvent } from "../protocol/index.js";
 import { CodingAssistantApp } from "./CodingAssistantApp.js";
 import { type CreateCodingAssistantAgentOptions } from "./createCodingAssistantAgent.js";
 import { createStopOnceHandler } from "./createStopOnceHandler.js";
+import { ensureSessionCanResume } from "./ensureSessionCanResume.js";
 import { readPackageVersion } from "./readPackageVersion.js";
 import { StartupStatusApp } from "./StartupStatusApp.js";
 
@@ -61,6 +62,9 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
                 options.resumeSessionId === undefined
                     ? await connection.client.createSession(agentOptions)
                     : await connection.client.getSession(options.resumeSessionId);
+            if (options.resumeSessionId !== undefined) {
+                ensureSessionCanResume(openedSession.session);
+            }
             startup.setStatus("Loading transcript.");
             const loadedHistory =
                 options.resumeSessionId === undefined
