@@ -25,6 +25,7 @@ rig stays close to pi and to upstream vendor behavior, but adds a curated defaul
 - Simplified system prompts that are easier to reason about and reuse.
 - Per-model and per-vendor prompt/tool optimizations, so different inference providers can work well without forcing users into one stack.
 - Bundled subagents for common coding workflows.
+- Provider-aligned task planning with Codex `update_plan` and Claude `TodoWrite`.
 - Background workers for longer-running or asynchronous tasks.
 - Workflow presets for repeated engineering operations.
 - Auto mode for hands-off execution when a project allows it.

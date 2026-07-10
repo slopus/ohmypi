@@ -127,6 +127,7 @@ describe("Agent", () => {
             "write_stdin",
             "apply_patch",
             "view_image",
+            "update_plan",
         ]);
 
         const noopTool = defineTool({
