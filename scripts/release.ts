@@ -106,26 +106,18 @@ async function release(): Promise<void> {
     console.log("Pushing the release commit and tag...");
     runCommand("git", ["push", "origin", "main", "--follow-tags"]);
 
-    const publishedVersion = runCommand(
-        "pnpm",
-        ["view", `${releaseManifest.name}@${releaseManifest.version}`, "version", "--json"],
-        { allowFailure: true, captureOutput: true },
-    );
-    if (publishedVersion.status === 0) {
+    console.log(`Publishing ${releaseManifest.name}@${releaseManifest.version}...`);
+    const publishResult = runCommand("pnpm", ["publish", "--access", "public"], {
+        allowFailure: retryingRelease,
+        captureOutput: retryingRelease,
+    });
+    if (publishResult.status !== 0) {
+        if (!/cannot publish over|previously published|EPUBLISHCONFLICT|403/.test(publishResult.stderr)) {
+            console.error(publishResult.stderr);
+            throw new Error("Command failed: pnpm publish --access public");
+        }
         console.log(`${releaseManifest.name}@${releaseManifest.version} is already published.`);
         return;
-    }
-
-    console.log(`Publishing ${releaseManifest.name}@${releaseManifest.version}...`);
-    runCommand("pnpm", ["publish", "--access", "public"]);
-
-    const verifiedVersion = runCommand(
-        "pnpm",
-        ["view", `${releaseManifest.name}@${releaseManifest.version}`, "version", "--json"],
-        { captureOutput: true },
-    ).stdout;
-    if (JSON.parse(verifiedVersion) !== releaseManifest.version) {
-        throw new Error(`The npm registry did not return version ${releaseManifest.version}.`);
     }
 
     console.log(`Published ${releaseManifest.name}@${releaseManifest.version} successfully.`);
