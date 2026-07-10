@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { runAgentLoop } from "../agent/loop.js";
 import { defineTool } from "../agent/types.js";
 import { createJustBashToolHarness } from "../tools/testing/createJustBashToolHarness.js";
+import { validPng32Base64 } from "../tools/testing/validImageFixtures.js";
 import { modelAnthropicFable5, modelAnthropicOpus48, modelAnthropicSonnet5 } from "./models.js";
 import { createClaudeSdkProvider, type ClaudeSdkQuery } from "./claude-sdk.js";
 import type { Context } from "./types.js";
@@ -201,7 +202,7 @@ describe("Claude SDK provider", () => {
         let executionCount = 0;
         let queryCount = 0;
         let firstQueryClosed = false;
-        let continuationPrompt = "";
+        let continuationPrompt: Parameters<ClaudeSdkQuery>[0]["prompt"] | undefined;
         const readTool = defineTool({
             name: "Read",
             label: "Read",
@@ -314,7 +315,7 @@ describe("Claude SDK provider", () => {
                     );
                 }
 
-                continuationPrompt = String(params.prompt);
+                continuationPrompt = params.prompt;
                 return fakeClaudeQuery([
                     {
                         type: "result",
@@ -369,13 +370,22 @@ describe("Claude SDK provider", () => {
         expect(eventTypes).toContain("toolcall_start");
         expect(eventTypes).toContain("toolcall_delta");
         expect(eventTypes).toContain("toolcall_end");
-        expect(continuationPrompt).toContain(
+        const continuationMessages = await collectPromptMessages(continuationPrompt);
+        const continuationContent = continuationMessages[0]?.message.content;
+        if (!Array.isArray(continuationContent)) {
+            throw new Error("Expected structured continuation content.");
+        }
+        const continuationText = continuationContent
+            .filter((block) => block.type === "text")
+            .map((block) => block.text)
+            .join("");
+        expect(continuationText).toContain(
             'Assistant tool call Read (tool-read): {"path":"README.md"}',
         );
-        expect(continuationPrompt).toContain(
+        expect(continuationText).toContain(
             "successful tool result from Read (tool-read): contents of README.md",
         );
-        expect(continuationPrompt).toContain(
+        expect(continuationText).toContain(
             "Do not restart the conversation or repeat successful tool calls.",
         );
         expect(result.stopReason).toBe("stop");
@@ -512,7 +522,164 @@ describe("Claude SDK provider", () => {
 
         expect(result.content).toEqual([{ type: "text", text: "done" }]);
     });
+
+    it("keeps images as native blocks when rebuilding a multi-turn prompt", async () => {
+        const harness = createJustBashToolHarness();
+        const calls: Parameters<ClaudeSdkQuery>[0][] = [];
+        const provider = createClaudeSdkProvider({
+            agentContext: harness.context,
+            tools: [],
+            query: ((params) => {
+                calls.push(params);
+                return fakeClaudeQuery([successfulResult("done")]);
+            }) as ClaudeSdkQuery,
+        });
+
+        await provider
+            .stream(modelAnthropicFable5, {
+                messages: [
+                    {
+                        role: "user",
+                        content: [
+                            { type: "text", text: "Inspect this: " },
+                            {
+                                type: "image",
+                                mimeType: "image/png",
+                                data: validPng32Base64,
+                            },
+                        ],
+                        timestamp: 1,
+                    },
+                    {
+                        role: "assistant",
+                        content: [
+                            {
+                                type: "toolCall",
+                                id: "image-result",
+                                name: "view_image",
+                                arguments: { path: "/tmp/image.png" },
+                            },
+                        ],
+                        api: "claude-agent-sdk",
+                        provider: "claude-sdk",
+                        model: "anthropic/fable-5",
+                        usage: emptyUsage(),
+                        stopReason: "toolUse",
+                        timestamp: 2,
+                    },
+                    {
+                        role: "toolResult",
+                        toolCallId: "image-result",
+                        toolName: "view_image",
+                        content: [
+                            {
+                                type: "image",
+                                mimeType: "image/png",
+                                data: validPng32Base64,
+                            },
+                        ],
+                        isError: false,
+                        timestamp: 3,
+                    },
+                    {
+                        role: "user",
+                        content: "What do both images show?",
+                        timestamp: 4,
+                    },
+                ],
+            })
+            .result();
+
+        const promptMessages = await collectPromptMessages(calls[0]?.prompt);
+        expect(promptMessages).toHaveLength(1);
+        const promptContent = promptMessages[0]?.message.content;
+        expect(Array.isArray(promptContent)).toBe(true);
+        if (!Array.isArray(promptContent)) throw new Error("Expected structured prompt content.");
+
+        expect(promptContent.filter((block) => block.type === "image")).toEqual([
+            {
+                type: "image",
+                source: {
+                    type: "base64",
+                    media_type: "image/png",
+                    data: validPng32Base64,
+                },
+            },
+            {
+                type: "image",
+                source: {
+                    type: "base64",
+                    media_type: "image/png",
+                    data: validPng32Base64,
+                },
+            },
+        ]);
+        const promptText = promptContent
+            .filter((block) => block.type === "text")
+            .map((block) => block.text)
+            .join("");
+        expect(promptText).toContain("Assistant tool call view_image (image-result)");
+        expect(promptText).toContain("successful tool result from view_image (image-result): ");
+        expect(promptText).toContain("What do both images show?");
+        expect(promptText).not.toContain("[image:");
+    });
 });
+
+async function collectPromptMessages(prompt: Parameters<ClaudeSdkQuery>[0]["prompt"] | undefined) {
+    if (prompt === undefined || typeof prompt === "string") {
+        throw new Error("Expected a structured Claude SDK prompt.");
+    }
+
+    const messages = [];
+    for await (const message of prompt) {
+        messages.push(message);
+    }
+    return messages;
+}
+
+function emptyUsage() {
+    return {
+        input: 0,
+        output: 0,
+        cacheRead: 0,
+        cacheWrite: 0,
+        totalTokens: 0,
+        cost: {
+            input: 0,
+            output: 0,
+            cacheRead: 0,
+            cacheWrite: 0,
+            total: 0,
+        },
+    };
+}
+
+function successfulResult(result: string) {
+    return {
+        type: "result" as const,
+        subtype: "success" as const,
+        duration_ms: 1,
+        duration_api_ms: 1,
+        is_error: false,
+        num_turns: 1,
+        result,
+        stop_reason: "end_turn" as const,
+        total_cost_usd: 0,
+        usage: {
+            input_tokens: 1,
+            output_tokens: 1,
+            cache_creation_input_tokens: 0,
+            cache_read_input_tokens: 0,
+            server_tool_use: null,
+            service_tier: null,
+            cache_creation: null,
+        },
+        modelUsage: {},
+        permission_denials: [],
+        uuid: "00000000-0000-4000-8000-000000000015",
+        session_id: "00000000-0000-4000-8000-000000000016",
+    };
+}
 
 function fakeClaudeQuery(messages: readonly unknown[], options: { onClose?: () => void } = {}) {
     const stream = (async function* () {

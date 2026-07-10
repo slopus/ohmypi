@@ -597,12 +597,20 @@ export class InMemorySession {
             return;
         }
 
-        const position =
+        const existingPosition = this.#messages.find(
+            (candidate) => !candidate.isPartial && candidate.message.id === message.id,
+        )?.position;
+        const partialPosition =
             message.role === "agent" && this.#activePartial?.runId === runId
                 ? this.#activePartial.position
                 : undefined;
-        this.#storeMessage(position ?? this.#messages.length, message, false, runId);
-        if (position !== undefined) {
+        this.#storeMessage(
+            existingPosition ?? partialPosition ?? this.#messages.length,
+            message,
+            false,
+            runId,
+        );
+        if (partialPosition !== undefined) {
             this.#activePartial = undefined;
         }
         this.#append("agent_message", { message, runId });

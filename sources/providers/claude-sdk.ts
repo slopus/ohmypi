@@ -8,6 +8,7 @@ import {
     type SDKResultMessage,
     type SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk";
+import type { Base64ImageSource, ContentBlockParam } from "@anthropic-ai/sdk/resources/messages.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import type { TSchema } from "@sinclair/typebox";
 import { parseStreamingJson } from "@mariozechner/pi-ai";
@@ -396,7 +397,9 @@ function toClaudeSdkPrompt(context: Context): string | AsyncIterable<SDKUserMess
         return singleMessagePrompt(toClaudeSdkUserMessage(latestUserMessage));
     }
 
-    return serializeProviderTranscript(context.messages);
+    return singleMessagePrompt(
+        toClaudeSdkTranscriptMessage(context.messages, latestUserMessage.timestamp),
+    );
 }
 
 async function* singleMessagePrompt(message: SDKUserMessage): AsyncIterable<SDKUserMessage> {
@@ -412,73 +415,87 @@ function toClaudeSdkUserMessage(message: UserMessage): SDKUserMessage {
             content:
                 typeof message.content === "string"
                     ? message.content
-                    : message.content.map((content) =>
-                          content.type === "text"
-                              ? { type: "text" as const, text: content.text }
-                              : {
-                                    type: "image" as const,
-                                    source: {
-                                        type: "base64" as const,
-                                        media_type: content.mimeType as "image/jpeg",
-                                        data: content.data,
-                                    },
-                                },
-                      ),
+                    : message.content.map(toClaudeContentBlock),
         },
         timestamp: new Date(message.timestamp).toISOString(),
     };
 }
 
-function serializeProviderTranscript(messages: readonly Context["messages"][number][]): string {
-    const lines = [
-        "Continue the conversation below. Treat it as prior transcript context and answer the latest user message.",
-        "Tool calls with successful matching results are completed actions. Continue from those results without repeating the calls unless the user explicitly asks for a retry.",
-        "",
+function toClaudeSdkTranscriptMessage(
+    messages: readonly Context["messages"][number][],
+    timestamp: number,
+): SDKUserMessage {
+    const content: ContentBlockParam[] = [
+        {
+            type: "text",
+            text: "Continue the conversation below. Treat it as prior transcript context and answer the latest user message.\nTool calls with successful matching results are completed actions. Continue from those results without repeating the calls unless the user explicitly asks for a retry.\n\n",
+        },
     ];
 
     for (const message of messages) {
         if (message.role === "user") {
-            lines.push(`User: ${userContentToText(message.content)}`);
+            content.push({ type: "text", text: "User: " });
+            if (typeof message.content === "string") {
+                content.push({ type: "text", text: message.content });
+            } else {
+                content.push(...message.content.map(toClaudeContentBlock));
+            }
+            content.push({ type: "text", text: "\n" });
         } else if (message.role === "assistant") {
-            for (const content of message.content) {
-                if (content.type === "text") {
-                    lines.push(`Assistant: ${content.text}`);
-                } else if (content.type === "toolCall") {
-                    lines.push(
-                        `Assistant tool call ${content.name} (${content.id}): ${JSON.stringify(content.arguments)}`,
-                    );
+            for (const block of message.content) {
+                if (block.type === "text") {
+                    content.push({ type: "text", text: `Assistant: ${block.text}\n` });
+                } else if (block.type === "toolCall") {
+                    content.push({
+                        type: "text",
+                        text: `Assistant tool call ${block.name} (${block.id}): ${JSON.stringify(block.arguments)}\n`,
+                    });
                 }
             }
         } else {
             const resultStatus = message.isError ? "failed" : "successful";
-            lines.push(
-                `${resultStatus} tool result from ${message.toolName} (${message.toolCallId}): ${message.content
-                    .map((content) =>
-                        content.type === "text" ? content.text : `[image: ${content.mimeType}]`,
-                    )
-                    .join("")}`,
-            );
+            content.push({
+                type: "text",
+                text: `${resultStatus} tool result from ${message.toolName} (${message.toolCallId}): `,
+            });
+            content.push(...message.content.map(toClaudeContentBlock));
+            content.push({ type: "text", text: "\n" });
         }
     }
 
     if (messages.at(-1)?.role === "toolResult") {
-        lines.push(
-            "",
-            "Continue as the assistant from the completed tool results above. Do not restart the conversation or repeat successful tool calls.",
-        );
+        content.push({
+            type: "text",
+            text: "\nContinue as the assistant from the completed tool results above. Do not restart the conversation or repeat successful tool calls.",
+        });
     }
 
-    return lines.join("\n");
+    return {
+        type: "user",
+        parent_tool_use_id: null,
+        message: {
+            role: "user",
+            content,
+        },
+        timestamp: new Date(timestamp).toISOString(),
+    };
 }
 
-function userContentToText(content: UserMessage["content"]): string {
-    if (typeof content === "string") {
-        return content;
+function toClaudeContentBlock(
+    content: Extract<UserMessage["content"], readonly unknown[]>[number],
+): ContentBlockParam {
+    if (content.type === "text") {
+        return { type: "text", text: content.text };
     }
 
-    return content
-        .map((block) => (block.type === "text" ? block.text : `[image: ${block.mimeType}]`))
-        .join("");
+    return {
+        type: "image",
+        source: {
+            type: "base64",
+            media_type: content.mimeType as Base64ImageSource["media_type"],
+            data: content.data,
+        },
+    };
 }
 
 function isUserMessage(message: Context["messages"][number]): message is UserMessage {

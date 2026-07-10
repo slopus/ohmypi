@@ -8,6 +8,7 @@
 import type { TSchema } from "@sinclair/typebox";
 
 export type StopReason = "stop" | "length" | "toolUse" | "error" | "aborted";
+export type ProviderErrorCode = "invalid_image_request";
 
 /** Plain text content block. */
 export interface TextContent {
@@ -29,6 +30,7 @@ export interface ImageContent {
     type: "image";
     data: string;
     mimeType: string;
+    detail?: "high" | "original";
 }
 
 /** Tool invocation requested by the model. */
@@ -59,6 +61,7 @@ export interface AssistantMessage {
     responseId?: string;
     usage: Usage;
     stopReason: StopReason;
+    errorCode?: ProviderErrorCode;
     errorMessage?: string;
     timestamp: number;
 }

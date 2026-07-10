@@ -18,9 +18,9 @@ import type {
     AssistantMessage,
     AssistantMessageEvent,
     Context,
-    ImageContent,
     InferenceStream,
     Message,
+    ProviderErrorCode,
     TextContent,
     ThinkingContent,
     Tool,
@@ -31,6 +31,10 @@ import type {
     UserMessage,
 } from "./types.js";
 
+export interface PiStreamBridgeOptions {
+    classifyError?: (message: string) => ProviderErrorCode | undefined;
+}
+
 export function toPiContext(context: Context): PiContext {
     return {
         ...(context.systemPrompt !== undefined ? { systemPrompt: context.systemPrompt } : {}),
@@ -39,14 +43,17 @@ export function toPiContext(context: Context): PiContext {
     };
 }
 
-export function wrapPiStream(piStream: AssistantMessageEventStream): InferenceStream {
+export function wrapPiStream(
+    piStream: AssistantMessageEventStream,
+    options: PiStreamBridgeOptions = {},
+): InferenceStream {
     return {
         async *[Symbol.asyncIterator]() {
             for await (const event of piStream) {
-                yield fromPiEvent(event);
+                yield fromPiEvent(event, options);
             }
         },
-        result: async () => fromPiAssistantMessage(await piStream.result()),
+        result: async () => fromPiAssistantMessage(await piStream.result(), options),
     };
 }
 
@@ -159,89 +166,99 @@ function toPiAssistantContent(
     };
 }
 
-function fromPiEvent(event: PiAssistantMessageEvent): AssistantMessageEvent {
+function fromPiEvent(
+    event: PiAssistantMessageEvent,
+    options: PiStreamBridgeOptions,
+): AssistantMessageEvent {
     switch (event.type) {
         case "start":
             return {
                 type: "start",
-                partial: fromPiAssistantMessage(event.partial),
+                partial: fromPiAssistantMessage(event.partial, options),
             };
         case "text_start":
             return {
                 type: "text_start",
                 contentIndex: event.contentIndex,
-                partial: fromPiAssistantMessage(event.partial),
+                partial: fromPiAssistantMessage(event.partial, options),
             };
         case "text_delta":
             return {
                 type: "text_delta",
                 contentIndex: event.contentIndex,
                 delta: event.delta,
-                partial: fromPiAssistantMessage(event.partial),
+                partial: fromPiAssistantMessage(event.partial, options),
             };
         case "text_end":
             return {
                 type: "text_end",
                 contentIndex: event.contentIndex,
                 content: event.content,
-                partial: fromPiAssistantMessage(event.partial),
+                partial: fromPiAssistantMessage(event.partial, options),
             };
         case "thinking_start":
             return {
                 type: "thinking_start",
                 contentIndex: event.contentIndex,
-                partial: fromPiAssistantMessage(event.partial),
+                partial: fromPiAssistantMessage(event.partial, options),
             };
         case "thinking_delta":
             return {
                 type: "thinking_delta",
                 contentIndex: event.contentIndex,
                 delta: event.delta,
-                partial: fromPiAssistantMessage(event.partial),
+                partial: fromPiAssistantMessage(event.partial, options),
             };
         case "thinking_end":
             return {
                 type: "thinking_end",
                 contentIndex: event.contentIndex,
                 content: event.content,
-                partial: fromPiAssistantMessage(event.partial),
+                partial: fromPiAssistantMessage(event.partial, options),
             };
         case "toolcall_start":
             return {
                 type: "toolcall_start",
                 contentIndex: event.contentIndex,
-                partial: fromPiAssistantMessage(event.partial),
+                partial: fromPiAssistantMessage(event.partial, options),
             };
         case "toolcall_delta":
             return {
                 type: "toolcall_delta",
                 contentIndex: event.contentIndex,
                 delta: event.delta,
-                partial: fromPiAssistantMessage(event.partial),
+                partial: fromPiAssistantMessage(event.partial, options),
             };
         case "toolcall_end":
             return {
                 type: "toolcall_end",
                 contentIndex: event.contentIndex,
                 toolCall: fromPiToolCall(event.toolCall),
-                partial: fromPiAssistantMessage(event.partial),
+                partial: fromPiAssistantMessage(event.partial, options),
             };
         case "done":
             return {
                 type: "done",
                 reason: event.reason,
-                message: fromPiAssistantMessage(event.message),
+                message: fromPiAssistantMessage(event.message, options),
             };
         case "error":
             return {
                 type: "error",
                 reason: event.reason,
-                error: fromPiAssistantMessage(event.error),
+                error: fromPiAssistantMessage(event.error, options),
             };
     }
 }
 
-function fromPiAssistantMessage(message: PiAssistantMessage): AssistantMessage {
+function fromPiAssistantMessage(
+    message: PiAssistantMessage,
+    options: PiStreamBridgeOptions,
+): AssistantMessage {
+    const errorCode =
+        message.errorMessage === undefined
+            ? undefined
+            : options.classifyError?.(message.errorMessage);
     return {
         role: "assistant",
         content: message.content.map(fromPiAssistantContent),
@@ -252,6 +269,7 @@ function fromPiAssistantMessage(message: PiAssistantMessage): AssistantMessage {
         ...(message.responseId !== undefined ? { responseId: message.responseId } : {}),
         usage: message.usage,
         stopReason: message.stopReason,
+        ...(errorCode !== undefined ? { errorCode } : {}),
         ...(message.errorMessage !== undefined ? { errorMessage: message.errorMessage } : {}),
         timestamp: message.timestamp,
     };

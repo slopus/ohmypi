@@ -5,6 +5,7 @@ import { Agent } from "../agent/Agent.js";
 import type { ProtocolHttpClient } from "../client/ProtocolHttpClient.js";
 import { RemoteAgent } from "../client/RemoteAgent.js";
 import { createJustBashToolHarness } from "../tools/testing/createJustBashToolHarness.js";
+import { validJpeg32Base64, validPng32Base64 } from "../tools/testing/validImageFixtures.js";
 import { NativeProxessManager } from "../processes/index.js";
 import type { ModelCatalog, ProtocolSession, SessionEvent } from "../protocol/index.js";
 import {
@@ -1371,7 +1372,7 @@ describe("CodingAssistantApp", () => {
             cwd: harness.context.fs.cwd,
             processManager: new NativeProxessManager(),
             readClipboardImage: async () => ({
-                data: "aW1hZ2U=",
+                data: validPng32Base64,
                 mediaType: "image/png",
                 path: "/workspace/.context/clipboard-images/image.png",
             }),
@@ -1390,7 +1391,7 @@ describe("CodingAssistantApp", () => {
 
         expect(contexts[0]?.messages[0]).toMatchObject({
             role: "user",
-            content: [{ type: "image", mimeType: "image/png", data: "aW1hZ2U=" }],
+            content: [{ type: "image", mimeType: "image/png", data: validPng32Base64 }],
         });
         expect(stripAnsi(app.render(80).join("\n"))).toContain("› [Image #1 PNG]");
     });
@@ -1413,12 +1414,12 @@ describe("CodingAssistantApp", () => {
         });
         const images = [
             {
-                data: "Zmlyc3Q=",
+                data: validPng32Base64,
                 mediaType: "image/png",
                 path: "/workspace/.context/clipboard-images/first.png",
             },
             {
-                data: "c2Vjb25k",
+                data: validJpeg32Base64,
                 mediaType: "image/jpeg",
                 path: "/workspace/.context/clipboard-images/second.jpg",
             },
@@ -1456,9 +1457,9 @@ describe("CodingAssistantApp", () => {
             role: "user",
             content: [
                 { type: "text", text: "compare " },
-                { type: "image", mimeType: "image/png", data: "Zmlyc3Q=" },
+                { type: "image", mimeType: "image/png", data: validPng32Base64 },
                 { type: "text", text: " and " },
-                { type: "image", mimeType: "image/jpeg", data: "c2Vjb25k" },
+                { type: "image", mimeType: "image/jpeg", data: validJpeg32Base64 },
             ],
         });
     });

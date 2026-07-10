@@ -3,6 +3,9 @@ import { Value } from "@sinclair/typebox/value";
 
 import { assistantMessageToAgentMessage } from "./assistantMessageToAgentMessage.js";
 import type { AgentContext } from "./context/AgentContext.js";
+import { isInvalidImageRequestError } from "./isInvalidImageRequestError.js";
+import { prepareProviderMessageImages } from "./prepareProviderMessageImages.js";
+import { replaceLastTurnToolResultImages } from "./replaceLastTurnToolResultImages.js";
 import { createSystemPrompt } from "./createSystemPrompt.js";
 import type {
     AgentBlock,
@@ -93,14 +96,32 @@ export async function runAgentLoop(options: RunAgentLoopOptions): Promise<AgentL
         });
 
         let assistantMessage: ProviderAssistantMessage;
+        let pendingStartEvent: AgentLoopEvent | undefined;
+        const deferredErrorEvents: AgentLoopEvent[] = [];
         try {
+            const preparedProviderMessages = await prepareProviderMessageImages(
+                providerMessages,
+                options.provider.id === "claude-sdk" ? "claude" : "codex",
+            );
             const stream = options.provider.stream(
                 model,
-                toProviderContext(systemPrompt, providerMessages, providerTools),
+                toProviderContext(systemPrompt, preparedProviderMessages, providerTools),
                 toStreamOptions(options),
             );
 
             for await (const event of stream) {
+                if (event.type === "start") {
+                    pendingStartEvent = event;
+                    continue;
+                }
+                if (event.type === "error") {
+                    deferredErrorEvents.push(event);
+                    continue;
+                }
+                if (pendingStartEvent !== undefined) {
+                    await options.onEvent?.(pendingStartEvent);
+                    pendingStartEvent = undefined;
+                }
                 await options.onEvent?.(event);
             }
 
@@ -110,7 +131,52 @@ export async function runAgentLoop(options: RunAgentLoopOptions): Promise<AgentL
                 return { messages: transcript, stopReason: "aborted" };
             }
 
+            if (isInvalidImageRequestError(error)) {
+                const replacements = replaceLastTurnToolResultImages(transcript, "Invalid image");
+                if (replacements.length > 0) {
+                    providerMessages.splice(
+                        0,
+                        providerMessages.length,
+                        ...toProviderMessages(transcript, {
+                            model,
+                            now,
+                            providerId: options.provider.id,
+                        }),
+                    );
+                    for (const replacement of replacements) {
+                        await options.onMessage?.(replacement);
+                    }
+                    continue;
+                }
+            }
+
             throw error;
+        }
+
+        if (isInvalidImageRequestError(assistantMessage)) {
+            const replacements = replaceLastTurnToolResultImages(transcript, "Invalid image");
+            if (replacements.length > 0) {
+                providerMessages.splice(
+                    0,
+                    providerMessages.length,
+                    ...toProviderMessages(transcript, {
+                        model,
+                        now,
+                        providerId: options.provider.id,
+                    }),
+                );
+                for (const replacement of replacements) {
+                    await options.onMessage?.(replacement);
+                }
+                continue;
+            }
+        }
+
+        if (pendingStartEvent !== undefined) {
+            await options.onEvent?.(pendingStartEvent);
+        }
+        for (const event of deferredErrorEvents) {
+            await options.onEvent?.(event);
         }
 
         providerMessages.push(assistantMessage);
@@ -320,6 +386,7 @@ function toProviderUserContent(block: ContentBlock): ProviderUserContent {
         type: "image",
         data: block.data,
         mimeType: block.mediaType,
+        ...(block.detail !== undefined ? { detail: block.detail } : {}),
     };
 }
 

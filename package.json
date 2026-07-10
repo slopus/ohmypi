@@ -44,6 +44,7 @@
         "lru-cache": "^11.5.2",
         "openai": "6.46.0",
         "portless": "^0.15.1",
+        "sharp": "^0.35.3",
         "smol-toml": "^1.7.0",
         "turndown": "^7.2.4",
         "yaml": "^2.9.0",

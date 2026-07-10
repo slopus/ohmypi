@@ -1,7 +1,12 @@
 import { Type } from "@sinclair/typebox";
 
 import { defineTool } from "../../agent/types.js";
-import { mediaTypeForPath } from "../utils/index.js";
+import {
+    IMAGE_PROCESSING_ERROR_PLACEHOLDER,
+    ImageProcessingError,
+    MAX_PROMPT_IMAGE_INPUT_BYTES,
+    prepareImageForPrompt,
+} from "../utils/index.js";
 
 const viewImageReturnSchema = Type.Object({
     image_url: Type.String(),
@@ -24,17 +29,45 @@ export const codexViewImageTool = defineTool({
     }),
     returnType: viewImageReturnSchema,
     execute: async ({ path, detail }, context) => {
-        const mediaType = mediaTypeForPath(path);
-        const data = Buffer.from(await context.fs.readFileBuffer(path)).toString("base64");
-        return {
-            image_url: `data:${mediaType};base64,${data}`,
-            detail: detail ?? "high",
-        };
+        const stat = await context.fs.stat(path);
+        if (!stat.isFile) {
+            throw new Error(`Image path '${path}' is not a file.`);
+        }
+        if (stat.size > MAX_PROMPT_IMAGE_INPUT_BYTES) {
+            return {
+                image_url: IMAGE_PROCESSING_ERROR_PLACEHOLDER,
+                detail: detail ?? "high",
+            };
+        }
+        const bytes = await context.fs.readFileBuffer(path);
+        const resolvedDetail = detail ?? "high";
+        try {
+            const image = await prepareImageForPrompt(bytes, resolvedDetail);
+            return {
+                image_url: `data:${image.mediaType};base64,${image.bytes.toString("base64")}`,
+                detail: resolvedDetail,
+            };
+        } catch (error) {
+            if (error instanceof ImageProcessingError) {
+                return {
+                    image_url: IMAGE_PROCESSING_ERROR_PLACEHOLDER,
+                    detail: resolvedDetail,
+                };
+            }
+            throw error;
+        }
     },
     toLLM: (result) => {
         const match = /^data:([^;]+);base64,(.*)$/.exec(result.image_url);
         return match
-            ? [{ type: "image", mediaType: match[1] ?? "image/png", data: match[2] ?? "" }]
+            ? [
+                  {
+                      type: "image",
+                      mediaType: match[1] ?? "image/png",
+                      data: match[2] ?? "",
+                      detail: result.detail,
+                  },
+              ]
             : [{ type: "text", text: result.image_url }];
     },
     toUI: (_result, args) => `Viewed ${args.path}`,

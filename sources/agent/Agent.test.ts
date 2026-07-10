@@ -1,9 +1,11 @@
 import { Type } from "@sinclair/typebox";
 import { describe, expect, it } from "vitest";
 
+import { codexViewImageTool } from "../tools/codex/view_image.js";
 import { createJustBashToolHarness } from "../tools/testing/createJustBashToolHarness.js";
+import { validPng32Base64 } from "../tools/testing/validImageFixtures.js";
 import { Agent } from "./Agent.js";
-import { defineTool } from "./types.js";
+import { defineTool, type Message } from "./types.js";
 import {
     defineModel,
     defineProvider,
@@ -235,6 +237,121 @@ describe("Agent", () => {
         expect(agent.snapshot().messages).toEqual([]);
         expect(agent.snapshot().queue).toEqual([]);
         expect(agent.snapshot().lastRunId).toBeUndefined();
+    });
+
+    it("recovers when the provider rejects a locally valid image tool result", async () => {
+        const model = defineModel({
+            id: "openai/gpt-test",
+            name: "GPT Test",
+            thinkingLevels: ["off"],
+            defaultThinkingLevel: "off",
+        });
+        const contexts: Context[] = [];
+        let requestCount = 0;
+        const provider = defineProvider({
+            id: "codex",
+            models: [model],
+            stream(_model, context) {
+                contexts.push(context);
+                requestCount += 1;
+                if (requestCount === 1) {
+                    return streamFor({
+                        role: "assistant",
+                        content: [
+                            {
+                                type: "toolCall",
+                                id: "call-image",
+                                name: "view_image",
+                                arguments: { path: "/workspace/valid-image.png" },
+                            },
+                        ],
+                        api: "test",
+                        provider: "codex",
+                        model: model.id,
+                        usage: zeroUsage(),
+                        stopReason: "toolUse",
+                        timestamp: 1,
+                    });
+                }
+                if (requestCount === 2) {
+                    return streamFor({
+                        role: "assistant",
+                        content: [],
+                        api: "test",
+                        provider: "codex",
+                        model: model.id,
+                        usage: zeroUsage(),
+                        stopReason: "error",
+                        errorCode: "invalid_image_request",
+                        errorMessage: `Codex error:
+{"type":"error","error":{"type":"invalid_request_error","code":"invalid_value","message":"The image data you provided does not represent a valid image.","param":"input"},"status":400}`,
+                        timestamp: 2,
+                    });
+                }
+                return streamFor({
+                    role: "assistant",
+                    content: [{ type: "text", text: "recovered" }],
+                    api: "test",
+                    provider: "codex",
+                    model: model.id,
+                    usage: zeroUsage(),
+                    stopReason: "stop",
+                    timestamp: 3,
+                });
+            },
+        });
+        const observedEventTypes: string[] = [];
+        const observedToolResults: Message[] = [];
+        const harness = createJustBashToolHarness();
+        await harness.context.fs.writeFile(
+            "/workspace/valid-image.png",
+            Buffer.from(validPng32Base64, "base64"),
+        );
+        const agent = new Agent({
+            provider,
+            modelId: model.id,
+            context: harness.context,
+            tools: [codexViewImageTool],
+            printToConsole: false,
+            onEvent: (event) => {
+                observedEventTypes.push(event.type);
+            },
+            onMessage: (message) => {
+                if (
+                    message.role === "agent" &&
+                    message.blocks.some((block) => block.type === "tool_result")
+                ) {
+                    observedToolResults.push(message);
+                }
+            },
+        });
+
+        const result = await agent.send("Inspect the image.");
+
+        expect(result.stopReason).toBe("stop");
+        expect(contexts).toHaveLength(3);
+        expect(contexts[1]?.messages.at(-1)).toMatchObject({
+            role: "toolResult",
+            content: [
+                {
+                    type: "image",
+                    mimeType: "image/png",
+                    data: validPng32Base64,
+                },
+            ],
+        });
+        expect(contexts[2]?.messages.at(-1)).toMatchObject({
+            role: "toolResult",
+            content: [{ type: "text", text: "Invalid image" }],
+            isError: false,
+        });
+        expect(observedEventTypes).not.toContain("error");
+        expect(observedToolResults).toHaveLength(2);
+        expect(observedToolResults[1]?.id).toBe(observedToolResults[0]?.id);
+        expect(result.messages.at(-1)).toMatchObject({
+            role: "agent",
+            blocks: [{ type: "text", text: "recovered" }],
+        });
     });
 
     it("keeps transcript valid after aborting during tool execution", async () => {

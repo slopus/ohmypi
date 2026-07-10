@@ -11,6 +11,9 @@ import {
 } from "@mariozechner/pi-ai";
 import { streamSimpleOpenAICodexResponses } from "@mariozechner/pi-ai/openai-codex-responses";
 
+import { applyCodexImageDetailsToPayload } from "./applyCodexImageDetailsToPayload.js";
+import { classifyCodexErrorCode } from "./classifyCodexErrorCode.js";
+import { collectImageDetails } from "./collectImageDetails.js";
 import { modelOpenaiGpt54, modelOpenaiGpt55 } from "./models.js";
 import { toPiContext, wrapPiStream } from "./pi-bridge.js";
 import { defineProvider, type Provider, type StreamOptions } from "./types.js";
@@ -26,6 +29,7 @@ export interface CodexProviderOptions {
     resolveApiKey?: () => string | undefined;
     useLocalCodexAuth?: boolean;
     codexAuthPath?: string;
+    transport?: SimpleStreamOptions["transport"];
 }
 
 export function createCodexProvider(options: CodexProviderOptions = {}): Provider {
@@ -45,8 +49,15 @@ export function createCodexProvider(options: CodexProviderOptions = {}): Provide
                 streamSimpleOpenAICodexResponses(
                     piModel,
                     toPiContext(context),
-                    toPiStreamOptions(piModel, streamOptions, resolveApiKey()),
+                    toPiStreamOptions(
+                        piModel,
+                        streamOptions,
+                        resolveApiKey(),
+                        options.transport,
+                        collectImageDetails(context),
+                    ),
                 ),
+                { classifyError: classifyCodexErrorCode },
             );
         },
     });
@@ -89,11 +100,20 @@ function toPiStreamOptions(
     piModel: PiModel<"openai-codex-responses">,
     options: StreamOptions | undefined,
     apiKey: string | undefined,
+    transport: SimpleStreamOptions["transport"],
+    imageDetails: readonly ("high" | "original")[],
 ): SimpleStreamOptions {
     const piOptions: SimpleStreamOptions = {
         ...(options?.signal !== undefined ? { signal: options.signal } : {}),
         ...(options?.sessionId !== undefined ? { sessionId: options.sessionId } : {}),
         ...(apiKey !== undefined ? { apiKey } : {}),
+        ...(transport !== undefined ? { transport } : {}),
+        ...(imageDetails.includes("original")
+            ? {
+                  onPayload: (payload: unknown) =>
+                      applyCodexImageDetailsToPayload(payload, imageDetails),
+              }
+            : {}),
     };
 
     if (options?.thinking !== undefined && options.thinking !== "off") {

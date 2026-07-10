@@ -17,6 +17,7 @@ export interface ImageBlock {
     type: "image";
     mediaType: string;
     data: string;
+    detail?: "high" | "original";
 }
 
 /** Blocks allowed on system and user messages. */
