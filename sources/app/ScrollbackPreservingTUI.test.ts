@@ -1,0 +1,105 @@
+import { describe, expect, it } from "vitest";
+import type { Component, Terminal } from "@earendil-works/pi-tui";
+
+import { ScrollbackPreservingTUI } from "./ScrollbackPreservingTUI.js";
+
+describe("ScrollbackPreservingTUI", () => {
+    it("leaves committed rows in scrollback and redraws only the live tail after resize", async () => {
+        const terminal = new RecordingTerminal(20, 5);
+        const tui = new ScrollbackPreservingTUI(terminal, false);
+        let transcriptPreserved = false;
+        const component: Component = {
+            invalidate: () => {},
+            render: (width) =>
+                transcriptPreserved
+                    ? [`input at ${width}`]
+                    : [
+                          "history 1",
+                          "history 2",
+                          "history 3",
+                          "history 4",
+                          "history 5",
+                          "history 6",
+                          "history 7",
+                          "history 8",
+                          "input at 20",
+                      ],
+        };
+        tui.addChild(component);
+        tui.start();
+        await renderCycle();
+
+        terminal.columns = 30;
+        expect(tui.preserveRenderedPrefix(8)).toBe(true);
+        transcriptPreserved = true;
+        tui.requestRender();
+        await renderCycle();
+
+        const output = terminal.output.join("");
+        expect(output.match(/history 1/gu)).toHaveLength(1);
+        expect(output).toContain("input at 30");
+        expect(output).not.toContain("\x1b[3J");
+        tui.stop();
+    });
+
+    it("does not commit a mutable tail that already fills the viewport", async () => {
+        const terminal = new RecordingTerminal(20, 5);
+        const tui = new ScrollbackPreservingTUI(terminal, false);
+        tui.addChild({
+            invalidate: () => {},
+            render: () => Array.from({ length: 10 }, (_, index) => `line ${index}`),
+        });
+        tui.start();
+        await renderCycle();
+
+        expect(tui.preserveRenderedPrefix(4)).toBe(false);
+        tui.stop();
+    });
+
+    it("preserves a short frame without clearing content above it", async () => {
+        const terminal = new RecordingTerminal(30, 8);
+        const tui = new ScrollbackPreservingTUI(terminal, false);
+        tui.addChild({
+            invalidate: () => {},
+            render: () => ["history 1", "history 2", "input"],
+        });
+        tui.start();
+        await renderCycle();
+
+        expect(tui.preserveRenderedPrefix(2)).toBe(true);
+        expect(terminal.output.join("")).not.toContain("\x1b[2J");
+        expect(terminal.output.join("")).not.toContain("\x1b[3J");
+        tui.stop();
+    });
+});
+
+class RecordingTerminal implements Terminal {
+    readonly output: string[] = [];
+    readonly kittyProtocolActive = false;
+    columns: number;
+    rows: number;
+
+    constructor(columns: number, rows: number) {
+        this.columns = columns;
+        this.rows = rows;
+    }
+
+    start(): void {}
+    stop(): void {}
+    async drainInput(): Promise<void> {}
+    write(data: string): void {
+        this.output.push(data);
+    }
+    moveBy(): void {}
+    hideCursor(): void {}
+    showCursor(): void {}
+    clearLine(): void {}
+    clearFromCursor(): void {}
+    clearScreen(): void {}
+    setTitle(): void {}
+    setProgress(): void {}
+}
+
+async function renderCycle(): Promise<void> {
+    await new Promise((resolve) => setTimeout(resolve, 25));
+}

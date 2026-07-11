@@ -1,4 +1,3 @@
-import { TUI } from "@earendil-works/pi-tui";
 import { basename } from "node:path";
 
 import { createNodeAgentContext } from "../agent/index.js";
@@ -13,6 +12,7 @@ import { createStopOnceHandler } from "./createStopOnceHandler.js";
 import { ensureSessionCanResume } from "./ensureSessionCanResume.js";
 import { readPackageVersion } from "./readPackageVersion.js";
 import { ScrollbackPreservingTerminal } from "./ScrollbackPreservingTerminal.js";
+import { ScrollbackPreservingTUI } from "./ScrollbackPreservingTUI.js";
 import { StartupStatusApp } from "./StartupStatusApp.js";
 
 export interface RunAppOptions {
@@ -55,7 +55,7 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
     // Keep the terminal in TUI mode while the daemon starts so startup work is visible.
     const terminal = new ScrollbackPreservingTerminal();
     terminal.setTitle(`Rig - ${sanitizeTerminalTitle(basename(cwd))}`);
-    const tui = new TUI(terminal, false);
+    const tui = new ScrollbackPreservingTUI(terminal, false);
     const startup = new StartupStatusApp({
         cwd,
         tui,
@@ -201,10 +201,19 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
     process.on("SIGINT", stop);
     process.on("SIGTERM", stop);
 
+    const preserveTranscript = () => {
+        const pending = app.prepareForTerminalResize();
+        if (pending !== undefined && tui.preserveRenderedPrefix(pending.lineCount)) {
+            pending.commit();
+        }
+    };
+
     try {
         app.start({ tuiAlreadyStarted: true });
+        process.stdout.on("resize", preserveTranscript);
         await app.waitForExit();
     } finally {
+        process.stdout.off("resize", preserveTranscript);
         process.off("SIGINT", stop);
         process.off("SIGTERM", stop);
         followController.abort();

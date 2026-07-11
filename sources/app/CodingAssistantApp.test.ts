@@ -3260,7 +3260,7 @@ describe("CodingAssistantApp", () => {
         expect(renderedAfterDelta).not.toContain("• Working");
     });
 
-    it("renders full transcript so PI TUI owns the bottom viewport and scrollback", async () => {
+    it("commits stable transcript rows before a width-change redraw", async () => {
         const model = defineModel({
             id: "openai/gpt-test",
             name: "GPT Test",
@@ -3308,6 +3308,23 @@ describe("CodingAssistantApp", () => {
         expect(rendered).not.toContain(
             "────────────────────────────────────────────────────────────────────────────────",
         );
+
+        const pending = app.prepareForTerminalResize();
+        expect(pending?.lineCount).toBeGreaterThan(8);
+        pending?.commit();
+
+        const resized = stripAnsi(app.render(48).join("\n"));
+        expect(resized).not.toContain(">_ Rig");
+        expect(resized).not.toContain("› first");
+        expect(resized).not.toContain("• answer 4");
+        expect(resized).toContain("Ask Rig to do anything");
+
+        submit(app, "fifth");
+        await app.waitForIdle();
+        const nextTurn = stripAnsi(app.render(48).join("\n"));
+        expect(nextTurn).toContain("› fifth");
+        expect(nextTurn).toContain("• answer 5");
+        expect(nextTurn).not.toContain("› fourth");
     });
 });
 
