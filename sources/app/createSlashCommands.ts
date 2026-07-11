@@ -55,6 +55,12 @@ export function createSlashCommands(): SlashCommandItem[] {
             aliases: [],
         },
         {
+            value: "review",
+            label: "/review",
+            description: "Review current changes and find actionable issues.",
+            aliases: [],
+        },
+        {
             value: "new",
             label: "/new",
             description: "Reset this session and start fresh.",

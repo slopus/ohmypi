@@ -34,6 +34,7 @@ import type {
     SubagentSummary,
 } from "../protocol/index.js";
 import type { UserInputRequest, UserInputResponse } from "../user-input/index.js";
+import { createCodeReviewPrompt } from "../review/index.js";
 import type { AppTranscriptEntry } from "./AppTranscriptEntry.js";
 import type {
     CodingAssistantAgentBackend,
@@ -875,7 +876,7 @@ export class CodingAssistantApp implements Component, Focusable {
             return undefined;
         }
 
-        const content = this.#contentFromPrompt(prompt);
+        const content = createCodeReviewPrompt(prompt) ?? this.#contentFromPrompt(prompt);
         return {
             content,
             displayText: prompt,

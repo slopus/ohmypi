@@ -138,8 +138,14 @@ export class RemoteAgent implements CodingAssistantAgentBackend {
         options: AgentRunOptions = {},
     ): Promise<AgentRunResult> {
         const displayText = options.displayText ?? contentToDisplayText(content);
+        const requestContent =
+            typeof content === "string"
+                ? options.displayText !== undefined && content !== displayText
+                    ? [{ type: "text" as const, text: content }]
+                    : undefined
+                : content;
         const submitted = await this.#client.submitMessage(this.#session.id, {
-            ...(typeof content === "string" ? {} : { content }),
+            ...(requestContent === undefined ? {} : { content: requestContent }),
             ...(options.displayText !== undefined ? { displayText: options.displayText } : {}),
             text: displayText,
         });

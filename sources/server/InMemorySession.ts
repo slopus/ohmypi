@@ -42,6 +42,7 @@ import type {
 } from "../protocol/index.js";
 import type { Model, StopReason } from "../providers/types.js";
 import type { UserInputRequest, UserInputResponse } from "../user-input/index.js";
+import { createCodeReviewPrompt } from "../review/index.js";
 import { mergeMcpTools, type McpServerSummary, type McpToolProvider } from "../mcp/index.js";
 import type {
     CreateTaskRequest,
@@ -815,12 +816,21 @@ export class InMemorySession {
         const runId = createId();
         const displayText = request.displayText ?? request.text;
         const blocks: readonly ContentBlock[] = request.content ?? [
-            { type: "text", text: request.text },
+            { type: "text", text: createCodeReviewPrompt(request.text) ?? request.text },
         ];
         const userMessage: UserMessage = {
             role: "user",
             id: createId(),
             blocks,
+        };
+        const visibleMessage: UserMessage = {
+            role: "user",
+            id: userMessage.id,
+            blocks: blocks.some((block) => block.type === "image")
+                ? blocks
+                : displayText.length > 0
+                  ? [{ type: "text", text: displayText }]
+                  : [],
         };
         const queued: PersistedQueuedRun = {
             displayText,
@@ -835,10 +845,11 @@ export class InMemorySession {
         this.#persistence?.insertQueuedRun(this.id, queued);
         this.#status = this.#activeRun === undefined ? "queued" : "running";
         this.#lastMessageAt = this.#now();
-        this.#storeMessage(this.#messages.length, userMessage, false, runId);
+        this.#separateModelContextFromVisibleTranscript();
+        this.#storeMessage(this.#messages.length, visibleMessage, false, runId);
         const event = this.#append("message_submitted", {
             displayText,
-            message: userMessage,
+            message: visibleMessage,
             runId,
         });
         this.#startTitleGeneration(request.text);
@@ -1208,6 +1219,17 @@ export class InMemorySession {
 
     #saveSession(): void {
         this.#persistence?.saveSession(this.state());
+    }
+
+    #separateModelContextFromVisibleTranscript(): void {
+        if (this.#contextMessages !== undefined) return;
+
+        const runtimeSnapshot = this.#runtime?.agent.snapshot();
+        this.#contextMessages = [
+            ...(runtimeSnapshot?.contextMessages ??
+                runtimeSnapshot?.messages ??
+                this.#committedMessages()),
+        ];
     }
 
     #completionForRun(runId: string): SessionRunCompletion | undefined {

@@ -33,6 +33,7 @@ rig stays close to pi and to upstream vendor behavior, but adds a curated defaul
 - Workflow presets for repeated engineering operations.
 - Auto mode for hands-off execution when a project allows it.
 - Persistent goals that continue across agent turns until they are completed, paused, or blocked.
+- Findings-first local code review with `/review` for current workspace changes.
 - Automatic conversation compaction for long sessions, plus `/compact` when you want to free context space immediately.
 - Sandboxing defaults that make local execution practical while keeping controls visible.
 - Per-project enable/disable behavior, so teams can use rig where it helps and leave other repos untouched.
@@ -174,6 +175,14 @@ mark the goal complete after verifying the full objective, or blocked when it
 cannot make meaningful progress without user input or an external change.
 Goals survive daemon restarts and are available from both the terminal and web
 session inspector.
+
+### Code review
+
+Use `/review` to inspect current staged, unstaged, and untracked changes without
+modifying them. Add a focus after the command when useful, such as
+`/review focus on concurrency`. Reviews lead with actionable findings ordered
+by severity and include file references, concrete impact, and remaining test
+gaps. The command works in terminal and web-backed sessions.
 
 ### Task tracking
 

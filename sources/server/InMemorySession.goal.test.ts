@@ -8,6 +8,7 @@ import {
     defineModel,
     defineProvider,
     type AssistantMessage,
+    type Context,
     type InferenceStream,
     type Usage,
 } from "../providers/types.js";
@@ -71,6 +72,58 @@ describe("InMemorySession goals", () => {
         ).toHaveLength(1);
         expect(session.snapshot().snapshot.messages).not.toContainEqual(
             expect.objectContaining({ role: "user" }),
+        );
+    });
+
+    it("keeps review commands visible while sending expanded instructions to the model", async () => {
+        const model = defineModel({
+            defaultThinkingLevel: "medium",
+            id: "test/review-model",
+            name: "Review model",
+            thinkingLevels: ["medium"],
+        });
+        const contexts: Context[] = [];
+        const provider = defineProvider({
+            id: "test",
+            models: [model],
+            stream(_model, context) {
+                contexts.push(context);
+                return streamFor(
+                    assistantMessage([{ type: "text", text: "No findings." }], "stop"),
+                );
+            },
+        });
+        const catalog: ModelCatalog = {
+            defaultModelId: model.id,
+            defaultProviderId: provider.id,
+            models: [model],
+            providers: [{ providerId: provider.id, models: [model] }],
+        };
+        const session = new InMemorySession({
+            createEventId: createEventIdFactory(),
+            createRuntime: (options) => createTestRuntime(options, provider),
+            modelCatalog: catalog,
+            request: { cwd: "/tmp/rig-review-test", modelId: model.id, providerId: provider.id },
+        });
+
+        const submitted = session.submit({ text: "/review focus on concurrency" });
+        await expect(session.waitForRun(submitted.runId)).resolves.toMatchObject({
+            status: "completed",
+        });
+
+        expect(session.snapshot().snapshot.messages[0]).toMatchObject({
+            blocks: [{ text: "/review focus on concurrency", type: "text" }],
+            role: "user",
+        });
+        const reviewContext = contexts.find((context) =>
+            JSON.stringify(context.messages).includes("Do not modify files"),
+        );
+        expect(reviewContext).toBeDefined();
+        expect(JSON.stringify(reviewContext?.messages)).toContain(
+            "focus especially on: focus on concurrency",
+        );
+        expect(JSON.stringify(reviewContext?.messages)).not.toContain(
+            '"text":"/review focus on concurrency"',
         );
     });
 });

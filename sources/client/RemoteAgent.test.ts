@@ -107,6 +107,43 @@ describe("RemoteAgent", () => {
         await agent.clearGoal();
         expect(agent.goal).toBeUndefined();
     });
+
+    it("sends model-only text separately from its transcript label", async () => {
+        const model = defineModel({
+            id: "openai/test",
+            name: "Test model",
+            thinkingLevels: ["off"],
+            defaultThinkingLevel: "off",
+        });
+        const session = protocolSession(model);
+        const submitMessage = vi.fn(async () => ({
+            eventId: "event-submit",
+            runId: "run-1",
+            sessionId: session.id,
+        }));
+        const watchSessionEvents = vi.fn(async (options) => {
+            await options.onEvent({
+                createdAt: 1,
+                data: { runId: "run-1", stopReason: "stop" },
+                id: "event-finished",
+                sessionId: session.id,
+                type: "run_finished",
+            });
+        });
+        const agent = new RemoteAgent({
+            client: { submitMessage, watchSessionEvents } as unknown as ProtocolHttpClient,
+            context: createJustBashToolHarness().context,
+            session,
+        });
+
+        await agent.send("Expanded reviewer instructions", { displayText: "/review" });
+
+        expect(submitMessage).toHaveBeenCalledWith(session.id, {
+            content: [{ type: "text", text: "Expanded reviewer instructions" }],
+            displayText: "/review",
+            text: "/review",
+        });
+    });
 });
 
 function protocolSession(model: ReturnType<typeof defineModel>): ProtocolSession {
