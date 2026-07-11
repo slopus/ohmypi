@@ -53,13 +53,10 @@ describe("AgentSessionManager", () => {
             submit: childSubmit,
             waitForRun: () => completion,
         } as unknown as InMemorySession;
-        const parentSubmit = vi.fn(() => ({
-            eventId: "event-3",
-            runId: "run-3",
-            sessionId: "root-1",
-        }));
+        const deliverNotification = vi.fn();
         const parent = {
             agentMetadata: () => ({ depth: 0, rootSessionId: "root-1", type: "primary" }),
+            deliverNotification,
             id: "root-1",
             isSubagent: () => false,
             recordSubagentChanged: vi.fn(),
@@ -67,7 +64,6 @@ describe("AgentSessionManager", () => {
                 cwd: "/tmp/rig-manager-test",
                 modelId: "openai/gpt-5.5",
             }),
-            submit: parentSubmit,
         } as unknown as InMemorySession;
         let created = false;
         const sessions = new Map([
@@ -104,13 +100,11 @@ describe("AgentSessionManager", () => {
 
         status = "completed";
         resolveCompletion?.({ status: "completed" });
-        await vi.waitFor(() => expect(parentSubmit).toHaveBeenCalledOnce());
-        expect(parentSubmit).toHaveBeenCalledWith(
-            expect.objectContaining({
-                displayText: 'Background work "Inspect code" completed.',
-                text: expect.stringContaining("The inspection is complete."),
-            }),
-        );
+        await vi.waitFor(() => expect(deliverNotification).toHaveBeenCalledOnce());
+        expect(deliverNotification).toHaveBeenCalledWith({
+            displayText: 'Background work "Inspect code" completed.',
+            text: expect.stringContaining("The inspection is complete."),
+        });
 
         expect(manager.followUp("root-1", "inspect_code", "Check one more file.")).toMatchObject({
             sessionId: "child-1",
@@ -123,6 +117,115 @@ describe("AgentSessionManager", () => {
         await expect(manager.wait("root-1", 0)).resolves.toMatchObject({
             agents: [expect.objectContaining({ taskName: "inspect_code" })],
             timedOut: false,
+        });
+    });
+
+    it("delivers each background completion immediately", async () => {
+        const completions = new Map<string, (value: { status: "completed" }) => void>();
+        const statuses = new Map<string, "completed" | "running">();
+        const children = ["child-1", "child-2"].map((id, index) => {
+            const taskName = `task_${index + 1}`;
+            statuses.set(id, "running");
+            const completion = new Promise<{ status: "completed" }>((resolve) => {
+                completions.set(id, resolve);
+            });
+            return {
+                agentMetadata: () => ({
+                    depth: 1,
+                    description: taskName,
+                    parentSessionId: "root-1",
+                    rootSessionId: "root-1",
+                    taskName,
+                    type: "subagent" as const,
+                }),
+                id,
+                isSubagent: () => true,
+                snapshot: () => ({
+                    snapshot: {
+                        messages: [
+                            {
+                                blocks: [{ text: `${taskName} result`, type: "text" }],
+                                id: `${id}-message`,
+                                role: "agent",
+                            },
+                        ],
+                    },
+                }),
+                subagentSummary: () => ({
+                    agentId: `${id}-agent`,
+                    createdAt: index,
+                    depth: 1,
+                    description: taskName,
+                    id,
+                    modelId: "openai/gpt-5.5",
+                    parentSessionId: "root-1",
+                    status: statuses.get(id) ?? "running",
+                    taskName,
+                    updatedAt: index,
+                }),
+                submit: vi.fn(() => ({
+                    eventId: `${id}-event`,
+                    runId: `${id}-run`,
+                    sessionId: id,
+                })),
+                waitForRun: () => completion,
+            } as unknown as InMemorySession;
+        });
+        const deliverNotification = vi.fn();
+        const parent = {
+            agentMetadata: () => ({ depth: 0, rootSessionId: "root-1", type: "primary" }),
+            deliverNotification,
+            id: "root-1",
+            isSubagent: () => false,
+            recordSubagentChanged: vi.fn(),
+            requestForSubagent: () => ({
+                cwd: "/tmp/rig-manager-test",
+                modelId: "openai/gpt-5.5",
+            }),
+        } as unknown as InMemorySession;
+        const sessions = new Map<string, InMemorySession>([["root-1", parent]]);
+        let nextChild = 0;
+        const manager = new AgentSessionManager({
+            repository: {
+                createSubagent: () => {
+                    const child = children[nextChild++];
+                    if (child === undefined) throw new Error("No child session available.");
+                    sessions.set(child.id, child);
+                    return child;
+                },
+                get: (sessionId) => sessions.get(sessionId),
+                listByRoot: () => children.slice(0, nextChild),
+            },
+        });
+
+        await Promise.all([
+            manager.spawn("root-1", {
+                background: true,
+                description: "First task",
+                prompt: "Do the first task.",
+                taskName: "task_1",
+            }),
+            manager.spawn("root-1", {
+                background: true,
+                description: "Second task",
+                prompt: "Do the second task.",
+                taskName: "task_2",
+            }),
+        ]);
+
+        statuses.set("child-1", "completed");
+        statuses.set("child-2", "completed");
+        completions.get("child-1")?.({ status: "completed" });
+        completions.get("child-2")?.({ status: "completed" });
+
+        await vi.waitFor(() => expect(deliverNotification).toHaveBeenCalledTimes(2));
+        expect(deliverNotification).toHaveBeenNthCalledWith(1, {
+            displayText: 'Background work "task_1" completed.',
+            text: expect.stringContaining("task_1 result"),
+        });
+        expect(deliverNotification).toHaveBeenNthCalledWith(2, {
+            displayText: 'Background work "task_2" completed.',
+            text: expect.stringContaining("task_2 result"),
         });
     });
 

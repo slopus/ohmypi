@@ -894,6 +894,43 @@ export class InMemorySession {
         };
     }
 
+    deliverNotification(
+        request: SubmitMessageRequest,
+    ): SubmitMessageResponse | SteerMessageResponse {
+        if (this.#activeRun === undefined) {
+            return this.submit(request);
+        }
+
+        const activeRun = this.#activeRun;
+        const displayText = request.displayText ?? request.text;
+        const userMessage: UserMessage = {
+            blocks: request.content ?? [{ type: "text", text: request.text }],
+            id: createId(),
+            role: "user",
+        };
+        const visibleMessage: UserMessage = {
+            blocks: displayText.length > 0 ? [{ type: "text", text: displayText }] : [],
+            id: userMessage.id,
+            role: "user",
+        };
+        const agent = this.#ensureRuntime().agent;
+
+        if (agent.status === "running") agent.steerMessage(userMessage);
+        else agent.enqueueMessage(userMessage);
+        this.#interruption = undefined;
+        this.#storeMessage(this.#messages.length, visibleMessage, false, activeRun.runId);
+        const event = this.#append("message_submitted", {
+            displayText,
+            message: visibleMessage,
+            runId: activeRun.runId,
+        });
+        return {
+            eventId: event.id,
+            runId: activeRun.runId,
+            sessionId: this.id,
+        };
+    }
+
     subagentSummary(): SubagentSummary {
         if (
             this.#agentMetadata.type !== "subagent" ||

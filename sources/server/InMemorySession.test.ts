@@ -13,6 +13,78 @@ describe("InMemorySession", () => {
         );
     });
 
+    it("wakes an idle session for a notification", () => {
+        const session = new InMemorySessionStore().create({ cwd: "/tmp/rig-session-test" });
+
+        const delivered = session.deliverNotification({
+            displayText: "Background work finished.",
+            text: "<subagent-notification>Done</subagent-notification>",
+        });
+
+        expect(session.summary().status).toBe("running");
+        expect(session.snapshot().snapshot).toMatchObject({
+            messages: [
+                {
+                    blocks: [
+                        {
+                            text: "Background work finished.",
+                            type: "text",
+                        },
+                    ],
+                    role: "user",
+                },
+            ],
+        });
+        expect(
+            session.events.since(undefined)?.filter((event) => event.type === "run_started"),
+        ).toHaveLength(1);
+        expect(delivered.runId).toBe(
+            session.events.since(undefined)?.find((event) => event.type === "run_started")?.data
+                .runId,
+        );
+        session.abort();
+    });
+
+    it("queues later notifications as steering on the run woken by the first", () => {
+        const session = new InMemorySessionStore().create({ cwd: "/tmp/rig-session-test" });
+
+        const first = session.deliverNotification({
+            displayText: "First background agent finished.",
+            text: "<subagent-notification>First</subagent-notification>",
+        });
+        const second = session.deliverNotification({
+            displayText: "Second background agent finished.",
+            text: "<subagent-notification>Second</subagent-notification>",
+        });
+
+        expect(second.runId).toBe(first.runId);
+        expect(
+            session.events.since(undefined)?.filter((event) => event.type === "run_started"),
+        ).toHaveLength(1);
+        const snapshot = session.snapshot().snapshot;
+        expect(snapshot.messages).toEqual([
+            expect.objectContaining({
+                blocks: [{ text: "First background agent finished.", type: "text" }],
+            }),
+            expect.objectContaining({
+                blocks: [{ text: "Second background agent finished.", type: "text" }],
+            }),
+        ]);
+        expect(snapshot.queue).toEqual([
+            expect.objectContaining({
+                message: expect.objectContaining({
+                    blocks: [
+                        {
+                            text: "<subagent-notification>Second</subagent-notification>",
+                            type: "text",
+                        },
+                    ],
+                }),
+            }),
+        ]);
+        session.abort();
+    });
+
     it("routes the same canonical model through the explicitly selected provider", () => {
         const sharedModel = defineModel({
             defaultThinkingLevel: "medium",

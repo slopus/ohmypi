@@ -232,7 +232,7 @@ export class AgentSessionManager {
                     : completion.status === "aborted"
                       ? "was stopped"
                       : "failed";
-            parent.submit({
+            parent.deliverNotification({
                 displayText: `Background work "${description}" ${outcome}.`,
                 text: [
                     "<subagent-notification>",
