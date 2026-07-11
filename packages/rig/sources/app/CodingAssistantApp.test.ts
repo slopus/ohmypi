@@ -1008,11 +1008,11 @@ describe("CodingAssistantApp", () => {
         const searchFiles = vi.fn(async () => [
             {
                 fileName: "ChatComposer.tsx",
-                path: "web_sources/sources/components/chat/ChatComposer.tsx",
+                path: "packages/web/sources/components/chat/ChatComposer.tsx",
             },
             {
                 fileName: "ChatPanel.tsx",
-                path: "web_sources/sources/components/ChatPanel.tsx",
+                path: "packages/web/sources/components/ChatPanel.tsx",
             },
         ]);
         const app = new CodingAssistantApp({
@@ -1037,7 +1037,7 @@ describe("CodingAssistantApp", () => {
         expect(mentionLine).not.toContain("\x1b[48;5;236m");
         expect(stripAnsi(mentionLine ?? "")).not.toContain("@ChatComposer.tsx");
         expect(stripAnsi(mentionLine ?? "")).toContain(
-            "web_sources/sources/components/chat/ChatComposer.tsx",
+            "packages/web/sources/components/chat/ChatComposer.tsx",
         );
 
         app.handleInput("x");
@@ -1054,7 +1054,7 @@ describe("CodingAssistantApp", () => {
         app.handleInput("\x1b[B");
         app.handleInput("\t");
         expect(stripAnsi(app.render(100).join("\n"))).toContain(
-            "Review @web_sources/sources/components/ChatPanel.tsx ",
+            "Review @packages/web/sources/components/ChatPanel.tsx ",
         );
     });
 

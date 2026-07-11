@@ -11,7 +11,7 @@ const root = fileURLToPath(new URL(".", import.meta.url));
 export default defineConfig({
     build: {
         emptyOutDir: false,
-        outDir: resolve(root, "../dist/web"),
+        outDir: resolve(root, "../rig/dist/web"),
     },
     plugins: [react(), tailwindcss(), rigDaemonProxyPlugin()],
     resolve: {

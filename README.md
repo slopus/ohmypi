@@ -69,7 +69,14 @@ When a project needs different behavior, configure it locally. When a machine ch
 
 ## Development
 
-This is a single-package TypeScript project. Source files live in `sources/`, with `sources/main.ts` as the CLI entry point.
+This is a pnpm TypeScript monorepo with two workspace packages:
+
+- `packages/rig` contains the published `@slopus/rig` CLI, agent runtime, and local daemon. Its entry point is `packages/rig/sources/main.ts`.
+- `packages/web` contains the private React browser client that ships with the CLI.
+
+Shared TypeScript and code-quality configuration, repository scripts, and release
+orchestration live at the workspace root. The root commands below run the relevant
+package scripts.
 
 Reference implementations for coding agents live in
 `~/Developer/coding-assistant-sources`, including the Codex and Claude Code
@@ -83,7 +90,8 @@ pnpm test
 pnpm run build
 ```
 
-The build also compiles the Vite-powered web UI from `web_sources/` into `dist/web`.
+The build also compiles the Vite-powered browser client from `packages/web` into
+`packages/rig/dist/web`, where it is included in the published CLI package.
 After building, start it with:
 
 ```sh

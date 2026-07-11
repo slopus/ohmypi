@@ -2,12 +2,12 @@
  * Hand-copied mirror of the daemon protocol types.
  *
  * Sources of truth (do not import from them — the web bundle is standalone):
- * - sources/protocol/SessionProtocol.ts
- * - sources/protocol/EventId.ts
- * - sources/agent/types.ts
- * - sources/agent/Agent.ts (AgentSnapshot)
- * - sources/agent/loop.ts (AgentLoopEvent)
- * - sources/providers/types.ts (AssistantMessage streaming shapes)
+ * - packages/rig/sources/protocol/SessionProtocol.ts
+ * - packages/rig/sources/protocol/EventId.ts
+ * - packages/rig/sources/agent/types.ts
+ * - packages/rig/sources/agent/Agent.ts (AgentSnapshot)
+ * - packages/rig/sources/agent/loop.ts (AgentLoopEvent)
+ * - packages/rig/sources/providers/types.ts (AssistantMessage streaming shapes)
  */
 
 // ---------------------------------------------------------------------------
@@ -17,7 +17,7 @@
 export type EventId = string;
 
 // ---------------------------------------------------------------------------
-// Agent transcript blocks and messages (sources/agent/types.ts)
+// Agent transcript blocks and messages (packages/rig/sources/agent/types.ts)
 // ---------------------------------------------------------------------------
 
 /** Plain text content. */
@@ -88,7 +88,7 @@ export interface AgentMessage {
 export type Message = SystemMessage | UserMessage | AgentMessage;
 
 // ---------------------------------------------------------------------------
-// Agent snapshot (sources/agent/Agent.ts)
+// Agent snapshot (packages/rig/sources/agent/Agent.ts)
 // ---------------------------------------------------------------------------
 
 export type AgentStatus = "idle" | "running" | "aborted";
@@ -112,7 +112,7 @@ export interface AgentSnapshot {
 }
 
 // ---------------------------------------------------------------------------
-// Provider-layer streaming types (sources/providers/types.ts)
+// Provider-layer streaming types (packages/rig/sources/providers/types.ts)
 // ---------------------------------------------------------------------------
 
 export type StopReason = "stop" | "length" | "toolUse" | "error" | "aborted";
@@ -203,7 +203,7 @@ export type AssistantMessageEvent =
       };
 
 // ---------------------------------------------------------------------------
-// Agent loop events (sources/agent/loop.ts)
+// Agent loop events (packages/rig/sources/agent/loop.ts)
 // ---------------------------------------------------------------------------
 
 export type AgentLoopEvent =
@@ -214,7 +214,7 @@ export type AgentLoopEvent =
       };
 
 // ---------------------------------------------------------------------------
-// Session protocol (sources/protocol/SessionProtocol.ts)
+// Session protocol (packages/rig/sources/protocol/SessionProtocol.ts)
 // ---------------------------------------------------------------------------
 
 export type SessionStatus = "idle" | "queued" | "running" | "completed" | "aborted" | "error";

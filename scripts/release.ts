@@ -1,6 +1,9 @@
+import { fileURLToPath } from "node:url";
+
 import { readPackageManifest } from "./release/readPackageManifest.js";
 import { runCommand } from "./release/runCommand.js";
 
+const PACKAGE_DIRECTORY = fileURLToPath(new URL("../packages/rig/", import.meta.url));
 const VERSION_BUMPS = new Set([
     "major",
     "minor",
@@ -96,12 +99,20 @@ async function release(): Promise<void> {
 
     if (!retryingRelease) {
         console.log(`Creating the ${releaseInput} release commit and tag...`);
-        runCommand("pnpm", ["version", releaseInput, "--message", "Release v%s"]);
+        runCommand("pnpm", ["version", releaseInput, "--no-git-tag-version"], {
+            cwd: PACKAGE_DIRECTORY,
+        });
+        const versionedManifest = readPackageManifest();
+        runCommand("git", ["add", "packages/rig/package.json", "pnpm-lock.yaml"]);
+        runCommand("git", ["commit", "-m", `Release v${versionedManifest.version}`]);
+        runCommand("git", ["tag", `v${versionedManifest.version}`]);
     }
 
     const releaseManifest = readPackageManifest();
     console.log(`Previewing ${releaseManifest.name}@${releaseManifest.version}...`);
-    runCommand("pnpm", ["publish", "--access", "public", "--dry-run", "--no-git-checks"]);
+    runCommand("pnpm", ["publish", "--access", "public", "--dry-run", "--no-git-checks"], {
+        cwd: PACKAGE_DIRECTORY,
+    });
 
     console.log("Pushing the release commit and tag...");
     runCommand("git", ["push", "origin", "main", "--follow-tags"]);
@@ -110,6 +121,7 @@ async function release(): Promise<void> {
     const publishResult = runCommand("pnpm", ["publish", "--access", "public"], {
         allowFailure: retryingRelease,
         captureOutput: retryingRelease,
+        cwd: PACKAGE_DIRECTORY,
     });
     if (publishResult.status !== 0) {
         if (

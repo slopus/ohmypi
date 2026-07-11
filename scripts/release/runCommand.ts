@@ -3,6 +3,7 @@ import { spawnSync } from "node:child_process";
 export interface RunCommandOptions {
     allowFailure?: boolean;
     captureOutput?: boolean;
+    cwd?: string;
 }
 
 export interface RunCommandResult {
@@ -17,6 +18,7 @@ export function runCommand(
     options: RunCommandOptions = {},
 ): RunCommandResult {
     const result = spawnSync(command, arguments_, {
+        cwd: options.cwd,
         encoding: "utf8",
         stdio: options.captureOutput === true ? ["ignore", "pipe", "pipe"] : "inherit",
     });

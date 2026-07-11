@@ -7,6 +7,24 @@ settings:
 importers:
 
   .:
+    devDependencies:
+      '@types/node':
+        specifier: ^24.0.10
+        version: 24.13.2
+      oxfmt:
+        specifier: ^0.57.0
+        version: 0.57.0
+      oxlint:
+        specifier: ^1.72.0
+        version: 1.72.0
+      tsx:
+        specifier: ^4.23.0
+        version: 4.23.0
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+
+  packages/rig:
     dependencies:
       '@anthropic-ai/claude-agent-sdk':
         specifier: ^0.3.201
@@ -63,81 +81,21 @@ importers:
         specifier: ^4.4.3
         version: 4.4.3
     devDependencies:
-      '@radix-ui/react-use-controllable-state':
-        specifier: ^1.2.3
-        version: 1.2.3(@types/react@19.2.17)(react@19.2.7)
-      '@tailwindcss/vite':
-        specifier: ^4.3.2
-        version: 4.3.2(vite@7.3.6(@types/node@24.13.2)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.0)(yaml@2.9.0))
       '@types/node':
         specifier: ^24.0.10
         version: 24.13.2
-      '@types/react':
-        specifier: ^19.2.17
-        version: 19.2.17
-      '@types/react-dom':
-        specifier: ^19.2.3
-        version: 19.2.3(@types/react@19.2.17)
       '@types/turndown':
         specifier: ^5.0.6
         version: 5.0.6
-      '@vitejs/plugin-react':
-        specifier: ^5.2.0
-        version: 5.2.0(vite@7.3.6(@types/node@24.13.2)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.0)(yaml@2.9.0))
-      class-variance-authority:
-        specifier: ^0.7.1
-        version: 0.7.1
-      clsx:
-        specifier: ^2.1.1
-        version: 2.1.1
       just-bash:
         specifier: ^3.0.2
         version: 3.0.2
-      lucide-react:
-        specifier: ^1.23.0
-        version: 1.23.0(react@19.2.7)
-      oxfmt:
-        specifier: ^0.57.0
-        version: 0.57.0
-      oxlint:
-        specifier: ^1.72.0
-        version: 1.72.0
-      radix-ui:
-        specifier: ^1.6.1
-        version: 1.6.1(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
-      react:
-        specifier: ^19.2.7
-        version: 19.2.7
-      react-dom:
-        specifier: ^19.2.7
-        version: 19.2.7(react@19.2.7)
-      shiki:
-        specifier: ^4.3.1
-        version: 4.3.1
-      streamdown:
-        specifier: ^2.5.0
-        version: 2.5.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
-      tailwind-merge:
-        specifier: ^3.6.0
-        version: 3.6.0
-      tailwindcss:
-        specifier: ^4.3.2
-        version: 4.3.2
       tsx:
         specifier: ^4.23.0
         version: 4.23.0
-      tw-animate-css:
-        specifier: ^1.4.0
-        version: 1.4.0
       typescript:
         specifier: ^5.8.3
         version: 5.9.3
-      use-stick-to-bottom:
-        specifier: ^1.1.6
-        version: 1.1.6(react@19.2.7)
-      vite:
-        specifier: ^7.0.2
-        version: 7.3.6(@types/node@24.13.2)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.0)(yaml@2.9.0)
       vitest:
         specifier: ^3.2.4
         version: 3.2.6(@types/debug@4.1.13)(@types/node@24.13.2)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.0)(yaml@2.9.0)
@@ -166,6 +124,73 @@ importers:
       '@anthropic-ai/claude-agent-sdk-win32-x64':
         specifier: ^0.3.201
         version: 0.3.201
+
+  packages/web:
+    dependencies:
+      '@radix-ui/react-use-controllable-state':
+        specifier: ^1.2.3
+        version: 1.2.3(@types/react@19.2.17)(react@19.2.7)
+      class-variance-authority:
+        specifier: ^0.7.1
+        version: 0.7.1
+      clsx:
+        specifier: ^2.1.1
+        version: 2.1.1
+      lucide-react:
+        specifier: ^1.23.0
+        version: 1.23.0(react@19.2.7)
+      radix-ui:
+        specifier: ^1.6.1
+        version: 1.6.1(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      react:
+        specifier: ^19.2.7
+        version: 19.2.7
+      react-dom:
+        specifier: ^19.2.7
+        version: 19.2.7(react@19.2.7)
+      shiki:
+        specifier: ^4.3.1
+        version: 4.3.1
+      streamdown:
+        specifier: ^2.5.0
+        version: 2.5.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      tailwind-merge:
+        specifier: ^3.6.0
+        version: 3.6.0
+      tw-animate-css:
+        specifier: ^1.4.0
+        version: 1.4.0
+      use-stick-to-bottom:
+        specifier: ^1.1.6
+        version: 1.1.6(react@19.2.7)
+    devDependencies:
+      '@tailwindcss/vite':
+        specifier: ^4.3.2
+        version: 4.3.2(vite@7.3.6(@types/node@24.13.2)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.0)(yaml@2.9.0))
+      '@types/node':
+        specifier: ^24.0.10
+        version: 24.13.2
+      '@types/react':
+        specifier: ^19.2.17
+        version: 19.2.17
+      '@types/react-dom':
+        specifier: ^19.2.3
+        version: 19.2.3(@types/react@19.2.17)
+      '@vitejs/plugin-react':
+        specifier: ^5.2.0
+        version: 5.2.0(vite@7.3.6(@types/node@24.13.2)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.0)(yaml@2.9.0))
+      tailwindcss:
+        specifier: ^4.3.2
+        version: 4.3.2
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+      vite:
+        specifier: ^7.0.2
+        version: 7.3.6(@types/node@24.13.2)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.0)(yaml@2.9.0)
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.6(@types/debug@4.1.13)(@types/node@24.13.2)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.0)(yaml@2.9.0)
 
 packages:
 
