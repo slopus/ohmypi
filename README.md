@@ -11,7 +11,7 @@ Using pi directly can mean repeating the same configuration work everywhere:
 - copying prompt files between machines
 - wiring up vendor-specific tool definitions
 - deciding which sandboxing settings are safe for each workflow
-- maintaining subagents, workers, and automation scripts by hand
+- wiring provider-specific subagent and long-running process tools by hand
 - tuning prompts and tools separately for different inference providers
 - remembering which projects should use which setup
 
@@ -24,19 +24,18 @@ rig stays close to pi and to upstream vendor behavior, but adds a curated defaul
 - Vendor-aligned tool definitions, kept close to the provider contracts instead of inventing unnecessary abstractions.
 - Simplified system prompts that are easier to reason about and reuse.
 - Per-model and per-vendor prompt/tool optimizations, so different inference providers can work well without forcing users into one stack.
-- Bundled subagents for common coding workflows.
+- Provider-aligned background subagents with persistent transcripts and follow-up turns.
 - Provider-aligned task planning with Codex `update_plan` and Claude's persistent task tools.
 - Structured user questions with provider-aligned tools and terminal or web answer controls.
-- MCP tool servers over stdio or streamable HTTP, with Codex- and Claude-compatible configuration.
+- MCP servers over stdio, streamable HTTP, or legacy SSE, configured from Codex and Rig TOML files.
 - Background subagents with completion notifications and follow-up turns.
 - Managed shell sessions for long-running commands and interactive input.
-- Workflow presets for repeated engineering operations.
 - Auto mode for hands-off execution when a project allows it.
 - Persistent goals that continue across agent turns until they are completed, paused, or blocked.
 - Findings-first local code review with `/review` for current workspace changes.
 - Automatic conversation compaction for long sessions, plus `/compact` when you want to free context space immediately.
 - Sandboxing defaults that make local execution practical while keeping controls visible.
-- Per-project enable/disable behavior, so teams can use rig where it helps and leave other repos untouched.
+- Global and project-local configuration overrides.
 
 ## Design principles
 
@@ -57,11 +56,14 @@ feature exposed by Codex and Claude Code. It intentionally does not implement:
 
 - A dedicated Plan mode. Planning remains part of the normal agent workflow instead of a separate permission mode or interaction state.
 - Vim or other modal terminal editing modes. The terminal input experience stays simple and conventional.
+- Jupyter notebook parsing or editing. Export notebooks to a plain-text format before asking Rig to read them.
+- Persistent command allow/deny history. Auto mode reviews each sensitive action against the current user request instead of maintaining a legacy command execution policy.
+- Claude Code's extended skill runtime. Rig follows Codex skill discovery and instruction semantics without hooks, model overrides, or executable skill metadata.
 - Niche parity features whose main value is matching a rarely used upstream flag, command, protocol, or edge case. New parity work should solve a common user need and fit rig's simpler product model.
 
 ## Intended experience
 
-Install rig once, open a project, and get a capable coding harness with prompts, tools, subagents, workflows, workers, automation, and sandboxing already wired together.
+Install rig once, open a project, and get a capable coding harness with prompts, tools, subagents, managed processes, MCP, and sandboxing already wired together.
 
 When a project needs different behavior, configure it locally. When a machine changes, avoid rebuilding the whole setup from memory. When an inference provider changes, keep the same project workflow and let rig handle the provider-specific differences where possible.
 
@@ -149,7 +151,10 @@ inspector to switch the current session and its subagents between:
 In Auto mode, shell commands remain workspace-sandboxed by default. Codex
 `exec_command` can request `sandbox_permissions = "require_escalated"`, and
 Claude `Bash` can request `dangerouslyDisableSandbox = true`; both requests are
-reviewed before receiving one-call full access.
+reviewed before receiving one-call full access. Each model review is shown in
+the transcript with its decision, risk, user-authorization confidence, and
+rationale. Reviews follow the Codex guardian contract first and Claude tool
+semantics second, and fail closed when the result is missing or malformed.
 
 Set the terminal default in global or project-local `rig.toml`:
 
@@ -214,9 +219,10 @@ mode instead of escaping into an unmanaged process.
 
 ### MCP tool servers
 
-Rig discovers tools from MCP servers when a workspace first runs. Codex-style
-servers can be configured globally in `~/.config/rig/config.toml` or locally in
-`rig.toml`:
+Rig discovers tools from MCP servers when a workspace first runs. Servers can
+be configured in Codex's global `~/.codex/config.toml` or project-local
+`.codex/config.toml`. Rig's `~/.config/rig/config.toml` and local `rig.toml`
+use the same tables and take precedence when both define a server:
 
 ```toml
 [mcp_servers.docs]
@@ -227,29 +233,35 @@ tool_timeout_sec = 30
 [mcp_servers.issues]
 url = "https://example.com/mcp"
 bearer_token_env_var = "ISSUES_MCP_TOKEN"
-```
 
-Claude-style project configuration is also supported in `.mcp.json`:
+[mcp_servers.legacy]
+url = "https://example.com/sse"
+transport = "sse"
 
-```json
-{
-    "mcpServers": {
-        "docs": {
-            "type": "stdio",
-            "command": "docs-mcp-server",
-            "args": ["--stdio"]
-        }
-    }
-}
+[mcp_servers.machine_api]
+url = "https://example.com/mcp"
+oauth_client_id_env_var = "MCP_CLIENT_ID"
+oauth_client_secret_env_var = "MCP_CLIENT_SECRET"
+oauth_scopes = ["tools.read", "tools.call"]
 ```
 
 Use `/mcp` in the terminal or the MCP servers section in the web inspector to
-check connection failures and discovered tool counts. Restart the daemon after
-changing MCP configuration. OAuth, legacy SSE transports, MCP prompts, and MCP
-resources are not yet supported.
+check connection failures, capabilities, and discovered tool counts. MCP tools,
+resources, resource templates, prompts, pagination, form elicitation, bearer
+authentication, and OAuth client credentials are supported. Live
+`list_mcp_tools` and `call_mcp_tool` access lets a session use tools added after
+startup without restarting. OAuth is supported for streamable HTTP; legacy SSE
+does not support OAuth.
 
 Only configure servers you trust. Stdio servers are local processes that receive
 the daemon environment and are not restricted by the session filesystem sandbox.
+
+### Token usage and status
+
+Use `/usage` to see provider-reported input, output, cache-read, cache-write, and
+total processed tokens for the current session. `/configure` can enable a compact
+context-usage status below the input, similar to Codex. The same line shows active
+background subagents and managed shell processes while they are running.
 
 ## Publishing
 

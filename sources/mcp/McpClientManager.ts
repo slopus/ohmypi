@@ -1,6 +1,7 @@
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 
 import { connectMcpServer, type ConnectedMcpServer } from "./connectMcpServer.js";
+import { createMcpProtocolTools } from "./createMcpProtocolTools.js";
 import { createMcpTool } from "./createMcpTool.js";
 import { loadMcpServerConfigs } from "./loadMcpServerConfigs.js";
 import type {
@@ -83,6 +84,13 @@ export class McpClientManager implements McpToolProvider {
         );
 
         const connections: ConnectedMcpServer[] = [];
+        const protocolConnections: Array<{
+            client: Client;
+            disabledTools?: readonly string[];
+            enabledTools?: readonly string[];
+            name: string;
+            timeoutMs?: number;
+        }> = [];
         const servers: McpServerSummary[] = [...disabledSummaries];
         const tools: McpToolLoadResult["tools"][number][] = [];
         const toolNames = new Set<string>();
@@ -120,15 +128,36 @@ export class McpClientManager implements McpToolProvider {
                 continue;
             }
             connections.push(result.connection);
+            protocolConnections.push({
+                client: result.connection.client,
+                ...(result.config.disabledTools === undefined
+                    ? {}
+                    : { disabledTools: result.config.disabledTools }),
+                ...(result.config.enabledTools === undefined
+                    ? {}
+                    : { enabledTools: result.config.enabledTools }),
+                name: result.name,
+                ...(result.config.toolTimeoutMs === undefined
+                    ? {}
+                    : { timeoutMs: result.config.toolTimeoutMs }),
+            });
             for (const tool of serverTools) {
                 toolNames.add(tool.name);
                 tools.push(tool);
             }
             servers.push({
                 name: result.name,
+                promptSupport:
+                    result.connection.client.getServerCapabilities()?.prompts !== undefined,
+                resourceSupport:
+                    result.connection.client.getServerCapabilities()?.resources !== undefined,
                 status: "connected",
                 toolCount: serverTools.length,
             });
+        }
+
+        if (protocolConnections.length > 0) {
+            tools.push(...createMcpProtocolTools(protocolConnections));
         }
 
         servers.sort((left, right) => left.name.localeCompare(right.name));

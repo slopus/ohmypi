@@ -4,6 +4,7 @@ import { Type } from "@sinclair/typebox";
 import { defineTool, type AnyDefinedTool } from "../agent/types.js";
 import { mcpResultToContentBlocks } from "./mcpResultToContentBlocks.js";
 import { normalizeMcpName } from "./normalizeMcpName.js";
+import { runMcpClientCall } from "./runMcpClientCall.js";
 
 type ListedMcpTool = Awaited<ReturnType<Client["listTools"]>>["tools"][number];
 
@@ -21,17 +22,19 @@ export function createMcpTool(options: {
             options.tool.description ?? `Use ${options.tool.name} from ${options.serverName}.`,
         arguments: Type.Unsafe<Record<string, unknown>>(options.tool.inputSchema),
         returnType: Type.Unknown(),
-        async execute(args, _context, execution) {
-            const result = await options.client.callTool(
-                {
-                    arguments: isRecord(args) ? args : {},
-                    name: options.tool.name,
-                },
-                undefined,
-                {
-                    ...(execution.signal !== undefined ? { signal: execution.signal } : {}),
-                    ...(options.timeoutMs !== undefined ? { timeout: options.timeoutMs } : {}),
-                },
+        async execute(args, context, execution) {
+            const result = await runMcpClientCall(options.client, context, () =>
+                options.client.callTool(
+                    {
+                        arguments: isRecord(args) ? args : {},
+                        name: options.tool.name,
+                    },
+                    undefined,
+                    {
+                        ...(execution.signal !== undefined ? { signal: execution.signal } : {}),
+                        ...(options.timeoutMs !== undefined ? { timeout: options.timeoutMs } : {}),
+                    },
+                ),
             );
             if (result.isError === true) {
                 throw new Error(firstText(result) ?? "The MCP tool reported an error.");

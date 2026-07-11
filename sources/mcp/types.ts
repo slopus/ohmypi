@@ -19,7 +19,10 @@ export interface McpStdioServerConfig extends McpServerConfigBase {
 export interface McpHttpServerConfig extends McpServerConfigBase {
     bearerTokenEnvVar?: string;
     headers?: Readonly<Record<string, string>>;
-    transport: "http";
+    oauthClientIdEnvVar?: string;
+    oauthClientSecretEnvVar?: string;
+    oauthScopes?: readonly string[];
+    transport: "http" | "sse";
     url: string;
 }
 
@@ -29,6 +32,8 @@ export interface McpServerSummary {
     errorMessage?: string;
     name: string;
     status: "connected" | "disabled" | "failed";
+    promptSupport?: boolean;
+    resourceSupport?: boolean;
     toolCount: number;
 }
 

@@ -13,6 +13,7 @@ export function assistantMessageToAgentMessage(
         role: "agent",
         id: message.responseId ?? fallbackId(),
         blocks: message.content.map(providerAssistantContentToAgentBlock),
+        usage: message.usage,
     };
 }
 

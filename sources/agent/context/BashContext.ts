@@ -35,6 +35,7 @@ export interface BashSessionReadOptions {
 }
 
 export interface BashContext {
+    activeSessionCount?(): number;
     cwd: string;
     killSession(sessionId: number): Promise<BashSessionSnapshot | undefined>;
     readSession(
@@ -42,6 +43,7 @@ export interface BashContext {
         options?: BashSessionReadOptions,
     ): Promise<BashSessionSnapshot | undefined>;
     run(options: BashRunOptions): Promise<BashRunResult>;
+    setActiveSessionCountListener?(listener: ((count: number) => void) | undefined): void;
     startSession(options: Omit<BashRunOptions, "signal">): Promise<number>;
     supportsSessionInput: boolean;
     writeSession(sessionId: number, data: string | Uint8Array): Promise<boolean>;

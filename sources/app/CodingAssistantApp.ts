@@ -1,3 +1,4 @@
+/* eslint-disable no-control-regex -- Terminal rendering intentionally parses ANSI controls. */
 import { createId } from "@paralleldrive/cuid2";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
@@ -26,6 +27,7 @@ import {
 } from "../agent/index.js";
 import { parseSkillFrontmatter } from "../agent/skills/parseSkillFrontmatter.js";
 import type { NativeProxessManager } from "../processes/index.js";
+import type { Usage } from "../providers/types.js";
 import type {
     FileSearchResult,
     McpServerSummary,
@@ -138,7 +140,42 @@ export interface CodingAssistantAppOptions {
     ) => Promise<ClipboardImage | undefined>;
     searchFiles?: (query: string) => Promise<readonly FileSearchResult[]>;
     showReasoning?: boolean;
+    showUsage?: boolean;
     version?: string;
+}
+
+function addUsage(left: Usage, right: Usage): Usage {
+    return {
+        input: left.input + right.input,
+        output: left.output + right.output,
+        cacheRead: left.cacheRead + right.cacheRead,
+        cacheWrite: left.cacheWrite + right.cacheWrite,
+        totalTokens: left.totalTokens + right.totalTokens,
+        cost: {
+            input: left.cost.input + right.cost.input,
+            output: left.cost.output + right.cost.output,
+            cacheRead: left.cost.cacheRead + right.cost.cacheRead,
+            cacheWrite: left.cost.cacheWrite + right.cost.cacheWrite,
+            total: left.cost.total + right.cost.total,
+        },
+    };
+}
+
+function zeroUsage(): Usage {
+    return {
+        input: 0,
+        output: 0,
+        cacheRead: 0,
+        cacheWrite: 0,
+        totalTokens: 0,
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+    };
+}
+
+function formatTokens(value: number): string {
+    if (value < 1_000) return String(value);
+    if (value < 1_000_000) return `${(value / 1_000).toFixed(value < 10_000 ? 1 : 0)}k`;
+    return `${(value / 1_000_000).toFixed(value < 10_000_000 ? 1 : 0)}m`;
 }
 
 export interface DefaultModelPreference {
@@ -149,6 +186,7 @@ export interface DefaultModelPreference {
 
 export interface AppSettings {
     showReasoning: boolean;
+    showUsage: boolean;
 }
 
 interface PendingPrompt {
@@ -235,6 +273,7 @@ export class CodingAssistantApp implements Component, Focusable {
     #activeSubmission: Promise<void> | undefined;
     #bracketedPasteBuffer: string | undefined;
     #showReasoning: boolean;
+    #showUsage: boolean;
     #sessionBacked: boolean;
     #modelLocked: boolean;
     #mcpServers: readonly McpServerSummary[];
@@ -257,6 +296,9 @@ export class CodingAssistantApp implements Component, Focusable {
     #thinkingEntryIdsByContentIndex = new Map<number, string>();
     #toolCallEntryIdsByContentIndex = new Map<number, string>();
     #runningToolCallIds = new Set<string>();
+    #runningBackgroundProcesses = 0;
+    #usage: Usage = zeroUsage();
+    #latestContextTokens = 0;
     #userInputRequests: UserInputRequest[] = [];
 
     constructor(options: CodingAssistantAppOptions) {
@@ -272,6 +314,7 @@ export class CodingAssistantApp implements Component, Focusable {
         this.#readClipboardImage = options.readClipboardImage ?? readClipboardImage;
         this.#sessionBacked = options.sessionBacked ?? false;
         this.#showReasoning = options.showReasoning ?? false;
+        this.#showUsage = options.showUsage ?? false;
         this.#modelLocked = options.modelLocked ?? !options.agent.canChangeModel;
         this.#mcpServers = options.initialMcpServers ?? [];
         this.#subagents = options.initialSubagents ?? [];
@@ -447,6 +490,8 @@ export class CodingAssistantApp implements Component, Focusable {
             this.#thinkingEntryIdsByContentIndex.clear();
             this.#toolCallEntryIdsByContentIndex.clear();
             this.#runningToolCallIds.clear();
+            this.#usage = zeroUsage();
+            this.#latestContextTokens = 0;
             this.#clearUserInputRequests();
             this.#appendEntry({
                 role: "system",
@@ -1059,6 +1104,11 @@ export class CodingAssistantApp implements Component, Focusable {
             return true;
         }
 
+        if (prompt === "/usage" || prompt === "/tokens") {
+            this.#showUsageSummary();
+            return true;
+        }
+
         if (prompt === "/tasks" || prompt === "/todos") {
             this.#showTasks();
             return true;
@@ -1164,13 +1214,37 @@ export class CodingAssistantApp implements Component, Focusable {
         const text = this.#mcpServers
             .map((server) => {
                 if (server.status === "connected") {
-                    return `${server.name}: connected with ${server.toolCount} tool${server.toolCount === 1 ? "" : "s"}`;
+                    const capabilities = [
+                        server.resourceSupport === true ? "resources" : undefined,
+                        server.promptSupport === true ? "prompts" : undefined,
+                    ].filter((value) => value !== undefined);
+                    return `${server.name}: connected with ${server.toolCount} tool${server.toolCount === 1 ? "" : "s"}${capabilities.length === 0 ? "" : `, ${capabilities.join(" and ")}`}`;
                 }
                 if (server.status === "disabled") return `${server.name}: disabled`;
                 return `${server.name}: could not connect${server.errorMessage === undefined ? "" : ` — ${server.errorMessage}`}`;
             })
             .join("\n");
         this.#appendEntry({ role: "event", title: "MCP servers", text });
+    }
+
+    #showUsageSummary(): void {
+        const contextWindow = this.#agent.model.contextWindow;
+        const context =
+            contextWindow === undefined
+                ? `${formatTokens(this.#latestContextTokens)} tokens in the latest context`
+                : `${formatTokens(this.#latestContextTokens)} of ${formatTokens(contextWindow)} context tokens (${Math.max(0, Math.round((1 - this.#latestContextTokens / contextWindow) * 100))}% left)`;
+        this.#appendEntry({
+            role: "event",
+            title: "Token usage",
+            text: [
+                context,
+                `Input: ${formatTokens(this.#usage.input)}`,
+                `Output: ${formatTokens(this.#usage.output)}`,
+                `Cache read: ${formatTokens(this.#usage.cacheRead)}`,
+                `Cache write: ${formatTokens(this.#usage.cacheWrite)}`,
+                `Total processed: ${formatTokens(this.#usage.totalTokens)}`,
+            ].join("\n"),
+        });
     }
 
     #showTasks(): void {
@@ -1262,6 +1336,8 @@ export class CodingAssistantApp implements Component, Focusable {
         this.#thinkingEntryIdsByContentIndex.clear();
         this.#toolCallEntryIdsByContentIndex.clear();
         this.#runningToolCallIds.clear();
+        this.#usage = zeroUsage();
+        this.#latestContextTokens = 0;
         this.#abortNotified = false;
         this.#statusText = "Idle";
         this.#agent.reset();
@@ -1355,18 +1431,17 @@ export class CodingAssistantApp implements Component, Focusable {
                 this.#appendEntry({ role: "error", text: this.#formatError(error) });
             }
         } finally {
-            if (!this.#isCurrentRun(runToken)) {
-                return;
+            if (this.#isCurrentRun(runToken)) {
+                if (this.#abortController === controller) {
+                    this.#abortController = undefined;
+                }
+                this.#running = false;
+                this.#stopActivityAnimation();
+                this.#streamEntryId = undefined;
+                this.#thinkingEntryIdsByContentIndex.clear();
+                this.#toolCallEntryIdsByContentIndex.clear();
+                this.#requestRender();
             }
-            if (this.#abortController === controller) {
-                this.#abortController = undefined;
-            }
-            this.#running = false;
-            this.#stopActivityAnimation();
-            this.#streamEntryId = undefined;
-            this.#thinkingEntryIdsByContentIndex.clear();
-            this.#toolCallEntryIdsByContentIndex.clear();
-            this.#requestRender();
         }
     }
 
@@ -1467,6 +1542,16 @@ export class CodingAssistantApp implements Component, Focusable {
         } else if (event.type === "tool_execution_progress") {
             const entry = this.#entries.find((candidate) => candidate.id === event.toolCallId);
             if (entry !== undefined) entry.detail = this.#singleLine(event.display);
+        } else if (event.type === "permission_review") {
+            const outcome =
+                event.decision === "allow" ? "Approved automatically" : "Needs approval";
+            this.#appendEntry({
+                role: "event",
+                title: "Auto permission",
+                text: `${outcome}: ${event.action}. Risk: ${event.risk}. User authorization: ${event.userAuthorization}. ${event.reason}`,
+            });
+        } else if (event.type === "background_processes_changed") {
+            this.#runningBackgroundProcesses = event.running;
         } else if (event.type === "done") {
             this.#statusText = event.reason === "toolUse" ? "Running tools" : "Idle";
         } else if (event.type === "error") {
@@ -1509,6 +1594,10 @@ export class CodingAssistantApp implements Component, Focusable {
     #applyAgentMessage(message: Message): void {
         if (message.role !== "agent") {
             return;
+        }
+        if (message.usage !== undefined) {
+            this.#usage = addUsage(this.#usage, message.usage);
+            this.#latestContextTokens = message.usage.totalTokens;
         }
 
         let pendingText = "";
@@ -1835,9 +1924,30 @@ export class CodingAssistantApp implements Component, Focusable {
         if (this.#pendingPrompts.length > 0) {
             parts.push(`${FOOTER_QUEUED_FG}queued ${this.#pendingPrompts.length}${RESET}`);
         }
+        if (this.#showUsage) parts.push(`${FOOTER_CWD_FG}${this.#usageFooter()}${RESET}`);
+        const runningAgents = this.#subagents.filter(
+            (subagent) => subagent.status === "running",
+        ).length;
+        if (runningAgents > 0) {
+            parts.push(
+                `${FOOTER_QUEUED_FG}${runningAgents} agent${runningAgents === 1 ? "" : "s"}${RESET}`,
+            );
+        }
+        if (this.#runningBackgroundProcesses > 0) {
+            parts.push(
+                `${FOOTER_QUEUED_FG}${this.#runningBackgroundProcesses} process${this.#runningBackgroundProcesses === 1 ? "" : "es"}${RESET}`,
+            );
+        }
 
         const line = `${" ".repeat(visibleWidth(INPUT_PROMPT))}${parts.join(`${DIM} • ${RESET}`)}`;
         return [this.#fitLine(line, width)];
+    }
+
+    #usageFooter(): string {
+        const window = this.#agent.model.contextWindow;
+        if (window === undefined) return `${formatTokens(this.#latestContextTokens)} tokens`;
+        const percentLeft = Math.max(0, Math.round((1 - this.#latestContextTokens / window) * 100));
+        return `${formatTokens(this.#latestContextTokens)} tokens · ${percentLeft}% left`;
     }
 
     #renderQueuedPrompts(width: number): string[] {
@@ -2019,37 +2129,33 @@ export class CodingAssistantApp implements Component, Focusable {
             return;
         }
 
-        const selectedValue = this.#showReasoning ? "show" : "hide";
         const panel = createSelectionPanel({
             title: "Configure",
             subtitle: "App settings",
-            selectedValue,
             items: [
                 {
-                    value: "show",
-                    label: "Show reasoning",
-                    description: this.#showReasoning
-                        ? "Current setting"
-                        : "Display reasoning blocks in the transcript.",
+                    value: "reasoning",
+                    label: this.#showReasoning ? "Hide reasoning" : "Show reasoning",
+                    description: "Toggle reasoning blocks in the transcript.",
                 },
                 {
-                    value: "hide",
-                    label: "Hide reasoning",
-                    description: this.#showReasoning
-                        ? "Hide reasoning blocks from the transcript."
-                        : "Current setting",
+                    value: "usage",
+                    label: this.#showUsage ? "Hide token status" : "Show token status",
+                    description: "Toggle context usage below the input.",
                 },
             ],
             onSelect: (item) => {
-                const showReasoning = item.value === "show";
-                this.#setShowReasoning(showReasoning);
+                if (item.value === "reasoning") this.#showReasoning = !this.#showReasoning;
+                if (item.value === "usage") this.#showUsage = !this.#showUsage;
+                this.#persistSettings();
                 this.#closeSelectionPanel();
                 this.#appendEntry({
                     role: "event",
                     title: "settings",
-                    text: showReasoning
-                        ? "Reasoning display enabled."
-                        : "Reasoning display disabled.",
+                    text:
+                        item.value === "reasoning"
+                            ? `Reasoning display ${this.#showReasoning ? "enabled" : "disabled"}.`
+                            : `Token status ${this.#showUsage ? "enabled" : "disabled"}.`,
                 });
                 this.#requestRender();
             },
@@ -2724,15 +2830,6 @@ export class CodingAssistantApp implements Component, Focusable {
         });
     }
 
-    #setShowReasoning(showReasoning: boolean): void {
-        if (this.#showReasoning === showReasoning) {
-            return;
-        }
-
-        this.#showReasoning = showReasoning;
-        this.#persistSettings();
-    }
-
     #persistSettings(): void {
         if (this.#onSettingsChange === undefined) {
             return;
@@ -2741,6 +2838,7 @@ export class CodingAssistantApp implements Component, Focusable {
         void Promise.resolve(
             this.#onSettingsChange({
                 showReasoning: this.#showReasoning,
+                showUsage: this.#showUsage,
             }),
         ).catch(() => {
             if (this.#stopped || this.#exiting) {

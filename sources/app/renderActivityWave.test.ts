@@ -1,3 +1,4 @@
+/* eslint-disable no-control-regex -- Tests intentionally strip terminal ANSI controls. */
 import { describe, expect, it } from "vitest";
 
 import { renderActivityWave } from "./renderActivityWave.js";

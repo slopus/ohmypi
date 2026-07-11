@@ -41,6 +41,8 @@ export function parseConfigToml(source: string): PartialRigConfig {
         if (showReasoning !== undefined) {
             settings.showReasoning = showReasoning;
         }
+        const showUsage = readBoolean(settingsTable, "show_usage");
+        if (showUsage !== undefined) settings.showUsage = showUsage;
     }
 
     const mcpServers = readMcpServers(table.mcp_servers);
@@ -67,6 +69,10 @@ function readMcpServers(value: TomlValue | undefined): Record<string, McpServerC
 function readMcpServer(name: string, table: TomlTable): McpServerConfig {
     const command = readString(table, "command");
     const url = readString(table, "url");
+    const transport = readString(table, "transport");
+    if (transport !== undefined && transport !== "http" && transport !== "sse") {
+        throw new Error(`MCP server "${name}" uses unsupported transport "${transport}".`);
+    }
     if ((command === undefined) === (url === undefined)) {
         throw new Error(`MCP server "${name}" must configure either command or url.`);
     }
@@ -92,7 +98,10 @@ function readMcpServer(name: string, table: TomlTable): McpServerConfig {
         ...common,
         ...readOptionalStringRecord(table, "http_headers", "headers"),
         ...readOptionalString(table, "bearer_token_env_var", "bearerTokenEnvVar"),
-        transport: "http",
+        ...readOptionalString(table, "oauth_client_id_env_var", "oauthClientIdEnvVar"),
+        ...readOptionalString(table, "oauth_client_secret_env_var", "oauthClientSecretEnvVar"),
+        ...readOptionalStringArray(table, "oauth_scopes", "oauthScopes"),
+        transport: transport === "sse" ? "sse" : "http",
         url: url ?? "",
     };
 }

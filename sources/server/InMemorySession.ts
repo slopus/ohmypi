@@ -170,6 +170,7 @@ export class InMemorySession {
     #instructions: string | undefined;
     #interruption: SessionInterruption | undefined;
     #lastMessageAt: number | undefined;
+    #lastSessionRunId: string | undefined;
     #messages: PersistedSessionMessage[] = [];
     #mcpLoaded = false;
     #mcpServers: readonly McpServerSummary[] = [];
@@ -248,6 +249,7 @@ export class InMemorySession {
         this.#status = options.restore?.status ?? "idle";
         this.#lastMessageAt = options.restore?.lastMessageAt;
         this.#restoredActiveRunId = options.restore?.activeRunId;
+        this.#lastSessionRunId = options.restore?.activeRunId;
         this.#title = options.restore?.title ?? this.#agentMetadata.description;
         this.#titleError = options.restore?.titleError;
         this.#titleStatus =
@@ -669,6 +671,7 @@ export class InMemorySession {
         this.#status = "idle";
         this.#interruption = undefined;
         this.#restoredActiveRunId = undefined;
+        this.#lastSessionRunId = undefined;
         this.#messages = [];
         this.#contextMessages = undefined;
         this.#partialPositions.clear();
@@ -1221,6 +1224,13 @@ export class InMemorySession {
             };
         }
         const runtime = this.#createRuntime(options);
+        runtime.context.bash.setActiveSessionCountListener?.((running) => {
+            const runId = this.#activeRun?.runId ?? this.#lastSessionRunId ?? "background";
+            this.#append("agent_event", {
+                event: { type: "background_processes_changed", running },
+                runId,
+            });
+        });
         const snapshot = runtime.agent.snapshot();
         this.#runtime = runtime;
         this.#agentId = snapshot.id;
@@ -1349,6 +1359,7 @@ export class InMemorySession {
     async #runQueued(queued: PersistedQueuedRun): Promise<void> {
         const controller = new AbortController();
         this.#activeRun = { controller, kind: queued.kind, runId: queued.runId };
+        this.#lastSessionRunId = queued.runId;
         this.#restoredActiveRunId = undefined;
         this.#status = "running";
         this.#append("run_started", { runId: queued.runId });

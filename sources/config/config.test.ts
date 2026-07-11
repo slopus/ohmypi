@@ -92,6 +92,7 @@ effort = "minimal"
             });
             expect(loaded.config.settings).toEqual({
                 showReasoning: true,
+                showUsage: false,
             });
 
             const emptyCwd = join(root, "empty-repo");
@@ -102,6 +103,7 @@ effort = "minimal"
             });
             expect(defaultLoaded.config.settings).toEqual({
                 showReasoning: false,
+                showUsage: false,
             });
             expect(defaultLoaded.config.defaults.permissionMode).toBe("workspace_write");
             expect(loaded.paths.global).toBe(globalPath);
@@ -127,6 +129,7 @@ effort = "minimal"
                 },
                 settings: {
                     showReasoning: true,
+                    showUsage: true,
                 },
                 mcpServers: {},
             });
@@ -143,6 +146,7 @@ effort = "minimal"
                 },
                 settings: {
                     showReasoning: false,
+                    showUsage: false,
                 },
             });
 
@@ -156,6 +160,7 @@ effort = "minimal"
                     "",
                     "[settings]",
                     "show_reasoning = true",
+                    "show_usage = true",
                     "",
                 ].join("\n"),
             );
@@ -169,6 +174,7 @@ effort = "minimal"
                     "",
                     "[settings]",
                     "show_reasoning = false",
+                    "show_usage = false",
                     "",
                 ].join("\n"),
             );

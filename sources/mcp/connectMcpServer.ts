@@ -1,10 +1,15 @@
 import { resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
+import { ClientCredentialsProvider } from "@modelcontextprotocol/sdk/client/auth-extensions.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
+import { ElicitRequestSchema, ListRootsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 
+import { handleMcpElicitation } from "./handleMcpElicitation.js";
 import type { McpServerConfig } from "./types.js";
 
 export interface ConnectedMcpServer {
@@ -18,7 +23,16 @@ export async function connectMcpServer(
     cwd: string,
     env: NodeJS.ProcessEnv = process.env,
 ): Promise<ConnectedMcpServer> {
-    const client = new Client({ name: "rig", version: "0.0.4" });
+    const client = new Client(
+        { name: "rig", version: "0.0.6" },
+        { capabilities: { elicitation: { form: {} }, roots: { listChanged: false } } },
+    );
+    client.setRequestHandler(ElicitRequestSchema, (request) =>
+        handleMcpElicitation(client, request),
+    );
+    client.setRequestHandler(ListRootsRequestSchema, async () => ({
+        roots: [{ uri: pathToFileURL(cwd).href, name: "Workspace" }],
+    }));
     const transport = createTransport(config, cwd, env);
     try {
         await client.connect(transport, { timeout: config.startupTimeoutMs ?? 10_000 });
@@ -58,9 +72,49 @@ function createTransport(config: McpServerConfig, cwd: string, env: NodeJS.Proce
         }
         headers.set("Authorization", `Bearer ${token}`);
     }
+    const oauthProvider = createOAuthProvider(config, env);
+    if (config.transport === "sse") {
+        if (oauthProvider !== undefined) {
+            throw new Error("MCP OAuth is supported only with streamable HTTP servers.");
+        }
+        return new SSEClientTransport(new URL(config.url), {
+            eventSourceInit: { fetch: (url, init) => fetch(url, { ...init, headers }) },
+            requestInit: { headers },
+        }) as unknown as Transport;
+    }
     return new StreamableHTTPClientTransport(new URL(config.url), {
+        ...(oauthProvider === undefined ? {} : { authProvider: oauthProvider }),
         requestInit: { headers },
     }) as unknown as Transport;
+}
+
+function createOAuthProvider(
+    config: Extract<McpServerConfig, { url: string }>,
+    env: NodeJS.ProcessEnv,
+): ClientCredentialsProvider | undefined {
+    const idVariable = config.oauthClientIdEnvVar;
+    const secretVariable = config.oauthClientSecretEnvVar;
+    if (idVariable === undefined && secretVariable === undefined) return undefined;
+    if (idVariable === undefined || secretVariable === undefined) {
+        throw new Error(
+            "MCP OAuth requires both oauth_client_id_env_var and oauth_client_secret_env_var.",
+        );
+    }
+    const clientId = env[idVariable];
+    const clientSecret = env[secretVariable];
+    if (
+        clientId === undefined ||
+        clientId === "" ||
+        clientSecret === undefined ||
+        clientSecret === ""
+    ) {
+        throw new Error("MCP OAuth client credential environment variables are not set.");
+    }
+    return new ClientCredentialsProvider({
+        clientId,
+        clientSecret,
+        ...(config.oauthScopes === undefined ? {} : { scope: config.oauthScopes.join(" ") }),
+    });
 }
 
 function stringEnvironment(env: NodeJS.ProcessEnv): Record<string, string> {

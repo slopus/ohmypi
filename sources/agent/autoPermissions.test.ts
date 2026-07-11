@@ -30,12 +30,22 @@ describe("Auto permissions", () => {
             provider,
             tools: [tool],
         });
+        const events: string[] = [];
 
-        const result = await agent.send("Run the deployment check.");
+        const result = await agent.send("Run the deployment check.", {
+            onEvent: (event) => {
+                if (event.type === "permission_review") {
+                    events.push(
+                        `${event.decision}:${event.risk}:${event.userAuthorization}:${event.reason}`,
+                    );
+                }
+            },
+        });
 
         expect(result.stopReason).toBe("stop");
         expect(observedModes).toEqual(["full_access"]);
         expect(request).not.toHaveBeenCalled();
+        expect(events).toEqual(["allow:low:high:This is a low-risk development check."]);
         expect(harness.context.permissions.mode).toBe("auto");
     });
 
@@ -127,6 +137,7 @@ function autoReviewProvider(decision: "allow" | "ask") {
                                 text: JSON.stringify({
                                     decision,
                                     risk: decision === "allow" ? "low" : "high",
+                                    user_authorization: decision === "allow" ? "high" : "medium",
                                     reason:
                                         decision === "allow"
                                             ? "This is a low-risk development check."

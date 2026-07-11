@@ -16,9 +16,19 @@ export function serializeMcpServers(
                   }
                 : {
                       url: server.url,
+                      ...(server.transport === "sse" ? { transport: "sse" } : {}),
                       ...(server.headers !== undefined ? { http_headers: server.headers } : {}),
                       ...(server.bearerTokenEnvVar !== undefined
                           ? { bearer_token_env_var: server.bearerTokenEnvVar }
+                          : {}),
+                      ...(server.oauthClientIdEnvVar !== undefined
+                          ? { oauth_client_id_env_var: server.oauthClientIdEnvVar }
+                          : {}),
+                      ...(server.oauthClientSecretEnvVar !== undefined
+                          ? { oauth_client_secret_env_var: server.oauthClientSecretEnvVar }
+                          : {}),
+                      ...(server.oauthScopes !== undefined
+                          ? { oauth_scopes: server.oauthScopes }
                           : {}),
                       ...serializeCommonFields(server),
                   },

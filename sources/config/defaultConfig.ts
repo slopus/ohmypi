@@ -8,5 +8,6 @@ export const DEFAULT_RIG_CONFIG: RigConfig = {
     mcpServers: {},
     settings: {
         showReasoning: false,
+        showUsage: false,
     },
 };

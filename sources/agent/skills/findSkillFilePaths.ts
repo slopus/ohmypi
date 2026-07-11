@@ -10,14 +10,13 @@ export async function findSkillFilePaths(
     root: string,
 ): Promise<readonly string[]> {
     const paths: string[] = [];
-    await collectSkillFilePaths(fs, root, true, paths);
+    await collectSkillFilePaths(fs, root, paths);
     return paths;
 }
 
 async function collectSkillFilePaths(
     fs: FileSystemContext,
     dir: string,
-    includeRootFiles: boolean,
     paths: string[],
 ): Promise<void> {
     const skillFile = join(dir, SKILL_FILENAME);
@@ -38,22 +37,15 @@ async function collectSkillFilePaths(
 
         const entryPath = join(dir, entry);
         let isDirectory = false;
-        let isFile = false;
         try {
             const stats = await fs.stat(entryPath);
             isDirectory = stats.isDirectory;
-            isFile = stats.isFile;
         } catch {
             continue;
         }
 
         if (isDirectory) {
-            await collectSkillFilePaths(fs, entryPath, false, paths);
-            continue;
-        }
-
-        if (includeRootFiles && isFile && entry.endsWith(".md")) {
-            paths.push(entryPath);
+            await collectSkillFilePaths(fs, entryPath, paths);
         }
     }
 }

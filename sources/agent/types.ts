@@ -5,6 +5,7 @@
 import type { Static, TSchema } from "@sinclair/typebox";
 
 import type { AgentContext } from "./context/AgentContext.js";
+import type { Usage } from "../providers/types.js";
 
 /** Plain text content. */
 export interface TextBlock {
@@ -70,6 +71,8 @@ export interface AgentMessage {
     role: "agent";
     id: string;
     blocks: readonly AgentBlock[];
+    /** Provider-reported usage for inference messages. Tool-result messages omit it. */
+    usage?: Usage;
 }
 
 export type Message = SystemMessage | UserMessage | AgentMessage;

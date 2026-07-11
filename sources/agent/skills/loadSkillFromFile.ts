@@ -43,6 +43,5 @@ export async function loadSkillFromFile(
         description,
         filePath,
         baseDir,
-        disableModelInvocation: frontmatter["disable-model-invocation"] === true,
     };
 }

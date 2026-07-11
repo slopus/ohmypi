@@ -78,6 +78,19 @@ export type AgentLoopEvent =
           type: "tool_execution_progress";
           display: string;
           toolCallId: string;
+      }
+    | {
+          type: "permission_review";
+          action: string;
+          decision: "allow" | "ask";
+          reason: string;
+          risk: "low" | "medium" | "high";
+          toolCallId: string;
+          userAuthorization: "low" | "medium" | "high";
+      }
+    | {
+          type: "background_processes_changed";
+          running: number;
       };
 
 export interface AgentLoopResult {
@@ -275,6 +288,12 @@ export async function runAgentLoop(options: RunAgentLoopOptions): Promise<AgentL
                             toolCallId: toolCall.id,
                         });
                     },
+                    onPermissionReview: (review) =>
+                        options.onEvent?.({
+                            type: "permission_review",
+                            toolCallId: toolCall.id,
+                            ...review,
+                        }),
                     provider: options.provider,
                     ...(options.signal === undefined ? {} : { signal: options.signal }),
                 });
@@ -287,6 +306,10 @@ export async function runAgentLoop(options: RunAgentLoopOptions): Promise<AgentL
                         display: result.display,
                         ...(result.isError === undefined ? {} : { isError: result.isError }),
                     },
+                });
+                await options.onEvent?.({
+                    type: "background_processes_changed",
+                    running: toolContext.bash.activeSessionCount?.() ?? 0,
                 });
                 return result;
             }),
@@ -552,6 +575,13 @@ async function executeToolCall(
         model: Model;
         now: () => number;
         onProgress?: (display: string) => void;
+        onPermissionReview?: (review: {
+            action: string;
+            decision: "allow" | "ask";
+            reason: string;
+            risk: "low" | "medium" | "high";
+            userAuthorization: "low" | "medium" | "high";
+        }) => void | Promise<void>;
         provider: Provider;
         signal?: AbortSignal;
     },
@@ -580,8 +610,15 @@ async function executeToolCall(
                 ...(options.signal === undefined ? {} : { signal: options.signal }),
                 toolName: tool.name,
             });
+            const action = summarizePermissionAction(tool.name, toolCall.arguments);
+            await options.onPermissionReview?.({
+                action,
+                decision: review.decision,
+                reason: review.reason,
+                risk: review.risk,
+                userAuthorization: review.userAuthorization,
+            });
             if (review.decision === "ask") {
-                const action = summarizePermissionAction(tool.name, toolCall.arguments);
                 const approved = await requestAutoPermissionApproval({
                     action,
                     reason: review.reason,

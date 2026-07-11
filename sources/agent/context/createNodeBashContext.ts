@@ -33,6 +33,9 @@ const MAX_RETAINED_SESSIONS = 64;
 export function createNodeBashContext(options: CreateNodeBashContextOptions): BashContext {
     const sessions = new Map<number, NodeBashSession>();
     let nextSessionId = 1;
+    let onActiveSessionCountChange: ((count: number) => void) | undefined;
+    const activeSessionCount = () =>
+        [...sessions.values()].filter((session) => session.result === undefined).length;
     const runCwd = (cwd: string | undefined) =>
         cwd === undefined ? options.cwd : isAbsolute(cwd) ? cwd : resolve(options.cwd, cwd);
 
@@ -86,6 +89,7 @@ export function createNodeBashContext(options: CreateNodeBashContextOptions): Ba
     };
 
     return {
+        activeSessionCount,
         cwd: options.cwd,
         async killSession(sessionId) {
             const session = sessions.get(sessionId);
@@ -145,6 +149,7 @@ export function createNodeBashContext(options: CreateNodeBashContextOptions): Ba
                 timedOut: false,
             };
             sessions.set(sessionId, session);
+            onActiveSessionCountChange?.(activeSessionCount());
             if (runOptions.timeoutMs !== undefined) {
                 session.timeout = setTimeout(() => {
                     session.timedOut = true;
@@ -155,6 +160,7 @@ export function createNodeBashContext(options: CreateNodeBashContextOptions): Ba
             void session.completion.then((result) => {
                 session.result = result;
                 if (session.timeout !== undefined) clearTimeout(session.timeout);
+                onActiveSessionCountChange?.(activeSessionCount());
             });
             if (sessions.size > MAX_RETAINED_SESSIONS) {
                 const completed = [...sessions.values()].find(
@@ -163,6 +169,10 @@ export function createNodeBashContext(options: CreateNodeBashContextOptions): Ba
                 if (completed !== undefined) sessions.delete(completed.sessionId);
             }
             return sessionId;
+        },
+        setActiveSessionCountListener(listener) {
+            onActiveSessionCountChange = listener;
+            listener?.(activeSessionCount());
         },
         supportsSessionInput: true,
         async writeSession(sessionId, data) {

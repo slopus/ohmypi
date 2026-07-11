@@ -1,3 +1,4 @@
+/* eslint-disable no-control-regex -- Tests intentionally strip terminal ANSI controls. */
 import { resetCapabilitiesCache, setCapabilities } from "@earendil-works/pi-tui";
 import { describe, expect, it } from "vitest";
 

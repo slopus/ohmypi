@@ -24,6 +24,8 @@ export function mergeConfigValues(base: RigConfig, ...configs: PartialRigConfig[
         if (config.settings?.showReasoning !== undefined) {
             settings.showReasoning = config.settings.showReasoning;
         }
+        if (config.settings?.showUsage !== undefined)
+            settings.showUsage = config.settings.showUsage;
         if (config.mcpServers !== undefined) {
             Object.assign(mcpServers, config.mcpServers);
         }

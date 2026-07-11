@@ -19,10 +19,12 @@ export interface PartialConfigDefaults {
 
 export interface ConfigSettings {
     showReasoning: boolean;
+    showUsage: boolean;
 }
 
 export interface PartialConfigSettings {
     showReasoning?: boolean;
+    showUsage?: boolean;
 }
 
 export interface RigConfig {

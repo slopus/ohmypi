@@ -25,6 +25,7 @@ export interface RunAppOptions {
     permissionMode?: PermissionMode;
     resumeSessionId?: string;
     showReasoning?: boolean;
+    showUsage?: boolean;
 }
 
 export async function runApp(options: RunAppOptions = {}): Promise<void> {
@@ -51,6 +52,7 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
     if (options.providerId !== undefined) agentOptions.providerId = options.providerId;
     if (options.permissionMode !== undefined) agentOptions.permissionMode = options.permissionMode;
     let showReasoning = options.showReasoning ?? loadedConfig.config.settings.showReasoning;
+    let showUsage = options.showUsage ?? loadedConfig.config.settings.showUsage;
 
     // Keep the terminal in TUI mode while the daemon starts so startup work is visible.
     const terminal = new ScrollbackPreservingTerminal();
@@ -144,10 +146,12 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
                 },
                 settings: {
                     showReasoning,
+                    showUsage,
                 },
             }),
         onSettingsChange: (settings) => {
             showReasoning = settings.showReasoning;
+            showUsage = settings.showUsage;
             return writeRuntimeConfig(loadedConfig.paths.runtime, {
                 defaults: {
                     modelId: agent.model.id,
@@ -169,6 +173,7 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
                 .then((response) => response.files),
         sessionBacked: true,
         showReasoning,
+        showUsage,
         tui,
         version: readPackageVersion(),
     });

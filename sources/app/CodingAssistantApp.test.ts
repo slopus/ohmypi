@@ -1,3 +1,4 @@
+/* eslint-disable no-control-regex -- Tests intentionally strip terminal ANSI controls. */
 import { visibleWidth, type TUI } from "@earendil-works/pi-tui";
 import { describe, expect, it, vi } from "vitest";
 
@@ -2321,6 +2322,68 @@ describe("CodingAssistantApp", () => {
         expect(separatorLineIndex).toBe(-1);
     });
 
+    it("reports provider token usage and shows optional live footer status", async () => {
+        const model = defineModel({
+            id: "openai/gpt-test",
+            name: "GPT Test",
+            thinkingLevels: ["off"],
+            defaultThinkingLevel: "off",
+            contextWindow: 200_000,
+        });
+        const usage: Usage = {
+            input: 1_200,
+            output: 300,
+            cacheRead: 100,
+            cacheWrite: 0,
+            totalTokens: 1_600,
+            cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+        };
+        const provider = defineProvider({
+            id: "codex",
+            models: [model],
+            stream() {
+                return streamMessage({
+                    role: "assistant",
+                    content: [{ type: "text", text: "Measured." }],
+                    api: "test",
+                    provider: "codex",
+                    model: model.id,
+                    usage,
+                    stopReason: "stop",
+                    timestamp: 1,
+                });
+            },
+        });
+        const harness = createJustBashToolHarness();
+        const agent = new Agent({
+            provider,
+            modelId: model.id,
+            context: harness.context,
+            printToConsole: false,
+        });
+        const app = new CodingAssistantApp({
+            agent,
+            cwd: harness.context.fs.cwd,
+            processManager: new NativeProxessManager(),
+            showUsage: true,
+            tui: fakeTui(),
+        });
+
+        submit(app, "Measure this turn.");
+        await app.waitForIdle();
+        expect(stripAnsi(app.render(100).join("\n"))).toContain("1.6k tokens · 99% left");
+
+        submit(app, "/usage");
+        const report = stripAnsi(app.render(100).join("\n"));
+        expect(report).toContain("Input: 1.2k");
+        expect(report).toContain("Output: 300");
+        expect(report).toContain("Total processed: 1.6k");
+
+        submit(app, "/new");
+        submit(app, "/usage");
+        expect(stripAnsi(app.render(100).join("\n"))).toContain("Total processed: 0");
+    });
+
     it("keeps the focused empty placeholder stable without inserting padding", () => {
         vi.useFakeTimers();
         try {
@@ -2979,7 +3042,7 @@ describe("CodingAssistantApp", () => {
             effort: "high",
             printToConsole: false,
         });
-        const settingsChanges: Array<{ showReasoning: boolean }> = [];
+        const settingsChanges: Array<{ showReasoning: boolean; showUsage: boolean }> = [];
         const app = new CodingAssistantApp({
             agent,
             cwd: harness.context.fs.cwd,
@@ -3001,14 +3064,12 @@ describe("CodingAssistantApp", () => {
         const menu = stripAnsi(app.render(100).join("\n"));
         expect(menu).toContain("Configure");
         expect(menu).toContain("Show reasoning");
-        expect(menu).toContain("Hide reasoning");
-        expect(menu).toContain("Current setting");
+        expect(menu).toContain("Show token status");
 
-        app.handleInput("\x1b[A");
         app.handleInput("\r");
 
         const rendered = stripAnsi(app.render(100).join("\n"));
-        expect(settingsChanges).toEqual([{ showReasoning: true }]);
+        expect(settingsChanges).toEqual([{ showReasoning: true, showUsage: false }]);
         expect(rendered).toContain("This reasoning text can be hidden.");
         expect(rendered).toContain("Final answer stays visible.");
         expect(rendered).toContain("Reasoning display enabled.");

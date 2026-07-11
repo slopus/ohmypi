@@ -222,7 +222,7 @@ describe("createSystemPrompt", () => {
         ).resolves.toBe("Base instructions.");
     });
 
-    it("adds available skills from Codex, shared agent, and Pi skill roots", async () => {
+    it("adds available skills from Codex roots and ignores Pi skill roots", async () => {
         const root = await makeTempDir();
         const nested = join(root, "packages", "app");
         await mkdir(nested, { recursive: true });
@@ -269,9 +269,9 @@ describe("createSystemPrompt", () => {
         expect(prompt).toContain(`<location>${projectSkill}</location>`);
         expect(prompt).toContain("<name>review</name>");
         expect(prompt).toContain(`<location>${codexSkill}</location>`);
-        expect(prompt).toContain("<name>tester</name>");
-        expect(prompt).toContain(`<location>${nestedPiSkill}</location>`);
-        expect(prompt).toContain("Read the skill file with the available filesystem tools");
+        expect(prompt).not.toContain("<name>tester</name>");
+        expect(prompt).not.toContain(`<location>${nestedPiSkill}</location>`);
+        expect(prompt).toContain("Read the complete skill file before taking task actions");
         expect(prompt).not.toContain("# Review");
         expect(prompt).not.toContain("# Build");
         expect(prompt).not.toContain("# Test");
@@ -322,7 +322,7 @@ describe("createSystemPrompt", () => {
         expect(prompt).not.toContain("This body should be read explicitly");
     });
 
-    it("does not advertise skills disabled for model invocation", async () => {
+    it("ignores Claude-only model invocation frontmatter", async () => {
         const root = await makeTempDir();
         await writeFile(join(root, ".git"), "gitdir: here");
         const skillPath = join(root, ".agents", "skills", "manual", "SKILL.md");
@@ -346,7 +346,7 @@ describe("createSystemPrompt", () => {
                 messages: [],
                 context: contextFor(root),
             }),
-        ).resolves.toBeUndefined();
+        ).resolves.toContain("<name>manual</name>");
     });
 });
 

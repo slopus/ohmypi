@@ -2,6 +2,7 @@ export interface AutoPermissionReview {
     decision: "allow" | "ask";
     reason: string;
     risk: "low" | "medium" | "high";
+    userAuthorization: "low" | "medium" | "high";
 }
 
 export function parseAutoPermissionReview(text: string): AutoPermissionReview | undefined {
@@ -17,6 +18,13 @@ export function parseAutoPermissionReview(text: string): AutoPermissionReview | 
         if (record.risk !== "low" && record.risk !== "medium" && record.risk !== "high") {
             return undefined;
         }
+        if (
+            record.user_authorization !== "low" &&
+            record.user_authorization !== "medium" &&
+            record.user_authorization !== "high"
+        ) {
+            return undefined;
+        }
         if (typeof record.reason !== "string" || record.reason.trim().length === 0) {
             return undefined;
         }
@@ -24,6 +32,7 @@ export function parseAutoPermissionReview(text: string): AutoPermissionReview | 
             decision: record.decision,
             reason: normalizeReason(record.reason),
             risk: record.risk,
+            userAuthorization: record.user_authorization,
         };
     } catch {
         return undefined;

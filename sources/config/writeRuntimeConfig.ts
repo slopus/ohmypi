@@ -17,6 +17,7 @@ export async function writeRuntimeConfig(path: string, config: PartialRigConfig)
         };
         settings?: {
             show_reasoning?: boolean;
+            show_usage?: boolean;
         };
     } = {};
 
@@ -44,6 +45,7 @@ export async function writeRuntimeConfig(path: string, config: PartialRigConfig)
         if (settings.showReasoning !== undefined) {
             document.settings.show_reasoning = settings.showReasoning;
         }
+        if (settings.showUsage !== undefined) document.settings.show_usage = settings.showUsage;
     }
 
     await mkdir(dirname(path), { recursive: true });

@@ -73,6 +73,24 @@ describe("createNodeAgentContext", () => {
         expect(processManager.activeCount()).toBe(0);
     });
 
+    it("reports only background session lifecycle changes", async () => {
+        const cwd = await makeTempDir();
+        const context = createNodeAgentContext({
+            cwd,
+            processManager: new NativeProxessManager(),
+        });
+        const counts: number[] = [];
+        context.bash.setActiveSessionCountListener?.((count) => counts.push(count));
+
+        await context.bash.run({ command: "printf foreground", timeoutMs: 2_000 });
+        expect(counts).toEqual([0]);
+
+        const sessionId = await context.bash.startSession({ command: "sleep 0.05" });
+        expect(counts).toEqual([0, 1]);
+        await context.bash.readSession(sessionId, { waitMs: 2_000 });
+        expect(counts).toEqual([0, 1, 0]);
+    });
+
     it("enforces hard timeouts for background shell sessions", async () => {
         const cwd = await makeTempDir();
         const processManager = new NativeProxessManager();

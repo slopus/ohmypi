@@ -112,7 +112,11 @@ async function release(): Promise<void> {
         captureOutput: retryingRelease,
     });
     if (publishResult.status !== 0) {
-        if (!/cannot publish over|previously published|EPUBLISHCONFLICT|403/.test(publishResult.stderr)) {
+        if (
+            !/cannot publish over|previously published|EPUBLISHCONFLICT|403/.test(
+                publishResult.stderr,
+            )
+        ) {
             console.error(publishResult.stderr);
             throw new Error("Command failed: pnpm publish --access public");
         }

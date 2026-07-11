@@ -15,4 +15,16 @@ describe("Claude Code Read tool", () => {
 
         expect("content" in result ? result.content : "").toBe("1\tone\n2\ttwo");
     });
+
+    it("rejects notebooks instead of presenting raw JSON as parsed cells", async () => {
+        const harness = createJustBashToolHarness({
+            files: { "/workspace/example.ipynb": '{"cells":[]}' },
+        });
+
+        const result = await harness.runTool(claudeReadTool, {
+            file_path: "/workspace/example.ipynb",
+        });
+
+        expect("text" in result ? result.text : "").toContain("not supported");
+    });
 });

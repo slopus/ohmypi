@@ -6,16 +6,25 @@ describe("parseAutoPermissionReview", () => {
     it("parses a fenced structured review", () => {
         expect(
             parseAutoPermissionReview(
-                '```json\n{"decision":"allow","risk":"low","reason":"Runs local tests."}\n```',
+                '```json\n{"decision":"allow","risk":"low","user_authorization":"high","reason":"Runs local tests."}\n```',
             ),
-        ).toEqual({ decision: "allow", risk: "low", reason: "Runs local tests." });
+        ).toEqual({
+            decision: "allow",
+            risk: "low",
+            userAuthorization: "high",
+            reason: "Runs local tests.",
+        });
     });
 
     it("rejects incomplete or unknown decisions", () => {
-        expect(parseAutoPermissionReview('{"decision":"allow","risk":"low"}')).toBeUndefined();
         expect(
             parseAutoPermissionReview(
-                '{"decision":"deny","risk":"high","reason":"Not supported."}',
+                '{"decision":"allow","risk":"low","user_authorization":"high"}',
+            ),
+        ).toBeUndefined();
+        expect(
+            parseAutoPermissionReview(
+                '{"decision":"deny","risk":"high","user_authorization":"low","reason":"Not supported."}',
             ),
         ).toBeUndefined();
     });

@@ -43,6 +43,12 @@ export function createSlashCommands(): SlashCommandItem[] {
             aliases: ["todos"],
         },
         {
+            value: "usage",
+            label: "/usage",
+            description: "Show token usage for this session.",
+            aliases: ["tokens"],
+        },
+        {
             value: "agents",
             label: "/agents",
             description: "Show delegated work and its current status.",
