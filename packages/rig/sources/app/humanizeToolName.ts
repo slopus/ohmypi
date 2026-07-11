@@ -20,7 +20,16 @@ export function humanizeToolName(name: string): string {
     if (parts.length >= 2) {
         return `${humanizeWords(parts[0] ?? "MCP")} · ${humanizeWords(parts.slice(1).join("__"))}`;
     }
-    return name;
+    return humanizeIdentifier(name);
+}
+
+function humanizeIdentifier(value: string): string {
+    const words = value
+        .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+        .replace(/[_-]+/g, " ")
+        .trim()
+        .toLowerCase();
+    return words.replace(/^./u, (character) => character.toUpperCase());
 }
 
 function humanizeWords(value: string): string {

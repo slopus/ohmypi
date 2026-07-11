@@ -640,13 +640,9 @@ export class CodingAssistantApp implements Component, Focusable {
             return;
         }
 
-        const previousSlashCommandSuggestionCount = this.#slashCommandSuggestions().length;
         const previousFileMentionSuggestionCount = this.#fileMentionSnapshot()?.items.length ?? 0;
         if (this.#handleSlashCommandAutocompleteInput(data)) {
-            const nextSlashCommandSuggestionCount = this.#slashCommandSuggestions().length;
-            this.#requestRender(
-                nextSlashCommandSuggestionCount < previousSlashCommandSuggestionCount,
-            );
+            this.#requestRender();
             return;
         }
 
@@ -667,10 +663,7 @@ export class CodingAssistantApp implements Component, Focusable {
                 (path, context) => this.#completeFileMention(path, context),
             ) === true
         ) {
-            const nextFileMentionSuggestionCount = this.#fileMentionSnapshot()?.items.length ?? 0;
-            this.#requestRender(
-                nextFileMentionSuggestionCount < previousFileMentionSuggestionCount,
-            );
+            this.#requestRender();
             return;
         }
 
@@ -694,12 +687,7 @@ export class CodingAssistantApp implements Component, Focusable {
         this.#markTypingActivity();
         this.#editor.handleInput(data);
         this.#syncAutocompleteState();
-        const nextSlashCommandSuggestionCount = this.#slashCommandSuggestions().length;
-        const nextFileMentionSuggestionCount = this.#fileMentionSnapshot()?.items.length ?? 0;
-        this.#requestRender(
-            nextSlashCommandSuggestionCount < previousSlashCommandSuggestionCount ||
-                nextFileMentionSuggestionCount < previousFileMentionSuggestionCount,
-        );
+        this.#requestRender();
     }
 
     #handlePastedInput(data: string): boolean {
@@ -837,7 +825,7 @@ export class CodingAssistantApp implements Component, Focusable {
     }
 
     render(width: number): string[] {
-        const safeWidth = Math.max(20, width);
+        const safeWidth = Math.max(1, width);
         this.#lastRenderedWidth = safeWidth;
         const header = this.#showHeaderInFrame ? this.#renderHeader(safeWidth) : [];
         const slashCommandSuggestions = this.#slashCommandSuggestions();
@@ -1491,12 +1479,12 @@ export class CodingAssistantApp implements Component, Focusable {
                 items,
                 onCancel: () => this.#closeSelectionPanel(),
                 onSelect: (item) => {
-                    const rewind = this.#agent.rewind;
-                    if (rewind === undefined) return;
+                    if (this.#agent.rewind === undefined) return;
                     this.#closeSelectionPanel();
                     this.#statusText = "Rewinding";
                     this.#requestRender();
-                    void rewind(item.value)
+                    void this.#agent
+                        .rewind(item.value)
                         .then((message) => this.#finishBacktrack(item.value, message))
                         .catch((error: unknown) => {
                             this.#statusText = "Error";

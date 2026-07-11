@@ -42,7 +42,7 @@ describe("ScrollbackPreservingTUI", () => {
         tui.stop();
     });
 
-    it("does not commit a mutable tail that already fills the viewport", async () => {
+    it("clears only the live screen when the mutable tail already fills the viewport", async () => {
         const terminal = new RecordingTerminal(20, 5);
         const tui = new ScrollbackPreservingTUI(terminal, false);
         tui.addChild({
@@ -52,7 +52,9 @@ describe("ScrollbackPreservingTUI", () => {
         tui.start();
         await renderCycle();
 
-        expect(tui.preserveRenderedPrefix(4)).toBe(false);
+        expect(tui.preserveRenderedPrefix(4)).toBe(true);
+        expect(terminal.output.join("")).toContain("\x1b[2J\x1b[H");
+        expect(terminal.output.join("")).not.toContain("\x1b[3J");
         tui.stop();
     });
 

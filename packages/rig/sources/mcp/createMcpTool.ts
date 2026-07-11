@@ -20,7 +20,10 @@ export function createMcpTool(options: {
         label: qualifiedName,
         description:
             options.tool.description ?? `Use ${options.tool.name} from ${options.serverName}.`,
-        arguments: Type.Unsafe<Record<string, unknown>>(options.tool.inputSchema),
+        // Preserve the server's JSON Schema for the provider while treating it as an
+        // externally validated schema in TypeBox. Type.Unsafe uses an unregistered
+        // kind that Value.Check cannot execute in the normal agent tool path.
+        arguments: Type.Unknown(options.tool.inputSchema),
         returnType: Type.Unknown(),
         async execute(args, context, execution) {
             const result = await runMcpClientCall(options.client, context, () =>

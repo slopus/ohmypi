@@ -9,6 +9,10 @@ export function createInferenceStream(
         resolveResult = resolve;
         rejectResult = reject;
     });
+    // Iteration reports provider failures directly. Keep the parallel result promise
+    // observed as well so a caller that exits the iterator on that failure cannot
+    // trigger an unhandled rejection before (or instead of) calling result().
+    void resultPromise.catch(() => {});
     let started = false;
 
     const drain = async () => {

@@ -1,4 +1,4 @@
-import { type TUI } from "@earendil-works/pi-tui";
+import { visibleWidth, type TUI } from "@earendil-works/pi-tui";
 import { describe, expect, it, vi } from "vitest";
 
 import { StartupStatusApp } from "./StartupStatusApp.js";
@@ -40,6 +40,19 @@ describe("StartupStatusApp", () => {
         expect(rendered).toContain("Checking providers.");
         expect(rendered).toContain("(2s)");
         expect(tui.requestRender).toHaveBeenCalled();
+    });
+
+    it("keeps every rendered row within a tiny terminal width", () => {
+        const app = new StartupStatusApp({
+            cwd: "/workspace",
+            tui: fakeTui(),
+            version: "1.2.3",
+        });
+
+        const lines = app.render(12);
+
+        expect(lines.length).toBeGreaterThan(0);
+        for (const line of lines) expect(visibleWidth(line)).toBeLessThanOrEqual(12);
     });
 
     it("attaches to and detaches from the tui", () => {

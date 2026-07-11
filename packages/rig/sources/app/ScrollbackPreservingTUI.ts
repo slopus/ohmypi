@@ -36,11 +36,26 @@ export class ScrollbackPreservingTUI extends TUI {
             0,
         );
 
-        // Once the mutable tail itself occupies the viewport, part of it is no longer
-        // addressable. Leave the existing renderer in charge in that uncommon state.
-        if (suffixRows >= this.terminal.rows) return false;
-
         let output = BEGIN_SYNCHRONIZED_OUTPUT;
+        // When the mutable tail fills the resized viewport, every committed row is
+        // already above the live screen. Clear only that live screen; clearing the
+        // terminal's scrollback would discard the committed transcript, while asking
+        // the base renderer for a full redraw would replay it.
+        if (suffixRows >= this.terminal.rows) {
+            output += `\x1b[2J\x1b[H${END_SYNCHRONIZED_OUTPUT}`;
+            this.terminal.write(output);
+
+            state.previousLines = [];
+            state.previousKittyImageIds = new Set();
+            state.previousWidth = 0;
+            state.previousHeight = 0;
+            state.cursorRow = 0;
+            state.hardwareCursorRow = 0;
+            state.maxLinesRendered = 0;
+            state.previousViewportTop = 0;
+            return true;
+        }
+
         if (totalRows >= this.terminal.rows) {
             output += "\x1b[999B\r";
         } else {

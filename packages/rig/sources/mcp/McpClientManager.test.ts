@@ -2,6 +2,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { Value } from "@sinclair/typebox/value";
 import { describe, expect, it } from "vitest";
 
 import { createJustBashToolHarness } from "../tools/testing/createJustBashToolHarness.js";
@@ -53,6 +54,8 @@ describe("McpClientManager", () => {
                 (candidate) => candidate.name === "mcp__test_server__echo_value",
             );
             expect(tool).toBeDefined();
+            if (tool === undefined) throw new Error("Echo MCP tool was not discovered.");
+            expect(Value.Check(tool.arguments, { value: "hello" })).toBe(true);
             const harness = createJustBashToolHarness();
             const result = await tool?.execute({ value: "hello" } as never, harness.context, {});
             expect(tool?.toLLM(result as never)).toEqual([{ type: "text", text: "Echo: hello" }]);

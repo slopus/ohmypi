@@ -41,7 +41,7 @@ export class StartupStatusApp implements Component {
     invalidate(): void {}
 
     render(width: number): string[] {
-        const safeWidth = Math.max(20, width);
+        const safeWidth = Math.max(1, width);
         return [
             ...this.#renderStartupBox(safeWidth, [
                 `${RIG_ORANGE}>_${RESET} ${BOLD}Rig${NOT_BOLD_OR_DIM} ${this.#version}`,

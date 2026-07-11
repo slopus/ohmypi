@@ -67,7 +67,7 @@ class SelectionPanel implements Component {
     }
 
     render(width: number): string[] {
-        const safeWidth = Math.max(24, width);
+        const safeWidth = Math.max(1, width);
         const contentWidth = Math.max(1, safeWidth - 2);
         const lines = [
             "",
