@@ -65,6 +65,8 @@ export const claudeReadTool = defineTool({
         if (/\.(png|jpe?g|gif|webp|bmp)$/.test(lower)) {
             const mediaType = mediaTypeForPath(file_path);
             const data = Buffer.from(await context.fs.readFileBuffer(file_path)).toString("base64");
+            const stats = await context.fs.stat(file_path);
+            context.fileReads?.recordRead(file_path, stats.mtimeMs);
             return {
                 image_url: `data:${mediaType};base64,${data}`,
                 mediaType,

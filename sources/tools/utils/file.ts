@@ -3,6 +3,7 @@ import { dirname } from "node:path";
 import { Type } from "@sinclair/typebox";
 
 import type { AgentContext } from "../../agent/context/AgentContext.js";
+import { assertReadBeforeModify } from "./assertReadBeforeModify.js";
 import { resolveToolPath, splitLines } from "./path.js";
 
 export const readFileReturnSchema = Type.Object({
@@ -56,6 +57,7 @@ export async function readTextFile(
     }
 
     const raw = await context.fs.readFile(filePath);
+    context.fileReads?.recordRead(filePath, stats.mtimeMs);
     const lines = splitLines(raw);
     const startLine = Math.max(1, options.offset ?? 1);
     const startIndex = Math.min(lines.length, startLine - 1);
@@ -93,9 +95,11 @@ export async function writeTextFile(
     context: AgentContext,
 ): Promise<WriteFileResult> {
     const filePath = resolveToolPath(options.path, options.cwd ?? context.fs.cwd);
+    await assertReadBeforeModify(filePath, context);
     const created = !(await context.fs.exists(filePath));
     await context.fs.mkdir(dirname(filePath), { recursive: true });
     await context.fs.writeFile(filePath, options.content);
+    await recordWriteAsRead(filePath, context);
 
     return {
         path: filePath,
@@ -127,7 +131,9 @@ export async function editTextFile(
     context: AgentContext,
 ): Promise<EditFileResult> {
     const plan = await planTextEdit(options, context);
+    await assertReadBeforeModify(plan.path, context);
     await context.fs.writeFile(plan.path, plan.nextContent);
+    await recordWriteAsRead(plan.path, context);
 
     return {
         path: plan.path,
@@ -433,6 +439,7 @@ export async function editTextFileBatch(
     }
 
     const filePath = resolveToolPath(options.path, options.cwd ?? context.fs.cwd);
+    await assertReadBeforeModify(filePath, context);
     const rawContent = await context.fs.readFile(filePath);
     const matches = options.edits.map((edit, editIndex) => {
         const editOptions: EditFileOptions = {
@@ -477,11 +484,23 @@ export async function editTextFileBatch(
     }
 
     await context.fs.writeFile(filePath, nextContent);
+    await recordWriteAsRead(filePath, context);
     return {
         path: filePath,
         replacements: sorted.length,
         fuzzy: usedFuzzy,
     };
+}
+
+// After a successful write the agent knows the file's contents, so refresh the
+// recorded read state to the new on-disk mtime; otherwise the next edit in the
+// same turn would be rejected as stale.
+async function recordWriteAsRead(filePath: string, context: AgentContext): Promise<void> {
+    if (!context.fileReads) {
+        return;
+    }
+    const stats = await context.fs.stat(filePath);
+    context.fileReads.recordRead(filePath, stats.mtimeMs);
 }
 
 function lineRanges(content: string): { start: number; end: number }[] {

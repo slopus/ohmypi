@@ -2,12 +2,14 @@ import { describe, expect, it } from "vitest";
 
 import { createJustBashToolHarness } from "../testing/createJustBashToolHarness.js";
 import { claudeEditTool } from "./Edit.js";
+import { claudeReadTool } from "./Read.js";
 
 describe("Claude Code Edit tool", () => {
     it("remains strict about exact text", async () => {
         const harness = createJustBashToolHarness({
             files: { "/workspace/edit.txt": "alpha  \nbeta\n" },
         });
+        await harness.runTool(claudeReadTool, { file_path: "/workspace/edit.txt" });
 
         await expect(
             harness.runTool(claudeEditTool, {

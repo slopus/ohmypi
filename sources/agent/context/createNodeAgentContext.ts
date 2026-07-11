@@ -1,6 +1,7 @@
 import type { NativeProxessManager } from "../../processes/index.js";
 import type { AgentContext } from "./AgentContext.js";
 import type { GoalContext } from "./GoalContext.js";
+import { createFileReadState } from "./FileReadState.js";
 import { createNodeBashContext } from "./createNodeBashContext.js";
 import { createNodeFileSystemContext } from "./createNodeFileSystemContext.js";
 import type { UserInputContext } from "./UserInputContext.js";
@@ -31,6 +32,7 @@ export function createNodeAgentContext(options: CreateNodeAgentContextOptions): 
             processManager: options.processManager,
             permissions,
         }),
+        fileReads: createFileReadState(),
         permissions,
     };
     if (options.userInput !== undefined) context.userInput = options.userInput;
