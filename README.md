@@ -40,7 +40,9 @@ rig stays close to pi and to upstream vendor behavior, but adds a curated defaul
 
 rig is intentionally opinionated, but not locked down:
 
+- Best of both worlds. Combine the strongest ideas from Codex and Claude Code into one coherent experience instead of cloning either product wholesale.
 - Good defaults first. A fresh install should already feel usable.
+- Simplicity and polish. Prefer clear, pleasant workflows over obscure features, exhaustive parity, or unnecessary configuration.
 - Provider flexibility. The harness should work across proprietary and open source models.
 - Project-local control. Repos should be able to enable, disable, or override behavior without changing global machine state.
 - Close to upstream. Tool definitions and model expectations should track vendor semantics closely.
@@ -55,6 +57,11 @@ When a project needs different behavior, configure it locally. When a machine ch
 ## Development
 
 This is a single-package TypeScript project. Source files live in `sources/`, with `sources/main.ts` as the CLI entry point.
+
+Reference implementations for coding agents live in
+`~/Developer/coding-assistant-sources`, including the Codex and Claude Code
+source trees. Use them when implementing or comparing provider-aligned behavior,
+then adapt the useful parts to rig's simpler, curated experience.
 
 ```sh
 pnpm install
