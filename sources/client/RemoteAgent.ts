@@ -13,6 +13,7 @@ import type {
 import type { ModelCatalog, ProtocolSession, SessionEvent } from "../protocol/index.js";
 import { defineProvider, type Model, type Provider, type StopReason } from "../providers/types.js";
 import type { PermissionMode } from "../permissions/index.js";
+import type { GoalStatus, SessionGoal } from "../goals/index.js";
 import { ProtocolHttpClient } from "./ProtocolHttpClient.js";
 
 export interface RemoteAgentOptions {
@@ -88,6 +89,25 @@ export class RemoteAgent implements CodingAssistantAgentBackend {
 
     get permissionMode(): PermissionMode {
         return this.#session.permissionMode;
+    }
+
+    get goal(): SessionGoal | undefined {
+        return this.#session.goal === undefined ? undefined : { ...this.#session.goal };
+    }
+
+    async setGoal(objective: string): Promise<void> {
+        const response = await this.#client.setGoal(this.#session.id, { objective });
+        this.#replaceSession(response.session);
+    }
+
+    async changeGoalStatus(status: GoalStatus): Promise<void> {
+        const response = await this.#client.changeGoalStatus(this.#session.id, { status });
+        this.#replaceSession(response.session);
+    }
+
+    async clearGoal(): Promise<void> {
+        const response = await this.#client.clearGoal(this.#session.id);
+        this.#replaceSession(response.session);
     }
 
     async compact(): Promise<AgentCompactionResult> {
@@ -352,6 +372,16 @@ export class RemoteAgent implements CodingAssistantAgentBackend {
                 permissionMode: event.data.permissionMode,
             };
             this.context.permissions?.setMode(event.data.permissionMode);
+            return;
+        }
+
+        if (event.type === "goal_changed") {
+            if (event.data.goal === null) {
+                const { goal: _goal, ...session } = this.#session;
+                this.#session = session;
+            } else {
+                this.#session = { ...this.#session, goal: { ...event.data.goal } };
+            }
             return;
         }
 

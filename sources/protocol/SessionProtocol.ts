@@ -10,6 +10,7 @@ import type { PermissionMode } from "../permissions/index.js";
 import type { UserInputRequest, UserInputResponse } from "../user-input/index.js";
 import type { McpServerSummary } from "../mcp/index.js";
 import type { SessionTask } from "../tasks/index.js";
+import type { ChangeGoalStatusRequest, CreateGoalRequest, SessionGoal } from "../goals/index.js";
 import type { EventId } from "./EventId.js";
 
 export type SessionStatus = "idle" | "queued" | "running" | "completed" | "aborted" | "error";
@@ -84,6 +85,7 @@ export interface ProtocolSession {
     pendingUserInputs: readonly UserInputRequest[];
     mcpServers: readonly McpServerSummary[];
     tasks: readonly SessionTask[];
+    goal?: SessionGoal;
 }
 
 export interface SubagentSummary {
@@ -129,6 +131,14 @@ export interface CreateSessionRequest {
 
 export interface ChangePermissionModeRequest {
     permissionMode: PermissionMode;
+}
+
+export type SetGoalRequest = CreateGoalRequest;
+
+export type ChangeSessionGoalStatusRequest = ChangeGoalStatusRequest;
+
+export interface GoalSessionResponse {
+    session: ProtocolSession;
 }
 
 export type AnswerUserInputRequest = UserInputResponse;
@@ -211,6 +221,7 @@ export type SessionEvent =
     | UserInputResolvedEvent
     | McpServersChangedEvent
     | TasksChangedEvent
+    | GoalChangedEvent
     | SubagentChangedEvent;
 
 export interface BaseSessionEvent<TType extends string, TData> {
@@ -328,6 +339,8 @@ export type TasksChangedEvent = BaseSessionEvent<
     "tasks_changed",
     { tasks: readonly SessionTask[] }
 >;
+
+export type GoalChangedEvent = BaseSessionEvent<"goal_changed", { goal: SessionGoal | null }>;
 
 export type SubagentChangedEvent = BaseSessionEvent<
     "subagent_changed",

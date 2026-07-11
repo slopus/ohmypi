@@ -63,6 +63,50 @@ describe("RemoteAgent", () => {
             text: "Change direction.",
         });
     });
+
+    it("keeps goal controls synchronized with responses and events", async () => {
+        const model = defineModel({
+            id: "openai/test",
+            name: "Test model",
+            thinkingLevels: ["off"],
+            defaultThinkingLevel: "off",
+        });
+        const session = protocolSession(model);
+        const activeGoal = {
+            createdAt: 1,
+            objective: "Finish the feature",
+            status: "active" as const,
+            updatedAt: 1,
+        };
+        const activeSession = { ...session, goal: activeGoal };
+        const setGoal = vi.fn(async () => ({ session: activeSession }));
+        const changeGoalStatus = vi.fn(async () => ({
+            session: { ...activeSession, goal: { ...activeGoal, status: "paused" as const } },
+        }));
+        const clearGoal = vi.fn(async () => ({ session }));
+        const agent = new RemoteAgent({
+            client: { changeGoalStatus, clearGoal, setGoal } as unknown as ProtocolHttpClient,
+            context: createJustBashToolHarness().context,
+            session,
+        });
+
+        await agent.setGoal(activeGoal.objective);
+        expect(agent.goal).toEqual(activeGoal);
+        await agent.changeGoalStatus("paused");
+        expect(agent.goal?.status).toBe("paused");
+
+        agent.applySessionEvent({
+            createdAt: 2,
+            data: { goal: { ...activeGoal, status: "blocked" } },
+            id: "event-goal",
+            sessionId: session.id,
+            type: "goal_changed",
+        });
+        expect(agent.goal?.status).toBe("blocked");
+
+        await agent.clearGoal();
+        expect(agent.goal).toBeUndefined();
+    });
 });
 
 function protocolSession(model: ReturnType<typeof defineModel>): ProtocolSession {

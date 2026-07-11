@@ -104,6 +104,25 @@ describe("createProtocolHttpServer", () => {
         }
     });
 
+    it("updates and clears a persisted goal through dedicated endpoints", async () => {
+        const store = new PersistentSessionStore({ databasePath: ":memory:" });
+        store.saveSession(pausedGoalState());
+        const { client, close } = await startServer({ store });
+        try {
+            const changed = await client.changeGoalStatus("goal-session", { status: "blocked" });
+            expect(changed.session.goal).toMatchObject({
+                objective: "Finish the protocol",
+                status: "blocked",
+            });
+
+            const cleared = await client.clearGoal("goal-session");
+            expect(cleared.session.goal).toBeUndefined();
+        } finally {
+            await close();
+            store.close();
+        }
+    });
+
     it("answers a pending structured question through the protocol", async () => {
         const { client, close, store } = await startServer();
         try {
@@ -383,6 +402,32 @@ function readOnlySubagentState(): PersistedSessionState {
         tasks: [],
         title: "Inspect the protocol",
         titleStatus: "ready",
+        tools: [],
+    };
+}
+
+function pausedGoalState(): PersistedSessionState {
+    return {
+        agent: { depth: 0, rootSessionId: "goal-session", type: "primary" },
+        agentId: "goal-agent",
+        cwd: "/tmp/rig-protocol-test",
+        goal: {
+            createdAt: 1,
+            objective: "Finish the protocol",
+            status: "paused",
+            updatedAt: 1,
+        },
+        id: "goal-session",
+        messages: [],
+        modelId: modelOpenaiGpt55.id,
+        models: [],
+        nextTaskId: 1,
+        permissionMode: "workspace_write",
+        providerId: "codex",
+        queuedRuns: [],
+        status: "idle",
+        tasks: [],
+        titleStatus: "idle",
         tools: [],
     };
 }

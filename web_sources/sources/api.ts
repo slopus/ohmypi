@@ -15,10 +15,12 @@ import type {
     ChangeModelResponse,
     ChangePermissionModeRequest,
     ChangePermissionModeResponse,
+    ChangeSessionGoalStatusRequest,
     CreateSessionRequest,
     CreateSessionResponse,
     EventId,
     GetSessionResponse,
+    GoalSessionResponse,
     HealthResponse,
     ListModelsResponse,
     ListSessionsResponse,
@@ -26,6 +28,7 @@ import type {
     ResetSessionResponse,
     SearchFilesResponse,
     SessionEvent,
+    SetGoalRequest,
     SubmitMessageRequest,
     SubmitMessageResponse,
 } from "./protocol";
@@ -186,6 +189,32 @@ export function changeSessionPermissionMode(
         `/sessions/${encodeURIComponent(sessionId)}/permissions`,
         request,
     );
+}
+
+export function setSessionGoal(
+    sessionId: string,
+    request: SetGoalRequest,
+): Promise<GoalSessionResponse> {
+    return postJson<GoalSessionResponse>(
+        `/sessions/${encodeURIComponent(sessionId)}/goal`,
+        request,
+    );
+}
+
+export function changeSessionGoalStatus(
+    sessionId: string,
+    request: ChangeSessionGoalStatusRequest,
+): Promise<GoalSessionResponse> {
+    return patchJson<GoalSessionResponse>(
+        `/sessions/${encodeURIComponent(sessionId)}/goal`,
+        request,
+    );
+}
+
+export function clearSessionGoal(sessionId: string): Promise<GoalSessionResponse> {
+    return requestJson<GoalSessionResponse>(`/sessions/${encodeURIComponent(sessionId)}/goal`, {
+        method: "DELETE",
+    });
 }
 
 function parseSseChunk(chunk: string): SessionEvent | undefined {

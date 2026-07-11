@@ -3,6 +3,7 @@ import {
     createNodeAgentContext,
     type AgentOptions,
     type AnyDefinedTool,
+    type GoalContext,
     type PermissionMode,
     type SubagentContext,
     type TaskContext,
@@ -19,6 +20,7 @@ import { claudeCodeTools, claudeCollaborationTools } from "../tools/claude/index
 import { codexCollaborationTools, codexTools } from "../tools/codex/index.js";
 import { piTools } from "../tools/pi/index.js";
 import { agentTool } from "../tools/Agent.js";
+import { goalTools } from "../tools/goals/index.js";
 import type { CodingAssistantRuntime } from "./CodingAssistantRuntime.js";
 import { createDefaultInstructions } from "./createDefaultInstructions.js";
 
@@ -28,6 +30,7 @@ export interface CreateCodingAssistantAgentOptions {
     apiKey?: string;
     effort?: string;
     env?: NodeJS.ProcessEnv;
+    goals?: GoalContext;
     instructions?: string;
     messages?: readonly Message[];
     contextMessages?: readonly Message[];
@@ -46,6 +49,7 @@ export function createCodingAssistantAgent(
     const processManager = options.processManager ?? new NativeProxessManager();
     const context = createNodeAgentContext({
         cwd: options.cwd,
+        ...(options.goals !== undefined ? { goals: options.goals } : {}),
         processManager,
         ...(options.permissionMode !== undefined ? { permissionMode: options.permissionMode } : {}),
         ...(options.tasks !== undefined ? { tasks: options.tasks } : {}),
@@ -72,7 +76,7 @@ export function createCodingAssistantAgent(
         : usesCodexTools
           ? codexTools
           : piTools;
-    const tools =
+    const toolsWithoutGoals =
         options.subagents?.canSpawn !== true
             ? [...baseTools]
             : usesCodexTools
@@ -80,6 +84,8 @@ export function createCodingAssistantAgent(
               : usesClaudeTools
                 ? [...baseTools, agentTool, ...claudeCollaborationTools]
                 : [...baseTools, agentTool];
+    const tools =
+        options.goals === undefined ? toolsWithoutGoals : [...toolsWithoutGoals, ...goalTools];
     const provider =
         providerId === "bedrock"
             ? createBedrockProvider({ env: options.env ?? process.env })

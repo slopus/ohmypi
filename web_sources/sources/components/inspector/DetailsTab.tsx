@@ -3,6 +3,7 @@ import { formatRelativeTime } from "@/formatRelativeTime";
 import type {
     ModelCatalog,
     PermissionMode,
+    GoalStatus,
     ProtocolSession,
     SessionSummary,
     SubagentSummary,
@@ -11,6 +12,7 @@ import type {
 import { DetailField } from "./DetailField";
 import { EffortSelect } from "./EffortSelect";
 import { ModelSelect } from "./ModelSelect";
+import { GoalControls } from "./GoalControls";
 import { PermissionSelect } from "./PermissionSelect";
 import { ResetConversationButton } from "./ResetConversationButton";
 import { SessionStatusBadge } from "./SessionStatusBadge";
@@ -21,10 +23,13 @@ export interface DetailsTabProps {
     changeEffort: (effort: string | undefined) => Promise<void>;
     changeModel: (providerId: string, modelId: string) => Promise<void>;
     changePermissionMode: (permissionMode: PermissionMode) => Promise<void>;
+    changeGoalStatus: (status: GoalStatus) => Promise<void>;
+    clearGoal: () => Promise<void>;
     isRunning: boolean;
     messageCount: number;
     onOpenSubagent: (sessionId: string) => void;
     reset: () => Promise<void>;
+    setGoal: (objective: string) => Promise<void>;
     session: ProtocolSession;
     summary: SessionSummary | undefined;
     subagents: readonly SubagentSummary[];
@@ -101,6 +106,17 @@ export function DetailsTab(props: DetailsTabProps) {
                     permissionMode={session.permissionMode}
                 />
             </DetailField>
+
+            {!isSubagent && (
+                <DetailField label="Goal">
+                    <GoalControls
+                        changeStatus={props.changeGoalStatus}
+                        clear={props.clearGoal}
+                        goal={session.goal}
+                        set={props.setGoal}
+                    />
+                </DetailField>
+            )}
 
             {session.mcpServers.length > 0 && (
                 <DetailField label="MCP servers">

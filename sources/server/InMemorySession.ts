@@ -9,6 +9,13 @@ import type {
     ContentBlock,
 } from "../agent/index.js";
 import type { Message, UserMessage } from "../agent/types.js";
+import {
+    createGoalContinuationPrompt,
+    normalizeGoalObjective,
+    type ChangeGoalStatusRequest,
+    type CreateGoalRequest,
+    type SessionGoal,
+} from "../goals/index.js";
 import type { CodingAssistantRuntime } from "../app/CodingAssistantRuntime.js";
 import {
     createCodingAssistantAgent,
@@ -48,6 +55,7 @@ import {
     type PermissionMode,
 } from "../permissions/index.js";
 import { generateSessionTitle } from "./generateSessionTitle.js";
+import { createGoalTitle } from "./createGoalTitle.js";
 import { getProviderIdForModel } from "./getProviderIdForModel.js";
 import { resolveInitialModelSelection } from "./resolveInitialModelSelection.js";
 import { SessionEventLog } from "./SessionEventLog.js";
@@ -62,6 +70,7 @@ export interface PersistedSessionMessage {
 
 export interface PersistedQueuedRun {
     displayText: string;
+    kind: "goal" | "user";
     runId: string;
     text: string;
     userMessage: UserMessage;
@@ -76,6 +85,7 @@ export interface PersistedSessionState {
     effort?: string;
     id: string;
     instructions?: string;
+    goal?: SessionGoal;
     interruption?: SessionInterruption;
     lastMessageAt?: number;
     messages: readonly PersistedSessionMessage[];
@@ -104,6 +114,7 @@ export interface InMemorySessionPersistence {
 export interface InMemorySessionOptions {
     agentManager?: AgentSessionManager;
     createEventId: () => EventId;
+    createRuntime?: (options: CreateCodingAssistantAgentOptions) => CodingAssistantRuntime;
     emitCreatedEvent?: boolean;
     events?: readonly SessionEvent[];
     now?: () => number;
@@ -118,6 +129,7 @@ export interface InMemorySessionOptions {
 
 interface ActiveRun {
     controller: AbortController;
+    kind: PersistedQueuedRun["kind"];
     runId: string;
 }
 
@@ -149,9 +161,11 @@ export class InMemorySession {
     #agentMetadata: SessionAgentMetadata;
     #agentId: string;
     #createEventId: () => EventId;
+    #createRuntime: (options: CreateCodingAssistantAgentOptions) => CodingAssistantRuntime;
     #contextMessages: Message[] | undefined;
     #draining: Promise<void> | undefined;
     #effort: string | undefined;
+    #goal: SessionGoal | undefined;
     #instructions: string | undefined;
     #interruption: SessionInterruption | undefined;
     #lastMessageAt: number | undefined;
@@ -183,6 +197,7 @@ export class InMemorySession {
     constructor(options: InMemorySessionOptions) {
         this.#agentManager = options.agentManager;
         this.#createEventId = options.createEventId;
+        this.#createRuntime = options.createRuntime ?? createCodingAssistantAgent;
         this.#now = options.now ?? Date.now;
         this.#mcpToolProvider = options.mcpToolProvider;
         this.#modelCatalog = options.modelCatalog;
@@ -223,6 +238,7 @@ export class InMemorySession {
                 ? requestedEffort
                 : selection.model.defaultThinkingLevel;
         this.#instructions = options.restore?.instructions ?? options.request.instructions;
+        this.#goal = options.restore?.goal === undefined ? undefined : { ...options.restore.goal };
         this.#contextMessages =
             options.restore?.contextMessages === undefined
                 ? undefined
@@ -261,6 +277,8 @@ export class InMemorySession {
             if (options.emitCreatedEvent !== false) {
                 this.emitCreatedEvent();
             }
+        } else {
+            this.#continueGoalIfIdle();
         }
     }
 
@@ -275,6 +293,7 @@ export class InMemorySession {
             this.#persistence?.deleteQueuedRun(this.id, queued.runId);
         }
         this.#queue = [];
+        this.#pauseActiveGoal();
         this.#activeRun?.controller.abort();
         this.#restoredActiveRunId = undefined;
         void this.#runtime?.processManager.killAll({ forceAfterMs: 500 });
@@ -362,6 +381,85 @@ export class InMemorySession {
         this.#runtime?.context.permissions?.setMode(permissionMode);
         this.#append("permission_mode_changed", { permissionMode });
         return this.snapshot();
+    }
+
+    setGoal(request: CreateGoalRequest): SessionGoal {
+        if (this.isSubagent()) {
+            throw new Error("Goals can only be managed from the primary session.");
+        }
+        if (this.#goal !== undefined && this.#goal.status !== "complete") {
+            throw new Error(
+                "This session already has an unfinished goal. Complete or clear it before starting another.",
+            );
+        }
+
+        const now = this.#now();
+        this.#goal = {
+            createdAt: now,
+            objective: normalizeGoalObjective(request.objective),
+            status: "active",
+            updatedAt: now,
+        };
+        this.#lastMessageAt = now;
+        this.#append("goal_changed", { goal: { ...this.#goal } });
+        if (this.#titleStatus === "idle") {
+            this.#title = createGoalTitle(this.#goal.objective);
+            this.#titleStatus = "ready";
+            this.#append("session_title_changed", {
+                status: this.#titleStatus,
+                title: this.#title,
+            });
+        }
+        this.#continueGoalIfIdle();
+        return { ...this.#goal };
+    }
+
+    changeGoalStatus(
+        request: ChangeGoalStatusRequest,
+        options: { stopActiveGoalRun?: boolean } = {},
+    ): SessionGoal {
+        if (this.isSubagent()) {
+            throw new Error("Goals can only be managed from the primary session.");
+        }
+        if (this.#goal === undefined) {
+            throw new Error("This session does not have a goal.");
+        }
+        if (request.status === "active" && this.#goal.status === "complete") {
+            throw new Error("A completed goal cannot be resumed. Start a new goal instead.");
+        }
+
+        this.#goal = { ...this.#goal, status: request.status, updatedAt: this.#now() };
+        this.#append("goal_changed", { goal: { ...this.#goal } });
+        if (request.status === "active") {
+            this.#continueGoalIfIdle();
+        } else if (options.stopActiveGoalRun !== false) {
+            this.#discardQueuedGoalRuns();
+            if (this.#activeRun?.kind === "goal") {
+                this.#activeRun.controller.abort();
+                void this.#runtime?.processManager.killAll({ forceAfterMs: 500 });
+            }
+        }
+        return { ...this.#goal };
+    }
+
+    clearGoal(): boolean {
+        if (this.isSubagent()) {
+            throw new Error("Goals can only be managed from the primary session.");
+        }
+        if (this.#goal === undefined) return false;
+
+        this.#goal = undefined;
+        this.#discardQueuedGoalRuns();
+        if (this.#activeRun?.kind === "goal") {
+            this.#activeRun.controller.abort();
+            void this.#runtime?.processManager.killAll({ forceAfterMs: 500 });
+        }
+        this.#append("goal_changed", { goal: null });
+        return true;
+    }
+
+    goal(): SessionGoal | undefined {
+        return this.#goal === undefined ? undefined : { ...this.#goal };
     }
 
     requestUserInput(
@@ -541,6 +639,7 @@ export class InMemorySession {
         this.#activeRun = undefined;
         this.#restoredActiveRunId = undefined;
         this.#activePartial = undefined;
+        this.#pauseActiveGoal();
         const interruptedRunIds = [
             ...(interruption.runId !== undefined ? [interruption.runId] : []),
             ...this.#queue.map((queued) => queued.runId),
@@ -574,10 +673,13 @@ export class InMemorySession {
         this.#partialPositions.clear();
         this.#activePartial = undefined;
         const hadTasks = this.#tasks.length > 0;
+        const hadGoal = this.#goal !== undefined;
+        this.#goal = undefined;
         this.#tasks = [];
         this.#nextTaskId = 1;
         this.#persistence?.clearMessages(this.id);
         if (hadTasks) this.#recordTasksChanged();
+        if (hadGoal) this.#append("goal_changed", { goal: null });
         this.#append("session_reset", { snapshot: this.#agentSnapshot() });
         return this.snapshot();
     }
@@ -640,6 +742,7 @@ export class InMemorySession {
             ),
             mcpServers: this.#mcpServers,
             tasks: this.listTasks(),
+            ...(this.#goal !== undefined ? { goal: { ...this.#goal } } : {}),
             ...(snapshot.effort !== undefined ? { effort: snapshot.effort } : {}),
             ...(this.#title !== undefined ? { title: this.#title } : {}),
             ...(this.#titleError !== undefined ? { titleError: this.#titleError } : {}),
@@ -685,6 +788,7 @@ export class InMemorySession {
             ...(this.#effort !== undefined ? { effort: this.#effort } : {}),
             id: this.id,
             ...(this.#instructions !== undefined ? { instructions: this.#instructions } : {}),
+            ...(this.#goal !== undefined ? { goal: { ...this.#goal } } : {}),
             ...(this.#interruption !== undefined ? { interruption: this.#interruption } : {}),
             ...(this.#lastMessageAt !== undefined ? { lastMessageAt: this.#lastMessageAt } : {}),
             messages: [...this.#messages],
@@ -720,6 +824,7 @@ export class InMemorySession {
         };
         const queued: PersistedQueuedRun = {
             displayText,
+            kind: "user",
             runId,
             text: request.text,
             userMessage,
@@ -1041,6 +1146,13 @@ export class InMemorySession {
                 update: (taskId, request) => this.#taskSession().updateTask(taskId, request),
             },
         };
+        if (!this.isSubagent()) {
+            options.goals = {
+                create: (request) => this.setGoal(request),
+                get: () => this.goal(),
+                update: (status) => this.changeGoalStatus({ status }, { stopActiveGoalRun: false }),
+            };
+        }
         if (this.#contextMessages !== undefined) {
             options.contextMessages = this.#contextMessages;
         }
@@ -1060,7 +1172,7 @@ export class InMemorySession {
                 wait: (timeoutMs, signal) => agentManager.wait(this.id, timeoutMs, signal),
             };
         }
-        const runtime = createCodingAssistantAgent(options);
+        const runtime = this.#createRuntime(options);
         const snapshot = runtime.agent.snapshot();
         this.#runtime = runtime;
         this.#agentId = snapshot.id;
@@ -1177,7 +1289,7 @@ export class InMemorySession {
 
     async #runQueued(queued: PersistedQueuedRun): Promise<void> {
         const controller = new AbortController();
-        this.#activeRun = { controller, runId: queued.runId };
+        this.#activeRun = { controller, kind: queued.kind, runId: queued.runId };
         this.#restoredActiveRunId = undefined;
         this.#status = "running";
         this.#append("run_started", { runId: queued.runId });
@@ -1199,12 +1311,16 @@ export class InMemorySession {
                 return;
             }
             this.#appendRunFinished(queued.runId, result);
+            if (result.stopReason !== "aborted" && result.stopReason !== "error") {
+                this.#continueGoalIfIdle();
+            }
         } catch (error) {
             if (this.#activeRun?.runId !== queued.runId) {
                 return;
             }
             this.#status = "error";
             this.#activePartial = undefined;
+            this.#pauseActiveGoal();
             if (this.#activeRun?.runId === queued.runId) {
                 this.#activeRun = undefined;
             }
@@ -1222,9 +1338,9 @@ export class InMemorySession {
     }
 
     #syncContextMessages(): void {
-        const contextMessages = this.#runtime?.agent.snapshot().contextMessages;
-        if (contextMessages !== undefined) {
-            this.#contextMessages = [...contextMessages];
+        const snapshot = this.#runtime?.agent.snapshot();
+        if (snapshot !== undefined) {
+            this.#contextMessages = [...(snapshot.contextMessages ?? snapshot.messages)];
         }
     }
 
@@ -1236,6 +1352,57 @@ export class InMemorySession {
         this.#draining = this.#drainQueue().finally(() => {
             this.#draining = undefined;
         });
+    }
+
+    #continueGoalIfIdle(): void {
+        if (
+            this.isSubagent() ||
+            this.#goal?.status !== "active" ||
+            this.#restoredActiveRunId !== undefined ||
+            this.#status === "running" ||
+            this.#activeRun !== undefined ||
+            this.#queue.length > 0
+        ) {
+            return;
+        }
+
+        const runId = createId();
+        const text = createGoalContinuationPrompt(this.#goal);
+        const userMessage: UserMessage = {
+            blocks: [{ type: "text", text }],
+            id: createId(),
+            role: "user",
+        };
+        const queued: PersistedQueuedRun = {
+            displayText: "Continuing active goal",
+            kind: "goal",
+            runId,
+            text,
+            userMessage,
+        };
+        this.#queue.push(queued);
+        this.#persistence?.insertQueuedRun(this.id, queued);
+        this.#status = "queued";
+        this.#saveSession();
+        this.#startDrainQueue();
+    }
+
+    #discardQueuedGoalRuns(): void {
+        const goalRunIds = this.#queue
+            .filter((queued) => queued.kind === "goal")
+            .map((queued) => queued.runId);
+        if (goalRunIds.length === 0) return;
+
+        this.#queue = this.#queue.filter((queued) => queued.kind !== "goal");
+        for (const runId of goalRunIds) this.#persistence?.deleteQueuedRun(this.id, runId);
+        if (this.#activeRun === undefined && this.#queue.length === 0) this.#status = "idle";
+        this.#saveSession();
+    }
+
+    #pauseActiveGoal(): void {
+        if (this.#goal?.status !== "active") return;
+        this.#goal = { ...this.#goal, status: "paused", updatedAt: this.#now() };
+        this.#append("goal_changed", { goal: { ...this.#goal } });
     }
 
     #storeMessage(position: number, message: Message, isPartial: boolean, runId: string): void {

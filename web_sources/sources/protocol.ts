@@ -301,6 +301,15 @@ export interface ModelCatalog {
 
 export type ServerInitializationStatus = "starting" | "ready" | "error";
 
+export type GoalStatus = "active" | "blocked" | "complete" | "paused";
+
+export interface SessionGoal {
+    createdAt: number;
+    objective: string;
+    status: GoalStatus;
+    updatedAt: number;
+}
+
 export interface HealthResponse {
     catalog?: ModelCatalog;
     errorMessage?: string;
@@ -334,6 +343,7 @@ export interface ProtocolSession {
     pendingUserInputs: readonly UserInputRequest[];
     mcpServers: readonly McpServerSummary[];
     tasks: readonly SessionTask[];
+    goal?: SessionGoal;
 }
 
 export interface SubagentSummary {
@@ -418,6 +428,10 @@ export interface ChangePermissionModeResponse {
     session: ProtocolSession;
 }
 
+export interface GoalSessionResponse {
+    session: ProtocolSession;
+}
+
 export interface AnswerUserInputResponse {
     session: ProtocolSession;
 }
@@ -450,6 +464,14 @@ export interface ChangeEffortRequest {
 
 export interface ChangePermissionModeRequest {
     permissionMode: PermissionMode;
+}
+
+export interface SetGoalRequest {
+    objective: string;
+}
+
+export interface ChangeSessionGoalStatusRequest {
+    status: GoalStatus;
 }
 
 export type AnswerUserInputRequest = UserInputResponse;
@@ -579,6 +601,8 @@ export type TasksChangedEvent = BaseSessionEvent<
     { tasks: readonly SessionTask[] }
 >;
 
+export type GoalChangedEvent = BaseSessionEvent<"goal_changed", { goal: SessionGoal | null }>;
+
 export type SubagentChangedEvent = BaseSessionEvent<
     "subagent_changed",
     {
@@ -604,4 +628,5 @@ export type SessionEvent =
     | UserInputResolvedEvent
     | McpServersChangedEvent
     | TasksChangedEvent
+    | GoalChangedEvent
     | SubagentChangedEvent;

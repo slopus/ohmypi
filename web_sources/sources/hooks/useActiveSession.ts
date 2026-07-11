@@ -6,9 +6,12 @@ import {
     changeSessionEffort,
     changeSessionModel,
     changeSessionPermissionMode,
+    changeSessionGoalStatus,
+    clearSessionGoal,
     fetchSession,
     fetchSubagents,
     resetSession,
+    setSessionGoal,
     streamSessionEvents,
     submitMessage,
 } from "../api";
@@ -18,6 +21,7 @@ import type {
     ImageBlock,
     Message,
     PermissionMode,
+    GoalStatus,
     ProtocolSession,
     SessionEvent,
     SubagentSummary,
@@ -43,6 +47,8 @@ export interface ActiveSessionState {
     changeModel: (providerId: string, modelId: string, effort?: string) => Promise<void>;
     /** PATCHes the session permission mode. */
     changePermissionMode: (permissionMode: PermissionMode) => Promise<void>;
+    changeGoalStatus: (status: GoalStatus) => Promise<void>;
+    clearGoal: () => Promise<void>;
     /** True after abort was requested and until the run settles. */
     isAborting: boolean;
     /** True while the initial `GET /api/sessions/:id` is in flight. */
@@ -61,6 +67,7 @@ export interface ActiveSessionState {
     pendingUserInputs: readonly UserInputRequest[];
     /** Resets the conversation (`POST /api/sessions/:id/reset`). */
     reset: () => Promise<void>;
+    setGoal: (objective: string) => Promise<void>;
     /** Human-readable error from the last failed run or submit, if any. */
     runError: string | undefined;
     /** The loaded session; undefined while loading or when nothing is selected. */
@@ -345,6 +352,18 @@ function reduceServerEvent(state: ReducerState, event: SessionEvent): ReducerSta
             return {
                 ...state,
                 session: { ...state.session, tasks: event.data.tasks },
+            };
+        }
+        case "goal_changed": {
+            if (state.session === undefined) return state;
+            if (event.data.goal === null) {
+                const session = { ...state.session };
+                delete session.goal;
+                return { ...state, session };
+            }
+            return {
+                ...state,
+                session: { ...state.session, goal: event.data.goal },
             };
         }
         case "subagent_changed": {
@@ -632,6 +651,30 @@ export function useActiveSession(sessionId: string | undefined): ActiveSessionSt
         [sessionId],
     );
 
+    const setGoal = useCallback(
+        async (objective: string) => {
+            if (sessionId === undefined) return;
+            const response = await setSessionGoal(sessionId, { objective });
+            dispatch({ type: "session_updated", session: response.session });
+        },
+        [sessionId],
+    );
+
+    const changeGoalStatus = useCallback(
+        async (status: GoalStatus) => {
+            if (sessionId === undefined) return;
+            const response = await changeSessionGoalStatus(sessionId, { status });
+            dispatch({ type: "session_updated", session: response.session });
+        },
+        [sessionId],
+    );
+
+    const clearGoal = useCallback(async () => {
+        if (sessionId === undefined) return;
+        const response = await clearSessionGoal(sessionId);
+        dispatch({ type: "session_updated", session: response.session });
+    }, [sessionId]);
+
     const messages = useMemo<readonly Message[]>(() => {
         if (state.optimistic.length === 0) {
             return state.messages;
@@ -649,6 +692,8 @@ export function useActiveSession(sessionId: string | undefined): ActiveSessionSt
         changeEffort,
         changeModel,
         changePermissionMode,
+        changeGoalStatus,
+        clearGoal,
         isAborting: state.isAborting,
         isLoading: state.isLoading,
         isRunning,
@@ -656,6 +701,7 @@ export function useActiveSession(sessionId: string | undefined): ActiveSessionSt
         messages,
         pendingUserInputs: state.session?.pendingUserInputs ?? [],
         reset,
+        setGoal,
         runError: state.runError,
         session: state.session,
         streamError: state.streamError,

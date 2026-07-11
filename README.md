@@ -32,6 +32,7 @@ rig stays close to pi and to upstream vendor behavior, but adds a curated defaul
 - Managed shell sessions for long-running commands and interactive input.
 - Workflow presets for repeated engineering operations.
 - Auto mode for hands-off execution when a project allows it.
+- Persistent goals that continue across agent turns until they are completed, paused, or blocked.
 - Automatic conversation compaction for long sessions, plus `/compact` when you want to free context space immediately.
 - Sandboxing defaults that make local execution practical while keeping controls visible.
 - Per-project enable/disable behavior, so teams can use rig where it helps and leave other repos untouched.
@@ -159,6 +160,20 @@ permission_mode = "workspace_write"
 `RIG_PERMISSION_MODE` overrides the configured default for a newly created
 terminal session. Accepted values are `workspace_write`, `read_only`, and
 `full_access`, and `auto`.
+
+### Persistent goals
+
+Use `/goal` followed by an objective to start long-running work that may need
+more than one agent turn. Rig keeps the objective on the session and
+automatically continues while the goal remains active. Use `/goal` by itself to
+check its status, `/goal pause` to stop automatic continuation, `/goal resume`
+to continue, and `/goal clear` to remove it.
+
+Models receive `get_goal`, `create_goal`, and `update_goal` tools. A model can
+mark the goal complete after verifying the full objective, or blocked when it
+cannot make meaningful progress without user input or an external change.
+Goals survive daemon restarts and are available from both the terminal and web
+session inspector.
 
 ### Task tracking
 

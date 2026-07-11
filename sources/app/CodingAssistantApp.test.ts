@@ -793,6 +793,72 @@ describe("CodingAssistantApp", () => {
         );
     });
 
+    it("starts and manages a persistent goal from slash commands", async () => {
+        const model = defineModel({
+            id: "openai/gpt-test",
+            name: "GPT Test",
+            thinkingLevels: ["off"],
+            defaultThinkingLevel: "off",
+        });
+        const provider = defineProvider({
+            id: "codex",
+            models: [model],
+            stream() {
+                return streamText("unused");
+            },
+        });
+        const harness = createJustBashToolHarness();
+        const agent = new Agent({
+            provider,
+            modelId: model.id,
+            context: harness.context,
+            printToConsole: false,
+        });
+        let goal:
+            | {
+                  createdAt: number;
+                  objective: string;
+                  status: "active" | "blocked" | "complete" | "paused";
+                  updatedAt: number;
+              }
+            | undefined;
+        const setGoal = vi.fn(async (objective: string) => {
+            goal = { createdAt: 1, objective, status: "active", updatedAt: 1 };
+        });
+        const changeGoalStatus = vi.fn(
+            async (status: "active" | "blocked" | "complete" | "paused") => {
+                if (goal !== undefined) goal = { ...goal, status, updatedAt: 2 };
+            },
+        );
+        const clearGoal = vi.fn(async () => {
+            goal = undefined;
+        });
+        Object.defineProperties(agent, {
+            changeGoalStatus: { value: changeGoalStatus },
+            clearGoal: { value: clearGoal },
+            goal: { get: () => goal },
+            setGoal: { value: setGoal },
+        });
+        const app = new CodingAssistantApp({
+            agent,
+            cwd: harness.context.fs.cwd,
+            processManager: new NativeProxessManager(),
+            tui: fakeTui(),
+        });
+
+        submit(app, "/goal Ship a verified release");
+        await vi.waitFor(() => expect(setGoal).toHaveBeenCalledWith("Ship a verified release"));
+        submit(app, "/goal");
+        const rendered = stripAnsi(app.render(100).join("\n"));
+        expect(rendered).toContain("Status: Active");
+        expect(rendered).toContain("Objective: Ship a verified release");
+
+        submit(app, "/goal pause");
+        await vi.waitFor(() => expect(changeGoalStatus).toHaveBeenCalledWith("paused"));
+        submit(app, "/goal clear");
+        await vi.waitFor(() => expect(clearGoal).toHaveBeenCalledOnce());
+    });
+
     it("compacts conversation history from the compact command", async () => {
         const model = defineModel({
             id: "openai/gpt-test",

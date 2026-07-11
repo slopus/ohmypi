@@ -49,6 +49,12 @@ export function createSlashCommands(): SlashCommandItem[] {
             aliases: [],
         },
         {
+            value: "goal",
+            label: "/goal",
+            description: "Set or manage a persistent long-running goal.",
+            aliases: [],
+        },
+        {
             value: "new",
             label: "/new",
             description: "Reset this session and start fresh.",

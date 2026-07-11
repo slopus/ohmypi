@@ -88,6 +88,32 @@ describe("PersistentSessionStore", () => {
         }
     });
 
+    it("persists goal state across daemon restarts", async () => {
+        const { cleanup, databasePath } = await createDatabasePath();
+        try {
+            const store = new PersistentSessionStore({ databasePath });
+            const state = sessionState({
+                goal: {
+                    createdAt: 1_700_000_000_000,
+                    objective: "Finish the release",
+                    status: "paused",
+                    updatedAt: 1_700_000_001_000,
+                },
+            });
+            store.saveSession(state);
+            store.close();
+
+            const restoredStore = new PersistentSessionStore({ databasePath });
+            try {
+                expect(restoredStore.get(state.id)?.snapshot().goal).toEqual(state.goal);
+            } finally {
+                restoredStore.close();
+            }
+        } finally {
+            await cleanup();
+        }
+    });
+
     it("persists completed structured question events without reviving the prompt", async () => {
         const { cleanup, databasePath } = await createDatabasePath();
         try {
@@ -236,6 +262,7 @@ describe("PersistentSessionStore", () => {
             });
             const queuedRun: PersistedQueuedRun = {
                 displayText: "queued prompt",
+                kind: "user",
                 runId: "run-2",
                 text: "queued prompt",
                 userMessage: textUserMessage("message-2", "queued prompt"),
@@ -376,6 +403,7 @@ describe("PersistentSessionStore", () => {
             const store = new PersistentSessionStore({ databasePath });
             const queuedRun: PersistedQueuedRun = {
                 displayText: "queued prompt",
+                kind: "user",
                 runId: "run-1",
                 text: "queued prompt",
                 userMessage: textUserMessage("message-1", "queued prompt"),

@@ -61,6 +61,28 @@ describe("createCodingAssistantAgent", () => {
         ]);
     });
 
+    it("adds provider-neutral goal tools when the session supports goals", () => {
+        const currentGoal = {
+            createdAt: 1,
+            objective: "Finish the feature",
+            status: "active" as const,
+            updatedAt: 1,
+        };
+        const runtime = createCodingAssistantAgent({
+            cwd: "/tmp/rig-app-test",
+            goals: {
+                create: () => currentGoal,
+                get: () => currentGoal,
+                update: (status) => ({ ...currentGoal, status }),
+            },
+            modelId: modelAnthropicFable5.id,
+        });
+
+        expect(runtime.agent.tools.map((tool) => tool.name)).toEqual(
+            expect.arrayContaining(["create_goal", "get_goal", "update_goal"]),
+        );
+    });
+
     it("exposes the Agent tool only while another nested level is available", () => {
         const spawn = async () => ({
             output: "done",

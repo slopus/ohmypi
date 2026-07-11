@@ -117,10 +117,13 @@ export function InspectorPanel(props: InspectorPanelProps) {
                         changeEffort={activeSession.changeEffort}
                         changeModel={activeSession.changeModel}
                         changePermissionMode={activeSession.changePermissionMode}
+                        changeGoalStatus={activeSession.changeGoalStatus}
+                        clearGoal={activeSession.clearGoal}
                         isRunning={activeSession.isRunning}
                         messageCount={messageCount}
                         onOpenSubagent={props.onOpenSubagent}
                         reset={activeSession.reset}
+                        setGoal={activeSession.setGoal}
                         session={session}
                         subagents={activeSession.subagents}
                         summary={props.summary}

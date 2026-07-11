@@ -17,6 +17,7 @@ import type {
 } from "../protocol/index.js";
 import type { Message } from "../agent/types.js";
 import type { Model } from "../providers/types.js";
+import type { SessionGoal } from "../goals/index.js";
 import { parsePermissionMode } from "../permissions/index.js";
 import {
     InMemorySession,
@@ -153,13 +154,15 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
                     session_id,
                     run_id,
                     display_text,
+                    kind,
                     text,
                     user_message_json,
                     created_at_ms
                 )
-                VALUES (?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(session_id, run_id) DO UPDATE SET
                     display_text = excluded.display_text,
+                    kind = excluded.kind,
                     text = excluded.text,
                     user_message_json = excluded.user_message_json
                 `,
@@ -168,6 +171,7 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
                 sessionId,
                 run.runId,
                 run.displayText,
+                run.kind,
                 run.text,
                 JSON.stringify(run.userMessage),
                 this.#now(),
@@ -352,6 +356,7 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
                     models_json,
                     tools_json,
                     tasks_json,
+                    goal_json,
                     next_task_id,
                     title,
                     title_status,
@@ -362,7 +367,7 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
                     created_at_ms,
                     updated_at_ms
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                     agent_id = excluded.agent_id,
                     session_kind = excluded.session_kind,
@@ -384,6 +389,7 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
                     models_json = excluded.models_json,
                     tools_json = excluded.tools_json,
                     tasks_json = excluded.tasks_json,
+                    goal_json = excluded.goal_json,
                     next_task_id = excluded.next_task_id,
                     title = excluded.title,
                     title_status = excluded.title_status,
@@ -416,6 +422,7 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
                 JSON.stringify(state.models),
                 JSON.stringify(state.tools),
                 JSON.stringify(state.tasks),
+                state.goal === undefined ? null : JSON.stringify(state.goal),
                 state.nextTaskId,
                 state.title ?? null,
                 state.titleStatus,
@@ -528,6 +535,7 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
                 models_json TEXT NOT NULL,
                 tools_json TEXT NOT NULL,
                 tasks_json TEXT NOT NULL DEFAULT '[]',
+                goal_json TEXT,
                 next_task_id INTEGER NOT NULL DEFAULT 1,
                 title TEXT,
                 title_status TEXT NOT NULL DEFAULT 'idle',
@@ -570,6 +578,7 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
                 session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
                 run_id TEXT NOT NULL,
                 display_text TEXT NOT NULL,
+                kind TEXT NOT NULL DEFAULT 'user',
                 text TEXT NOT NULL,
                 user_message_json TEXT NOT NULL,
                 created_at_ms INTEGER NOT NULL,
@@ -590,7 +599,9 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
         this.#ensureSessionColumn("context_messages_json", "TEXT");
         this.#ensureSessionColumn("permission_mode", "TEXT NOT NULL DEFAULT 'workspace_write'");
         this.#ensureSessionColumn("tasks_json", "TEXT NOT NULL DEFAULT '[]'");
+        this.#ensureSessionColumn("goal_json", "TEXT");
         this.#ensureSessionColumn("next_task_id", "INTEGER NOT NULL DEFAULT 1");
+        this.#ensureQueuedRunColumn("kind", "TEXT NOT NULL DEFAULT 'user'");
         this.#database.exec(`
             CREATE INDEX IF NOT EXISTS sessions_parent_created
                 ON sessions(parent_session_id, created_at_ms)
@@ -646,7 +657,7 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
         return this.#database
             .prepare(
                 `
-                SELECT run_id, display_text, text, user_message_json
+                SELECT run_id, display_text, kind, text, user_message_json
                 FROM queued_runs
                 WHERE session_id = ?
                 ORDER BY created_at_ms ASC
@@ -655,6 +666,7 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
             .all(sessionId)
             .map((row) => ({
                 displayText: readString(row, "display_text"),
+                kind: readString(row, "kind") as PersistedQueuedRun["kind"],
                 runId: readString(row, "run_id"),
                 text: readString(row, "text"),
                 userMessage: JSON.parse(readString(row, "user_message_json")),
@@ -689,6 +701,7 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
         const parentToolCallId = readOptionalString(row, "parent_tool_call_id");
         const taskName = readOptionalString(row, "task_name");
         const description = readOptionalString(row, "description");
+        const goalJson = readOptionalString(row, "goal_json");
         const id = readString(row, "id");
         const agent: SessionAgentMetadata = {
             depth: readNumber(row, "depth"),
@@ -709,6 +722,7 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
             ...(effort !== undefined ? { effort } : {}),
             id,
             ...(instructions !== undefined ? { instructions } : {}),
+            ...(goalJson !== undefined ? { goal: JSON.parse(goalJson) as SessionGoal } : {}),
             ...(interruptionJson !== undefined
                 ? { interruption: JSON.parse(interruptionJson) as SessionInterruption }
                 : {}),
@@ -786,6 +800,14 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
             return;
         }
         this.#database.exec(`ALTER TABLE sessions ADD COLUMN ${name} ${definition}`);
+    }
+
+    #ensureQueuedRunColumn(name: string, definition: string): void {
+        const columns = this.#database.prepare("PRAGMA table_info(queued_runs)").all();
+        if (columns.some((column) => readString(column, "name") === name)) {
+            return;
+        }
+        this.#database.exec(`ALTER TABLE queued_runs ADD COLUMN ${name} ${definition}`);
     }
 }
 

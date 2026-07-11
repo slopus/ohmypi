@@ -7,20 +7,23 @@ import type {
     ChangeEffortRequest,
     ChangeModelRequest,
     ChangePermissionModeRequest,
+    ChangeSessionGoalStatusRequest,
     CompactSessionResponse,
     CreateSessionRequest,
     CreateSessionResponse,
     HealthResponse,
+    GoalSessionResponse,
     ListModelsResponse,
     ListSessionsResponse,
     ListSubagentsResponse,
     ModelCatalog,
     SearchFilesResponse,
     SessionEvent,
+    SetGoalRequest,
     ShutdownServerResponse,
+    SteerMessageResponse,
     SubmitMessageRequest,
     SubmitMessageResponse,
-    SteerMessageResponse,
 } from "../protocol/index.js";
 import { InMemorySessionStore } from "./InMemorySessionStore.js";
 import { createModelCatalog } from "./createModelCatalog.js";
@@ -28,6 +31,7 @@ import { FileSearchService, type FileSearchServiceContract } from "./FileSearchS
 import type { SessionEventLog } from "./SessionEventLog.js";
 import type { SessionStore } from "./SessionStore.js";
 import { isPermissionMode } from "../permissions/index.js";
+import { isGoalStatus } from "../goals/index.js";
 
 export interface ProtocolHttpServerOptions {
     initialization?: Promise<ModelCatalog>;
@@ -239,6 +243,48 @@ async function handleRequest(
         return;
     }
 
+    if (request.method === "POST" && route.name === "goal") {
+        const body = await readJson<SetGoalRequest>(request);
+        if (typeof body.objective !== "string") {
+            sendJson(response, 400, { error: "Goal objective must be text." });
+            return;
+        }
+        try {
+            session.setGoal(body);
+            sendJson<GoalSessionResponse>(response, 200, { session: session.snapshot() });
+        } catch (error) {
+            sendJson(response, 409, {
+                error: error instanceof Error ? error.message : "The goal could not be started.",
+            });
+        }
+        return;
+    }
+
+    if (request.method === "PATCH" && route.name === "goal") {
+        const body = await readJson<ChangeSessionGoalStatusRequest>(request);
+        if (!isGoalStatus(body.status)) {
+            sendJson(response, 400, {
+                error: "Goal status must be Active, Paused, Blocked, or Complete.",
+            });
+            return;
+        }
+        try {
+            session.changeGoalStatus(body);
+            sendJson<GoalSessionResponse>(response, 200, { session: session.snapshot() });
+        } catch (error) {
+            sendJson(response, 409, {
+                error: error instanceof Error ? error.message : "The goal could not be updated.",
+            });
+        }
+        return;
+    }
+
+    if (request.method === "DELETE" && route.name === "goal") {
+        session.clearGoal();
+        sendJson<GoalSessionResponse>(response, 200, { session: session.snapshot() });
+        return;
+    }
+
     if (request.method === "POST" && route.name === "user-input") {
         const body = await readJson<AnswerUserInputRequest>(request);
         try {
@@ -367,6 +413,7 @@ function matchRoute(pathname: string):
               | "effort"
               | "events"
               | "files"
+              | "goal"
               | "messages"
               | "model"
               | "permissions"
@@ -405,6 +452,7 @@ function matchRoute(pathname: string):
     if (parts[2] === "effort") return { name: "effort", sessionId };
     if (parts[2] === "events") return { name: "events", sessionId };
     if (parts[2] === "files") return { name: "files", sessionId };
+    if (parts[2] === "goal") return { name: "goal", sessionId };
     if (parts[2] === "messages") return { name: "messages", sessionId };
     if (parts[2] === "model") return { name: "model", sessionId };
     if (parts[2] === "permissions") return { name: "permissions", sessionId };
@@ -419,6 +467,7 @@ function isSessionMutation(routeName: string, method: string | undefined): boole
     return (
         (method === "POST" &&
             ["abort", "compact", "messages", "reset", "steer"].includes(routeName)) ||
+        (["DELETE", "PATCH", "POST"].includes(method ?? "") && routeName === "goal") ||
         (method === "POST" && routeName === "user-input") ||
         (method === "PATCH" && ["effort", "model", "permissions"].includes(routeName))
     );

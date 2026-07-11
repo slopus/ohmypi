@@ -1,6 +1,7 @@
 export type { EventId } from "./EventId.js";
 export type { McpServerSummary } from "../mcp/index.js";
 export type { SessionTask, TaskStatus } from "../tasks/index.js";
+export type { GoalStatus, SessionGoal } from "../goals/index.js";
 export { createEventIdFactory, type EventIdFactoryOptions } from "./createEventIdFactory.js";
 export type {
     AbortRequestedEvent,
@@ -12,6 +13,7 @@ export type {
     ChangeEffortRequest,
     ChangeModelRequest,
     ChangePermissionModeRequest,
+    ChangeSessionGoalStatusRequest,
     CompactSessionResponse,
     CreateSessionRequest,
     CreateSessionResponse,
@@ -21,6 +23,8 @@ export type {
     ListSubagentsResponse,
     ListModelsResponse,
     HealthResponse,
+    GoalChangedEvent,
+    GoalSessionResponse,
     ModelCatalog,
     MessageSubmittedEvent,
     McpServersChangedEvent,
@@ -32,6 +36,7 @@ export type {
     RunFinishedEvent,
     RunStartedEvent,
     SearchFilesResponse,
+    SetGoalRequest,
     ServerInitializationStatus,
     SessionCreatedEvent,
     SessionAgentMetadata,

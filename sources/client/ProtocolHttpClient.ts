@@ -6,11 +6,13 @@ import type {
     ChangeEffortRequest,
     ChangeModelRequest,
     ChangePermissionModeRequest,
+    ChangeSessionGoalStatusRequest,
     CompactSessionResponse,
     CreateSessionRequest,
     CreateSessionResponse,
     EventId,
     HealthResponse,
+    GoalSessionResponse,
     ListModelsResponse,
     ListSessionsResponse,
     ListSubagentsResponse,
@@ -18,10 +20,11 @@ import type {
     SearchFilesResponse,
     SessionEvent,
     ShutdownServerResponse,
-    SubmitMessageRequest,
-    SubmitMessageResponse,
+    SetGoalRequest,
     SteerMessageRequest,
     SteerMessageResponse,
+    SubmitMessageRequest,
+    SubmitMessageResponse,
 } from "../protocol/index.js";
 
 export interface ProtocolHttpClientOptions {
@@ -100,6 +103,29 @@ export class ProtocolHttpClient {
             `/sessions/${encodeURIComponent(sessionId)}/permissions`,
             request,
         );
+    }
+
+    setGoal(sessionId: string, request: SetGoalRequest): Promise<GoalSessionResponse> {
+        return this.#requestJson(
+            "POST",
+            `/sessions/${encodeURIComponent(sessionId)}/goal`,
+            request,
+        );
+    }
+
+    changeGoalStatus(
+        sessionId: string,
+        request: ChangeSessionGoalStatusRequest,
+    ): Promise<GoalSessionResponse> {
+        return this.#requestJson(
+            "PATCH",
+            `/sessions/${encodeURIComponent(sessionId)}/goal`,
+            request,
+        );
+    }
+
+    clearGoal(sessionId: string): Promise<GoalSessionResponse> {
+        return this.#requestJson("DELETE", `/sessions/${encodeURIComponent(sessionId)}/goal`);
     }
 
     compact(sessionId: string): Promise<CompactSessionResponse> {

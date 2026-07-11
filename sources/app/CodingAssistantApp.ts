@@ -50,6 +50,7 @@ import type { FileMentionContext } from "./findFileMentionContext.js";
 import { formatFileMention } from "./formatFileMention.js";
 import { humanizeReasoningLevel } from "./humanizeReasoningLevel.js";
 import { humanizePermissionMode } from "./humanizePermissionMode.js";
+import { humanizeGoalStatus } from "./humanizeGoalStatus.js";
 import { humanizeToolName } from "./humanizeToolName.js";
 import {
     readClipboardImage,
@@ -993,6 +994,14 @@ export class CodingAssistantApp implements Component, Focusable {
     }
 
     #handleCommand(prompt: string): boolean {
+        if (prompt === "/goal" || prompt.startsWith("/goal ")) {
+            void this.#handleGoalCommand(prompt).catch((error: unknown) => {
+                this.#appendEntry({ role: "error", text: this.#formatError(error) });
+                this.#requestRender();
+            });
+            return true;
+        }
+
         if (prompt === "/model") {
             this.#openModelMenu();
             return true;
@@ -1062,6 +1071,56 @@ export class CodingAssistantApp implements Component, Focusable {
         }
 
         return false;
+    }
+
+    async #handleGoalCommand(prompt: string): Promise<void> {
+        const argument = prompt.slice("/goal".length).trim();
+        const goal = this.#agent.goal;
+
+        if (argument.length === 0) {
+            this.#appendEntry({
+                role: "event",
+                title: "goal",
+                text:
+                    goal === undefined
+                        ? "No goal is set. Use /goal followed by an objective to start one."
+                        : `Status: ${humanizeGoalStatus(goal.status)}\nObjective: ${goal.objective}\n\nCommands: /goal pause, /goal resume, /goal clear`,
+            });
+            return;
+        }
+
+        if (argument === "pause" || argument === "resume") {
+            if (this.#agent.changeGoalStatus === undefined) {
+                throw new Error("Goal controls are unavailable in this session.");
+            }
+            const status = argument === "pause" ? "paused" : "active";
+            await this.#agent.changeGoalStatus(status);
+            this.#appendEntry({
+                role: "event",
+                title: "goal",
+                text: argument === "pause" ? "Goal paused." : "Goal resumed.",
+            });
+            return;
+        }
+
+        if (argument === "clear") {
+            if (this.#agent.clearGoal === undefined) {
+                throw new Error("Goal controls are unavailable in this session.");
+            }
+            await this.#agent.clearGoal();
+            this.#appendEntry({ role: "event", title: "goal", text: "Goal cleared." });
+            return;
+        }
+
+        if (this.#agent.setGoal === undefined) {
+            throw new Error("Goal controls are unavailable in this session.");
+        }
+        await this.#agent.setGoal(argument);
+        this.#appendEntry({
+            role: "event",
+            title: "goal",
+            text: `Goal started: ${argument}`,
+        });
     }
 
     #showMcpStatus(): void {

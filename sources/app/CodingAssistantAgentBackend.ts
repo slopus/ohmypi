@@ -8,6 +8,7 @@ import type {
 } from "../agent/index.js";
 import type { Model, Provider } from "../providers/types.js";
 import type { PermissionMode } from "../permissions/index.js";
+import type { GoalStatus, SessionGoal } from "../goals/index.js";
 
 export interface CodingAssistantModelChoice {
     model: Model;
@@ -22,7 +23,10 @@ export interface CodingAssistantAgentBackend {
     readonly model: Model;
     readonly modelChoices?: readonly CodingAssistantModelChoice[];
     readonly permissionMode: PermissionMode;
+    readonly goal?: SessionGoal | undefined;
     compact(signal?: AbortSignal): Promise<AgentCompactionResult>;
+    changeGoalStatus?(status: GoalStatus): Promise<void>;
+    clearGoal?(): Promise<void>;
     reset(): void;
     send(
         content: string | readonly ContentBlock[],
@@ -32,5 +36,6 @@ export interface CodingAssistantAgentBackend {
     setEffort(effort: string | undefined): void;
     setModel(modelId: string, effort: string | undefined, providerId?: string): void;
     setPermissionMode(mode: PermissionMode): void;
+    setGoal?(objective: string): Promise<void>;
     snapshot(): AgentSnapshot;
 }

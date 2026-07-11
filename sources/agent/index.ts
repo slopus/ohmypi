@@ -52,6 +52,7 @@ export type {
     BashSessionStatus,
 } from "./context/BashContext.js";
 export type { FileSystemContext, FileSystemStat } from "./context/FileSystemContext.js";
+export type { GoalContext } from "./context/GoalContext.js";
 export type { UserInputContext } from "./context/UserInputContext.js";
 export type { TaskContext } from "./context/TaskContext.js";
 export type {

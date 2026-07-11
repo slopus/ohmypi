@@ -1,5 +1,6 @@
 import type { NativeProxessManager } from "../../processes/index.js";
 import type { AgentContext } from "./AgentContext.js";
+import type { GoalContext } from "./GoalContext.js";
 import { createNodeBashContext } from "./createNodeBashContext.js";
 import { createNodeFileSystemContext } from "./createNodeFileSystemContext.js";
 import type { UserInputContext } from "./UserInputContext.js";
@@ -12,6 +13,7 @@ import {
 
 export interface CreateNodeAgentContextOptions {
     cwd: string;
+    goals?: GoalContext;
     processManager: NativeProxessManager;
     permissionMode?: PermissionMode;
     tasks?: TaskContext;
@@ -32,6 +34,7 @@ export function createNodeAgentContext(options: CreateNodeAgentContextOptions): 
         permissions,
     };
     if (options.userInput !== undefined) context.userInput = options.userInput;
+    if (options.goals !== undefined) context.goals = options.goals;
     if (options.tasks !== undefined) context.tasks = options.tasks;
     return context;
 }
