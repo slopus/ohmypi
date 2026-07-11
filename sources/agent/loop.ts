@@ -33,6 +33,13 @@ import type {
     Usage,
     UserContent as ProviderUserContent,
 } from "../providers/types.js";
+import {
+    requestAutoPermissionApproval,
+    reviewAutoPermission,
+    shouldElevateToolInAutoMode,
+    shouldReviewToolInAutoMode,
+    summarizePermissionAction,
+} from "../permissions/index.js";
 
 export interface RunAgentLoopOptions {
     provider: Provider;
@@ -235,7 +242,13 @@ export async function runAgentLoop(options: RunAgentLoopOptions): Promise<AgentL
 
         const toolResultBlocks = await Promise.all(
             toolCalls.map((toolCall) =>
-                executeToolCall(toolCall, toolsByName, toolContext, options.signal),
+                executeToolCall(toolCall, toolsByName, toolContext, {
+                    messages: contextTranscript,
+                    model,
+                    now,
+                    provider: options.provider,
+                    ...(options.signal === undefined ? {} : { signal: options.signal }),
+                }),
             ),
         );
 
@@ -477,7 +490,13 @@ async function executeToolCall(
     toolCall: ProviderToolCall,
     toolsByName: ReadonlyMap<string, AnyDefinedTool>,
     context: AgentContext,
-    signal: AbortSignal | undefined,
+    options: {
+        messages: readonly Message[];
+        model: Model;
+        now: () => number;
+        provider: Provider;
+        signal?: AbortSignal;
+    },
 ): Promise<ToolResultBlock> {
     const tool = toolsByName.get(toolCall.name);
     if (!tool) {
@@ -489,6 +508,43 @@ async function executeToolCall(
     }
 
     try {
+        let runWithFullAccess = false;
+        if (
+            context.permissions?.mode === "auto" &&
+            (await shouldReviewToolInAutoMode(tool.name, toolCall.arguments, context.fs.cwd))
+        ) {
+            const review = await reviewAutoPermission({
+                args: toolCall.arguments,
+                messages: options.messages,
+                model: options.model,
+                now: options.now,
+                provider: options.provider,
+                ...(options.signal === undefined ? {} : { signal: options.signal }),
+                toolName: tool.name,
+            });
+            if (review.decision === "ask") {
+                const action = summarizePermissionAction(tool.name, toolCall.arguments);
+                const approved = await requestAutoPermissionApproval({
+                    action,
+                    reason: review.reason,
+                    ...(options.signal === undefined ? {} : { signal: options.signal }),
+                    toolCallId: toolCall.id,
+                    userInput: context.userInput,
+                });
+                if (!approved) {
+                    return errorToolResultBlock(
+                        toolCall,
+                        `Auto mode did not approve ${action}. Reason: ${review.reason}`,
+                    );
+                }
+            }
+            runWithFullAccess = await shouldElevateToolInAutoMode(
+                tool.name,
+                toolCall.arguments,
+                context.fs.cwd,
+            );
+        }
+
         const execute = tool.execute as (
             args: unknown,
             context: AgentContext,
@@ -499,8 +555,12 @@ async function executeToolCall(
         const executionOptions: { signal?: AbortSignal; toolCallId?: string } = {
             toolCallId: toolCall.id,
         };
-        if (signal !== undefined) executionOptions.signal = signal;
-        const result = await execute(toolCall.arguments, context, executionOptions);
+        if (options.signal !== undefined) executionOptions.signal = options.signal;
+        const run = () => execute(toolCall.arguments, context, executionOptions);
+        const result =
+            runWithFullAccess && context.permissions !== undefined
+                ? await context.permissions.runWithMode("full_access", run)
+                : await run();
 
         return {
             type: "tool_result",

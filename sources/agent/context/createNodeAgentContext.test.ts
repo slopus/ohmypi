@@ -127,6 +127,36 @@ describe("createNodeAgentContext", () => {
         expect(await readFile(outside, "utf8")).toBe("full access");
     });
 
+    it("keeps Auto mode workspace-scoped outside a reviewed call", async () => {
+        const root = await makeWorkspaceRoot();
+        const cwd = join(root, "workspace");
+        const outside = join(root, "outside.txt");
+        await mkdir(cwd);
+        const context = createNodeAgentContext({
+            cwd,
+            permissionMode: "auto",
+            processManager: new NativeProxessManager(),
+        });
+
+        await context.fs.writeFile("inside.txt", "inside");
+        await expect(context.fs.writeFile(outside, "blocked")).rejects.toThrow("outside");
+        const sandboxedShell = await context.bash.run({
+            command: "printf blocked > ../outside-shell.txt",
+        });
+        expect(sandboxedShell.exitCode).not.toBe(0);
+        await context.permissions?.runWithMode("full_access", () =>
+            context.fs.writeFile(outside, "reviewed"),
+        );
+        await context.permissions?.runWithMode("full_access", () =>
+            context.bash.run({ command: "printf reviewed > ../outside-shell.txt" }),
+        );
+
+        await expect(readFile(join(cwd, "inside.txt"), "utf8")).resolves.toBe("inside");
+        await expect(readFile(outside, "utf8")).resolves.toBe("reviewed");
+        await expect(readFile(join(root, "outside-shell.txt"), "utf8")).resolves.toBe("reviewed");
+        expect(context.permissions?.mode).toBe("auto");
+    });
+
     it("sandboxes shell writes unless Full access is selected", async () => {
         const root = await makeWorkspaceRoot();
         const cwd = join(root, "workspace");

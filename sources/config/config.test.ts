@@ -19,7 +19,7 @@ model = "openai/gpt-5.4" # keep this comment
 provider = "bedrock"
 effort = 'high'
 instructions = "Be direct."
-permission_mode = "read_only"
+permission_mode = "auto"
 
 [settings]
 show_reasoning = false
@@ -30,7 +30,7 @@ show_reasoning = false
                 providerId: "bedrock",
                 effort: "high",
                 instructions: "Be direct.",
-                permissionMode: "read_only",
+                permissionMode: "auto",
             },
             settings: {
                 showReasoning: false,

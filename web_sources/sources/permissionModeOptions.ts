@@ -6,6 +6,11 @@ export const permissionModeOptions: readonly {
     value: PermissionMode;
 }[] = [
     {
+        description: "Routine work proceeds automatically; risky actions ask for approval.",
+        label: "Auto",
+        value: "auto",
+    },
+    {
         description: "Writes stay in the working directory. Shell network access is blocked.",
         label: "Workspace write",
         value: "workspace_write",

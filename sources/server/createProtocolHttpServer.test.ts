@@ -77,13 +77,13 @@ describe("createProtocolHttpServer", () => {
             const created = await client.createSession({ cwd: "/tmp/rig-protocol-test" });
 
             const changed = await client.changePermissionMode(created.session.id, {
-                permissionMode: "read_only",
+                permissionMode: "auto",
             });
             const events = await client.getEvents(created.session.id, created.session.lastEventId);
 
-            expect(changed.session.permissionMode).toBe("read_only");
+            expect(changed.session.permissionMode).toBe("auto");
             expect(events.events.at(-1)).toMatchObject({
-                data: { permissionMode: "read_only" },
+                data: { permissionMode: "auto" },
                 type: "permission_mode_changed",
             });
         } finally {
@@ -145,7 +145,7 @@ describe("createProtocolHttpServer", () => {
                     permissionMode: "unrestricted" as "full_access",
                 }),
             ).rejects.toThrow(
-                "Permission mode must be Workspace write, Read only, or Full access.",
+                "Permission mode must be Auto, Workspace write, Read only, or Full access.",
             );
         } finally {
             await close();

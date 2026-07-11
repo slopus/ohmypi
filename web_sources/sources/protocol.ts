@@ -219,7 +219,7 @@ export type AgentLoopEvent =
 
 export type SessionStatus = "idle" | "queued" | "running" | "completed" | "aborted" | "error";
 
-export type PermissionMode = "workspace_write" | "read_only" | "full_access";
+export type PermissionMode = "auto" | "workspace_write" | "read_only" | "full_access";
 
 export interface UserInputOption {
     description: string;

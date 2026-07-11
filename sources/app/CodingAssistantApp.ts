@@ -1851,6 +1851,11 @@ export class CodingAssistantApp implements Component, Focusable {
             selectedValue: this.#agent.permissionMode,
             items: [
                 {
+                    value: "auto",
+                    label: "Auto",
+                    description: "Automatically review risky actions; ask only when needed.",
+                },
+                {
                     value: "workspace_write",
                     label: "Workspace write",
                     description: "Write in the workspace; block shell network access.",
@@ -1867,7 +1872,7 @@ export class CodingAssistantApp implements Component, Focusable {
                 },
             ],
             onSelect: (item) => {
-                const mode = item.value as "workspace_write" | "read_only" | "full_access";
+                const mode = item.value as "auto" | "workspace_write" | "read_only" | "full_access";
                 this.#agent.setPermissionMode(mode);
                 if (!this.#sessionBacked) {
                     this.#appendEntry({

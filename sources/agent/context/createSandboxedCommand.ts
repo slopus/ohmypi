@@ -18,7 +18,7 @@ export async function createSandboxedCommand(options: {
     if (options.mode === "full_access") return options.command;
 
     const writablePaths = [tmpdir()];
-    if (options.mode === "workspace_write") {
+    if (options.mode === "workspace_write" || options.mode === "auto") {
         writablePaths.push(options.cwd);
         writablePaths.push(...(await findGitWritablePaths(options.cwd)));
     }

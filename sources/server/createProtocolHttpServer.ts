@@ -118,7 +118,7 @@ async function handleRequest(
         const body = await readJson<CreateSessionRequest>(request);
         if (body.permissionMode !== undefined && !isPermissionMode(body.permissionMode)) {
             sendJson(response, 400, {
-                error: "Permission mode must be Workspace write, Read only, or Full access.",
+                error: "Permission mode must be Auto, Workspace write, Read only, or Full access.",
             });
             return;
         }
@@ -218,7 +218,7 @@ async function handleRequest(
         const body = await readJson<ChangePermissionModeRequest>(request);
         if (!isPermissionMode(body.permissionMode)) {
             sendJson(response, 400, {
-                error: "Permission mode must be Workspace write, Read only, or Full access.",
+                error: "Permission mode must be Auto, Workspace write, Read only, or Full access.",
             });
             return;
         }

@@ -1,6 +1,12 @@
 export { createPermissionContext } from "./createPermissionContext.js";
 export { isPermissionMode } from "./isPermissionMode.js";
 export { parsePermissionMode } from "./parsePermissionMode.js";
+export { requestAutoPermissionApproval } from "./requestAutoPermissionApproval.js";
+export { reviewAutoPermission } from "./reviewAutoPermission.js";
+export { shouldElevateToolInAutoMode } from "./shouldElevateToolInAutoMode.js";
+export { shouldReviewToolInAutoMode } from "./shouldReviewToolInAutoMode.js";
+export { summarizePermissionAction } from "./summarizePermissionAction.js";
 export { DEFAULT_PERMISSION_MODE } from "./PermissionMode.js";
 export type { PermissionContext } from "./PermissionContext.js";
 export type { PermissionMode } from "./PermissionMode.js";
+export type { AutoPermissionReview } from "./parseAutoPermissionReview.js";

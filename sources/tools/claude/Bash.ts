@@ -27,6 +27,12 @@ export const claudeBashTool = defineTool({
                     "Set to true to run this command in the background. Use TaskOutput to read the output later.",
             }),
         ),
+        dangerouslyDisableSandbox: Type.Optional(
+            Type.Boolean({
+                description:
+                    "Request reviewed execution outside the workspace sandbox in Auto mode. Use only when the sandbox blocks a necessary command.",
+            }),
+        ),
     }),
     returnType: shellToolOutputSchema,
     execute: async ({ command, run_in_background, timeout }, context, execution) => {

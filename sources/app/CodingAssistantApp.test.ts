@@ -2749,6 +2749,7 @@ describe("CodingAssistantApp", () => {
 
         const menu = stripAnsi(app.render(100).join("\n"));
         expect(menu).toContain("Choose Permissions");
+        expect(menu).toContain("Auto");
         expect(menu).toContain("Workspace write");
         expect(menu).toContain("Read only");
         expect(menu).toContain("Full access");

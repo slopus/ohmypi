@@ -36,6 +36,18 @@ export const codexExecCommandTool = defineTool({
                 description: "Shell binary to launch. Defaults to the user's default shell.",
             }),
         ),
+        sandbox_permissions: Type.Optional(
+            Type.Union([Type.Literal("use_default"), Type.Literal("require_escalated")], {
+                description:
+                    "Request reviewed execution outside the workspace sandbox in Auto mode. Defaults to use_default.",
+            }),
+        ),
+        justification: Type.Optional(
+            Type.String({
+                description:
+                    "Concise user-facing reason why sandbox escalation is needed. Use only with require_escalated.",
+            }),
+        ),
     }),
     returnType: unifiedExecOutputSchema,
     execute: async (

@@ -69,7 +69,7 @@ function protocolSession(model: ReturnType<typeof defineModel>): ProtocolSession
 
 function permissionEvent(
     sessionId: string,
-    permissionMode: "workspace_write" | "read_only" | "full_access",
+    permissionMode: "auto" | "workspace_write" | "read_only" | "full_access",
 ): SessionEvent {
     return {
         createdAt: 1,

@@ -123,9 +123,15 @@ continue to work.
 Use `/permissions` in the terminal or the Permissions control in the web
 inspector to switch the current session and its subagents between:
 
+- **Auto** — run routine workspace work immediately and review risky actions automatically, asking only when needed.
 - **Workspace write** — write in the working directory with shell network access blocked.
 - **Read only** — keep project files read only; shell commands may write temporary files.
 - **Full access** — allow unrestricted filesystem, shell, and network access.
+
+In Auto mode, shell commands remain workspace-sandboxed by default. Codex
+`exec_command` can request `sandbox_permissions = "require_escalated"`, and
+Claude `Bash` can request `dangerouslyDisableSandbox = true`; both requests are
+reviewed before receiving one-call full access.
 
 Set the terminal default in global or project-local `rig.toml`:
 
@@ -136,7 +142,7 @@ permission_mode = "workspace_write"
 
 `RIG_PERMISSION_MODE` overrides the configured default for a newly created
 terminal session. Accepted values are `workspace_write`, `read_only`, and
-`full_access`.
+`full_access`, and `auto`.
 
 ### Task tracking
 
