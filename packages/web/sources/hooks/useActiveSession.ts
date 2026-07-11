@@ -11,6 +11,7 @@ import {
     fetchSession,
     fetchSubagents,
     resetSession,
+    rewindSession,
     setSessionGoal,
     streamSessionEvents,
     submitMessage,
@@ -67,6 +68,8 @@ export interface ActiveSessionState {
     pendingUserInputs: readonly UserInputRequest[];
     /** Resets the conversation (`POST /api/sessions/:id/reset`). */
     reset: () => Promise<void>;
+    /** Removes the selected user turn and all later turns, returning it for editing. */
+    rewind: (messageId: string) => Promise<UserMessage>;
     setGoal: (objective: string) => Promise<void>;
     /** Human-readable error from the last failed run or submit, if any. */
     runError: string | undefined;
@@ -292,6 +295,24 @@ function reduceServerEvent(state: ReducerState, event: SessionEvent): ReducerSta
                     state.session !== undefined
                         ? { ...state.session, snapshot: event.data.snapshot }
                         : undefined,
+            };
+        }
+        case "session_rewound": {
+            return {
+                ...state,
+                messages: event.data.snapshot.messages,
+                optimistic: [],
+                runError: undefined,
+                streamingPartial: undefined,
+                session:
+                    state.session === undefined
+                        ? undefined
+                        : {
+                              ...state.session,
+                              modelLocked: false,
+                              snapshot: event.data.snapshot,
+                              status: "idle",
+                          },
             };
         }
         case "session_title_changed": {
@@ -635,6 +656,18 @@ export function useActiveSession(sessionId: string | undefined): ActiveSessionSt
         dispatch({ type: "session_replaced", session: response.session });
     }, [sessionId]);
 
+    const rewind = useCallback(
+        async (messageId: string) => {
+            if (sessionId === undefined) {
+                throw new Error("No session is selected.");
+            }
+            const response = await rewindSession(sessionId, { messageId });
+            dispatch({ type: "session_replaced", session: response.session });
+            return response.message;
+        },
+        [sessionId],
+    );
+
     const changeModel = useCallback(
         async (providerId: string, modelId: string, effort?: string) => {
             if (sessionId === undefined) {
@@ -722,6 +755,7 @@ export function useActiveSession(sessionId: string | undefined): ActiveSessionSt
         messages,
         pendingUserInputs: state.session?.pendingUserInputs ?? [],
         reset,
+        rewind,
         setGoal,
         runError: state.runError,
         session: state.session,

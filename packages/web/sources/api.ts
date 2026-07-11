@@ -26,6 +26,8 @@ import type {
     ListSessionsResponse,
     ListSubagentsResponse,
     ResetSessionResponse,
+    RewindSessionRequest,
+    RewindSessionResponse,
     SearchFilesResponse,
     SessionEvent,
     SetGoalRequest,
@@ -159,6 +161,16 @@ export function answerUserInput(
 
 export function resetSession(sessionId: string): Promise<ResetSessionResponse> {
     return postJson<ResetSessionResponse>(`/sessions/${encodeURIComponent(sessionId)}/reset`);
+}
+
+export function rewindSession(
+    sessionId: string,
+    request: RewindSessionRequest,
+): Promise<RewindSessionResponse> {
+    return postJson<RewindSessionResponse>(
+        `/sessions/${encodeURIComponent(sessionId)}/rewind`,
+        request,
+    );
 }
 
 export function changeSessionModel(

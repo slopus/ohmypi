@@ -29,6 +29,7 @@ import type {
     EventId,
     ModelCatalog,
     ProtocolSession,
+    RewindSessionResponse,
     SessionEvent,
     SessionAgentMetadata,
     SessionInterruption,
@@ -106,6 +107,7 @@ export interface PersistedSessionState {
 
 export interface InMemorySessionPersistence {
     clearMessages(sessionId: string): void;
+    deleteMessagesFrom(sessionId: string, position: number): void;
     deleteQueuedRun(sessionId: string, runId: string): void;
     insertQueuedRun(sessionId: string, run: PersistedQueuedRun): void;
     saveSession(state: PersistedSessionState): void;
@@ -723,6 +725,47 @@ export class InMemorySession {
         if (hadGoal) this.#append("goal_changed", { goal: null });
         this.#append("session_reset", { snapshot: this.#agentSnapshot() });
         return this.snapshot();
+    }
+
+    rewind(messageId: string): RewindSessionResponse {
+        if (this.isSubagent()) {
+            throw new Error("Subagent histories cannot be rewound.");
+        }
+        if (this.#activeRun !== undefined || this.#queue.length > 0) {
+            throw new Error(
+                "Wait for the active response to finish before rewinding this session.",
+            );
+        }
+
+        const target = this.#messages.find(
+            (entry) => !entry.isPartial && entry.message.id === messageId,
+        );
+        if (target === undefined || target.message.role !== "user") {
+            throw new Error("The selected user message is no longer available.");
+        }
+
+        void this.#runtime?.processManager.killAll({ forceAfterMs: 500 });
+        this.#runtime = undefined;
+        this.#mcpLoaded = false;
+        this.#mcpServers = [];
+        this.#tools = [];
+        this.#messages = this.#messages.filter((entry) => entry.position < target.position);
+        this.#contextMessages = undefined;
+        this.#partialPositions = new Set(
+            [...this.#partialPositions].filter((position) => position < target.position),
+        );
+        this.#activePartial = undefined;
+        this.#interruption = undefined;
+        this.#lastSessionRunId = undefined;
+        this.#restoredActiveRunId = undefined;
+        this.#status = "idle";
+        this.#lastMessageAt = this.#now();
+        this.#persistence?.deleteMessagesFrom(this.id, target.position);
+        this.#append("session_rewound", {
+            messageId,
+            snapshot: this.#agentSnapshot(),
+        });
+        return { message: target.message, session: this.snapshot() };
     }
 
     async compact(signal?: AbortSignal): Promise<AgentCompactionResult> {

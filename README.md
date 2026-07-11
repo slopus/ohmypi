@@ -35,6 +35,7 @@ rig stays close to pi and to upstream vendor behavior, but adds a curated defaul
 - Findings-first local code review with `/review` for current workspace changes.
 - Headless execution with plain text, JSON, or streaming JSON output for scripts and CI.
 - Saved-session pickers, latest-session shortcuts, and conversation forks.
+- Codex-style conversation rewind that restores an earlier prompt for editing without changing working files.
 - Automatic conversation compaction for long sessions, plus `/compact` when you want to free context space immediately.
 - Sandboxing defaults that make local execution practical while keeping controls visible.
 - Global and project-local configuration overrides.
@@ -60,6 +61,7 @@ feature exposed by Codex and Claude Code. It intentionally does not implement:
 - Vim or other modal terminal editing modes. The terminal input experience stays simple and conventional.
 - Jupyter notebook parsing or editing. Export notebooks to a plain-text format before asking Rig to read them.
 - Persistent command allow/deny history. Auto mode reviews each sensitive action against the current user request instead of maintaining a legacy command execution policy.
+- Dedicated IDE integrations. Rig is a standalone terminal and browser experience, not an extension or bridge for VS Code, JetBrains, or other editors.
 - A separate Rig login flow. Rig uses credentials managed by the system Codex and Claude Code installations.
 - Claude Code's extended skill runtime. Rig follows Codex skill discovery and instruction semantics without hooks, model overrides, or executable skill metadata.
 - Niche parity features whose main value is matching a rarely used upstream flag, command, protocol, or edge case. New parity work should solve a common user need and fit rig's simpler product model.
@@ -156,6 +158,12 @@ rig fork SESSION_ID
 
 The model and provider can be changed between responses from the terminal or web
 model picker. They remain temporarily unavailable while a response is running.
+
+When a session is idle, press Escape in the terminal to choose an earlier user
+message, or use the rewind action beside a user message in the browser. The
+selected message and everything after it are removed from session history, and
+its text returns to the composer for editing. Rewind never changes files in the
+working directory; image attachments must be added again.
 
 ### Amazon Bedrock
 

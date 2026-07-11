@@ -5,6 +5,7 @@ import type {
     AgentRunResult,
     AgentSnapshot,
     ContentBlock,
+    UserMessage,
 } from "../agent/index.js";
 import type { Model, Provider } from "../providers/types.js";
 import type { PermissionMode } from "../permissions/index.js";
@@ -28,6 +29,7 @@ export interface CodingAssistantAgentBackend {
     changeGoalStatus?(status: GoalStatus): Promise<void>;
     clearGoal?(): Promise<void>;
     reset(): void;
+    rewind?(messageId: string): Promise<UserMessage>;
     send(
         content: string | readonly ContentBlock[],
         options?: AgentRunOptions,

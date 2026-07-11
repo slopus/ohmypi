@@ -15,6 +15,7 @@ const FILE_SEARCH_LIMIT = 10;
 const FILE_SEARCH_DEBOUNCE_MS = 80;
 
 export interface FileMentionTextareaProps {
+    draft: { key: string; text: string } | undefined;
     disabled: boolean;
     onTextChange: (hasText: boolean) => void;
     placeholder: string;
@@ -22,6 +23,7 @@ export interface FileMentionTextareaProps {
 }
 
 export function FileMentionTextarea({
+    draft,
     disabled,
     onTextChange,
     placeholder,
@@ -60,6 +62,20 @@ export function FileMentionTextarea({
         setMention(nextMention);
         setSelectedIndex(0);
     };
+
+    useEffect(() => {
+        if (draft === undefined) return;
+        const textarea = textareaRef.current;
+        if (textarea === null) return;
+        const setValue = Object.getOwnPropertyDescriptor(
+            HTMLTextAreaElement.prototype,
+            "value",
+        )?.set;
+        setValue?.call(textarea, draft.text);
+        textarea.dispatchEvent(new Event("input", { bubbles: true }));
+        textarea.focus();
+        textarea.setSelectionRange(draft.text.length, draft.text.length);
+    }, [draft]);
 
     useEffect(() => {
         if (mention === undefined || disabled) {

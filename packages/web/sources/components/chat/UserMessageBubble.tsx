@@ -1,8 +1,11 @@
 import { Message, MessageContent } from "@/components/ai/message";
+import { RewindMessageButton } from "@/components/chat/RewindMessageButton";
 import type { ImageBlock, UserMessage } from "@/protocol";
 
 export interface UserMessageBubbleProps {
     message: UserMessage;
+    onRewind: () => Promise<void>;
+    rewindDisabled: boolean;
 }
 
 /**
@@ -10,7 +13,7 @@ export interface UserMessageBubbleProps {
  * ImageBlocks) above the text. Optimistic messages (not yet echoed by the
  * server) render slightly dimmed.
  */
-export function UserMessageBubble({ message }: UserMessageBubbleProps) {
+export function UserMessageBubble({ message, onRewind, rewindDisabled }: UserMessageBubbleProps) {
     const isOptimistic = message.id.startsWith("optimistic-");
     const images = message.blocks.filter((block): block is ImageBlock => block.type === "image");
     const text = message.blocks
@@ -36,6 +39,15 @@ export function UserMessageBubble({ message }: UserMessageBubbleProps) {
                 <MessageContent>
                     <span className="whitespace-pre-wrap break-words">{text}</span>
                 </MessageContent>
+            )}
+            {!isOptimistic && (
+                <div className="ml-auto h-6">
+                    <RewindMessageButton
+                        disabled={rewindDisabled}
+                        hasAttachments={images.length > 0}
+                        onRewind={onRewind}
+                    />
+                </div>
             )}
         </Message>
     );

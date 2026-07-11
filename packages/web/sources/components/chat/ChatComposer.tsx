@@ -21,6 +21,8 @@ import type { ImageBlock } from "@/protocol";
 export interface ChatComposerProps {
     /** False disables sending (daemon still starting or unreachable). */
     daemonReady: boolean;
+    /** Text restored by a conversation rewind. */
+    draft: { key: string; text: string } | undefined;
     /** True after Stop was pressed, until the run settles. */
     isAborting: boolean;
     /** True while a run is active; morphs Send into Stop. */
@@ -111,6 +113,7 @@ function ComposerActions({
  */
 export function ChatComposer({
     daemonReady,
+    draft,
     isAborting,
     isRunning,
     onAbort,
@@ -171,6 +174,7 @@ export function ChatComposer({
                         {(attachment) => <PromptInputAttachment data={attachment} />}
                     </PromptInputAttachments>
                     <FileMentionTextarea
+                        draft={draft}
                         disabled={!daemonReady || readOnly}
                         onTextChange={setHasText}
                         placeholder={

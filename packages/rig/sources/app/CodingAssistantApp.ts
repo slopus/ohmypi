@@ -22,6 +22,7 @@ import {
     type Message,
     type Skill,
     type ToolResultBlock,
+    type UserMessage,
     formatSkillInvocation,
     loadSkills,
 } from "../agent/index.js";
@@ -407,7 +408,11 @@ export class CodingAssistantApp implements Component, Focusable {
     applySessionEvent(event: SessionEvent): void {
         if (event.type === "message_submitted") {
             this.#modelLocked = true;
-            this.#appendEntry({ role: "user", text: event.data.displayText });
+            this.#appendEntry({
+                id: event.data.message.id,
+                role: "user",
+                text: event.data.displayText,
+            });
             return;
         }
 
@@ -499,6 +504,23 @@ export class CodingAssistantApp implements Component, Focusable {
                 role: "system",
                 text: "Session reset. Started a new session.",
             });
+            return;
+        }
+
+        if (event.type === "session_rewound") {
+            const targetIndex = this.#entries.findIndex(
+                (entry) => entry.id === event.data.messageId,
+            );
+            if (targetIndex >= 0) this.#entries = this.#entries.slice(0, targetIndex);
+            this.#transcriptStartIndex = Math.min(this.#transcriptStartIndex, this.#entries.length);
+            this.#modelLocked = false;
+            this.#statusText = "Idle";
+            this.#streamEntryId = undefined;
+            this.#thinkingEntryIdsByContentIndex.clear();
+            this.#toolCallEntryIdsByContentIndex.clear();
+            this.#runningToolCallIds.clear();
+            this.#clearUserInputRequests();
+            this.#requestRender();
             return;
         }
 
@@ -654,7 +676,7 @@ export class CodingAssistantApp implements Component, Focusable {
 
         if (matchesKey(data, "escape")) {
             this.#markTypingActivity();
-            this.#handleEscape();
+            if (!this.#openBacktrackMenu()) this.#handleEscape();
             this.#requestRender();
             return;
         }
@@ -1450,6 +1472,58 @@ export class CodingAssistantApp implements Component, Focusable {
     #handleEscape(): void {
         this.#restoreQueuedPromptsToComposer();
         this.#abortActiveRun();
+    }
+
+    #openBacktrackMenu(): boolean {
+        if (this.#running || !this.#sessionBacked || this.#agent.rewind === undefined) {
+            return false;
+        }
+        const userEntries = this.#entries.filter((entry) => entry.role === "user");
+        if (userEntries.length === 0) return false;
+
+        const items = [...userEntries].reverse().map((entry) => ({
+            description: entry.text.replaceAll("\n", " ").trim() || "Message with attachments",
+            label: entry.text.split("\n")[0]?.trim() || "Message with attachments",
+            value: entry.id,
+        }));
+        this.#showSelectionPanel(
+            createSelectionPanel({
+                items,
+                onCancel: () => this.#closeSelectionPanel(),
+                onSelect: (item) => {
+                    const rewind = this.#agent.rewind;
+                    if (rewind === undefined) return;
+                    this.#closeSelectionPanel();
+                    this.#statusText = "Rewinding";
+                    this.#requestRender();
+                    void rewind(item.value)
+                        .then((message) => this.#finishBacktrack(item.value, message))
+                        .catch((error: unknown) => {
+                            this.#statusText = "Error";
+                            this.#appendEntry({ role: "error", text: this.#formatError(error) });
+                        });
+                },
+                subtitle: "Choose a prompt to edit again. Files stay unchanged.",
+                title: "Rewind conversation",
+            }),
+        );
+        return true;
+    }
+
+    #finishBacktrack(messageId: string, message: UserMessage): void {
+        const targetIndex = this.#entries.findIndex((entry) => entry.id === messageId);
+        if (targetIndex >= 0) this.#entries = this.#entries.slice(0, targetIndex);
+        this.#transcriptStartIndex = Math.min(this.#transcriptStartIndex, this.#entries.length);
+        this.#editor.setText(
+            message.blocks
+                .filter((block) => block.type === "text")
+                .map((block) => block.text)
+                .join("\n"),
+        );
+        this.#syncAutocompleteState();
+        this.#modelLocked = false;
+        this.#statusText = "Idle";
+        this.#requestRender();
     }
 
     #restoreQueuedPromptsToComposer(): void {

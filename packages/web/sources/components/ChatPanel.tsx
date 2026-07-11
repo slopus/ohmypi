@@ -4,7 +4,7 @@ import {
     MessagesSquareIcon,
     TriangleAlertIcon,
 } from "lucide-react";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 
 import {
     Conversation,
@@ -55,6 +55,10 @@ export function ChatPanel({
     onOpenSubagent,
     sessionId,
 }: ChatPanelProps) {
+    const [draft, setDraft] = useState<
+        { key: string; sessionId: string; text: string } | undefined
+    >(undefined);
+    const activeDraft = draft?.sessionId === sessionId ? draft : undefined;
     const toolResults = useMemo(
         () => buildToolResultIndex(activeSession.messages),
         [activeSession.messages],
@@ -169,7 +173,19 @@ export function ChatPanel({
                     <ConversationContent className="mx-auto w-full max-w-3xl gap-6 px-6 py-8">
                         {visibleMessages.map((message) =>
                             message.role === "user" ? (
-                                <UserMessageBubble key={message.id} message={message} />
+                                <UserMessageBubble
+                                    key={message.id}
+                                    message={message}
+                                    onRewind={async () => {
+                                        const rewound = await activeSession.rewind(message.id);
+                                        const text = rewound.blocks
+                                            .filter((block) => block.type === "text")
+                                            .map((block) => block.text)
+                                            .join("\n");
+                                        setDraft({ key: rewound.id, sessionId, text });
+                                    }}
+                                    rewindDisabled={activeSession.isRunning || isSubagent}
+                                />
                             ) : (
                                 <AgentMessageView
                                     isSessionRunning={activeSession.isRunning}
@@ -236,6 +252,7 @@ export function ChatPanel({
                     ) : (
                         <ChatComposer
                             daemonReady={daemonReady}
+                            draft={activeDraft}
                             isAborting={activeSession.isAborting}
                             isRunning={activeSession.isRunning}
                             onAbort={() => void activeSession.abort()}

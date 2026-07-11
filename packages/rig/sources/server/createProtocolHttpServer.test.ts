@@ -333,6 +333,44 @@ describe("createProtocolHttpServer", () => {
         }
     });
 
+    it("rewinds a session to a selected user message", async () => {
+        const store = new PersistentSessionStore({ databasePath: ":memory:" });
+        const state = pausedGoalState();
+        const first = {
+            blocks: [{ text: "Keep this", type: "text" as const }],
+            id: "message-1",
+            role: "user" as const,
+        };
+        const second = {
+            blocks: [{ text: "Try this again", type: "text" as const }],
+            id: "message-2",
+            role: "user" as const,
+        };
+        store.saveSession({ ...state, contextMessages: [first, second] });
+        store.upsertMessage(state.id, {
+            isPartial: false,
+            message: first,
+            position: 0,
+            runId: "run-1",
+        });
+        store.upsertMessage(state.id, {
+            isPartial: false,
+            message: second,
+            position: 1,
+            runId: "run-2",
+        });
+        const { client, close } = await startServer({ store });
+        try {
+            const response = await client.rewind(state.id, second.id);
+
+            expect(response.message).toEqual(second);
+            expect(response.session.snapshot.messages).toEqual([first]);
+        } finally {
+            await close();
+            store.close();
+        }
+    });
+
     it("serves subagent history but rejects attempts to resume it", async () => {
         const store = new PersistentSessionStore({ databasePath: ":memory:" });
         store.saveSession(readOnlySubagentState());
@@ -348,6 +386,7 @@ describe("createProtocolHttpServer", () => {
                 client.submitMessage("subagent-1", { text: "Continue working." }),
             ).rejects.toThrow("read-only");
             await expect(client.reset("subagent-1")).rejects.toThrow("read-only");
+            await expect(client.rewind("subagent-1", "message-1")).rejects.toThrow("read-only");
             await expect(client.compact("subagent-1")).rejects.toThrow("read-only");
         } finally {
             await close();

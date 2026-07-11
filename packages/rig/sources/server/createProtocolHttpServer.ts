@@ -18,6 +18,8 @@ import type {
     ListSessionsResponse,
     ListSubagentsResponse,
     ModelCatalog,
+    RewindSessionRequest,
+    RewindSessionResponse,
     SearchFilesResponse,
     SessionEvent,
     SetGoalRequest,
@@ -231,6 +233,22 @@ async function handleRequest(
         return;
     }
 
+    if (request.method === "POST" && route.name === "rewind") {
+        const body = await readJson<RewindSessionRequest>(request);
+        if (typeof body.messageId !== "string" || body.messageId.length === 0) {
+            sendJson(response, 400, { error: "Choose a user message to rewind to." });
+            return;
+        }
+        try {
+            sendJson<RewindSessionResponse>(response, 200, session.rewind(body.messageId));
+        } catch (error) {
+            sendJson(response, 409, {
+                error: error instanceof Error ? error.message : "The session could not be rewound.",
+            });
+        }
+        return;
+    }
+
     if (request.method === "POST" && route.name === "compact") {
         const result = await session.compact();
         sendJson<CompactSessionResponse>(response, 200, {
@@ -440,6 +458,7 @@ function matchRoute(pathname: string):
               | "model"
               | "permissions"
               | "reset"
+              | "rewind"
               | "session"
               | "stream"
               | "steer"
@@ -480,6 +499,7 @@ function matchRoute(pathname: string):
     if (parts[2] === "model") return { name: "model", sessionId };
     if (parts[2] === "permissions") return { name: "permissions", sessionId };
     if (parts[2] === "reset") return { name: "reset", sessionId };
+    if (parts[2] === "rewind") return { name: "rewind", sessionId };
     if (parts[2] === "stream") return { name: "stream", sessionId };
     if (parts[2] === "steer") return { name: "steer", sessionId };
     if (parts[2] === "subagents") return { name: "subagents", sessionId };
@@ -489,7 +509,9 @@ function matchRoute(pathname: string):
 function isSessionMutation(routeName: string, method: string | undefined): boolean {
     return (
         (method === "POST" &&
-            ["abort", "compact", "fork", "messages", "reset", "steer"].includes(routeName)) ||
+            ["abort", "compact", "fork", "messages", "reset", "rewind", "steer"].includes(
+                routeName,
+            )) ||
         (["DELETE", "PATCH", "POST"].includes(method ?? "") && routeName === "goal") ||
         (method === "POST" && routeName === "user-input") ||
         (method === "PATCH" && ["effort", "model", "permissions"].includes(routeName))

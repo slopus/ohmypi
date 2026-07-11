@@ -99,6 +99,73 @@ describe("CodingAssistantApp", () => {
         expect(rawLines[inputLineIndex + 2]).toBe("");
     });
 
+    it("opens Codex-style backtracking on Escape and restores the selected prompt", async () => {
+        const model = defineModel({
+            defaultThinkingLevel: "off",
+            id: "openai/gpt-test",
+            name: "GPT Test",
+            thinkingLevels: ["off"],
+        });
+        const provider = defineProvider({
+            id: "codex",
+            models: [model],
+            stream() {
+                return streamText("unused");
+            },
+        });
+        const harness = createJustBashToolHarness();
+        const first = {
+            blocks: [{ text: "First prompt", type: "text" as const }],
+            id: "user-1",
+            role: "user" as const,
+        };
+        const second = {
+            blocks: [{ text: "Try this again", type: "text" as const }],
+            id: "user-2",
+            role: "user" as const,
+        };
+        const agent = Object.assign(
+            new Agent({
+                context: harness.context,
+                modelId: model.id,
+                printToConsole: false,
+                provider,
+            }),
+            { rewind: vi.fn(async () => second) },
+        );
+        const submitted = (
+            message: typeof first | typeof second,
+            eventId: string,
+        ): SessionEvent => ({
+            createdAt: 1,
+            data: {
+                displayText: message.blocks[0]?.text ?? "",
+                message,
+                runId: `run-${eventId}`,
+            },
+            id: eventId,
+            sessionId: "session-1",
+            type: "message_submitted",
+        });
+        const app = new CodingAssistantApp({
+            agent,
+            cwd: harness.context.fs.cwd,
+            initialSessionEvents: [submitted(first, "event-1"), submitted(second, "event-2")],
+            processManager: new NativeProxessManager(),
+            sessionBacked: true,
+            tui: fakeTui(),
+        });
+
+        app.handleInput("\x1b");
+        expect(stripAnsi(app.render(100).join("\n"))).toContain("Rewind conversation");
+        app.handleInput("\r");
+
+        await vi.waitFor(() => expect(agent.rewind).toHaveBeenCalledWith("user-2"));
+        await vi.waitFor(() =>
+            expect(stripAnsi(app.render(100).join("\n"))).toContain("› Try this again"),
+        );
+    });
+
     it("renders footer model and cwd with neutral distinct colors", () => {
         const codexModel = defineModel({
             id: "openai/gpt-test",

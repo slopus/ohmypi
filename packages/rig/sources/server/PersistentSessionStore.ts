@@ -97,6 +97,12 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
         this.#database.prepare("DELETE FROM session_messages WHERE session_id = ?").run(sessionId);
     }
 
+    deleteMessagesFrom(sessionId: string, position: number): void {
+        this.#database
+            .prepare("DELETE FROM session_messages WHERE session_id = ? AND position >= ?")
+            .run(sessionId, position);
+    }
+
     close(): void {
         this.#database.close();
     }

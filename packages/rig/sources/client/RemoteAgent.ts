@@ -5,6 +5,7 @@ import type {
     AgentRunResult,
     AgentSnapshot,
     ContentBlock,
+    UserMessage,
 } from "../agent/index.js";
 import type {
     CodingAssistantAgentBackend,
@@ -131,6 +132,12 @@ export class RemoteAgent implements CodingAssistantAgentBackend {
         void this.#client.reset(this.#session.id).then((response) => {
             this.#replaceSession(response.session);
         });
+    }
+
+    async rewind(messageId: string): Promise<UserMessage> {
+        const response = await this.#client.rewind(this.#session.id, messageId);
+        this.#replaceSession(response.session);
+        return response.message;
     }
 
     async send(
@@ -355,6 +362,16 @@ export class RemoteAgent implements CodingAssistantAgentBackend {
         }
 
         if (event.type === "session_reset") {
+            this.#session = {
+                ...this.#session,
+                modelLocked: false,
+                snapshot: event.data.snapshot,
+                status: "idle",
+            };
+            return;
+        }
+
+        if (event.type === "session_rewound") {
             this.#session = {
                 ...this.#session,
                 modelLocked: false,

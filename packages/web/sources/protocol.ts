@@ -416,6 +416,15 @@ export interface ResetSessionResponse {
     session: ProtocolSession;
 }
 
+export interface RewindSessionRequest {
+    messageId: string;
+}
+
+export interface RewindSessionResponse {
+    message: UserMessage;
+    session: ProtocolSession;
+}
+
 export interface ChangeModelResponse {
     session: ProtocolSession;
 }
@@ -550,6 +559,14 @@ export type AbortRequestedEvent = BaseSessionEvent<
 
 export type SessionResetEvent = BaseSessionEvent<"session_reset", { snapshot: AgentSnapshot }>;
 
+export type SessionRewoundEvent = BaseSessionEvent<
+    "session_rewound",
+    {
+        messageId: string;
+        snapshot: AgentSnapshot;
+    }
+>;
+
 export type SessionTitleChangedEvent = BaseSessionEvent<
     "session_title_changed",
     {
@@ -622,6 +639,7 @@ export type SessionEvent =
     | RunErrorEvent
     | AbortRequestedEvent
     | SessionResetEvent
+    | SessionRewoundEvent
     | SessionTitleChangedEvent
     | ModelChangedEvent
     | EffortChangedEvent

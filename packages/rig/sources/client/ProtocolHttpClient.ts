@@ -18,6 +18,7 @@ import type {
     ListSessionsResponse,
     ListSubagentsResponse,
     ProtocolSession,
+    RewindSessionResponse,
     SearchFilesResponse,
     SessionEvent,
     ShutdownServerResponse,
@@ -184,6 +185,12 @@ export class ProtocolHttpClient {
 
     reset(sessionId: string): Promise<{ session: ProtocolSession }> {
         return this.#requestJson("POST", `/sessions/${encodeURIComponent(sessionId)}/reset`);
+    }
+
+    rewind(sessionId: string, messageId: string): Promise<RewindSessionResponse> {
+        return this.#requestJson("POST", `/sessions/${encodeURIComponent(sessionId)}/rewind`, {
+            messageId,
+        });
     }
 
     shutdown(): Promise<ShutdownServerResponse> {

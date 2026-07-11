@@ -42,6 +42,44 @@ describe("PersistentSessionStore", () => {
         }
     });
 
+    it("persists a rewound transcript across daemon restarts", async () => {
+        const { cleanup, databasePath } = await createDatabasePath();
+        try {
+            const messages = [
+                textUserMessage("message-1", "Keep this"),
+                textUserMessage("message-2", "Rewind this"),
+                textUserMessage("message-3", "Remove this too"),
+            ];
+            const store = new PersistentSessionStore({ databasePath });
+            const state = sessionState({ contextMessages: messages, status: "completed" });
+            store.saveSession(state);
+            messages.forEach((message, position) => {
+                store.upsertMessage(state.id, {
+                    isPartial: false,
+                    message,
+                    position,
+                    runId: `run-${position + 1}`,
+                });
+            });
+            store.close();
+
+            const rewindStore = new PersistentSessionStore({ databasePath });
+            rewindStore.get(state.id)?.rewind("message-2");
+            rewindStore.close();
+
+            const restoredStore = new PersistentSessionStore({ databasePath });
+            try {
+                const restored = restoredStore.get(state.id)?.snapshot().snapshot;
+                expect(restored?.messages).toEqual([messages[0]]);
+                expect(restored?.contextMessages).toBeUndefined();
+            } finally {
+                restoredStore.close();
+            }
+        } finally {
+            await cleanup();
+        }
+    });
+
     it("restores compacted model context separately from the visible transcript", async () => {
         const { cleanup, databasePath } = await createDatabasePath();
         const summaryMessage = textUserMessage(
