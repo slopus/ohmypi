@@ -23,6 +23,8 @@ const INTERNAL_TOOLS = new Set([
     "spawn_agent",
     "update_plan",
     "wait_agent",
+    "WaitForWorkflow",
+    "wait_for_workflow",
 ]);
 
 const PATH_TOOLS = new Set([

@@ -10,6 +10,7 @@ export type AppTranscriptRole =
 
 export interface AppTranscriptEntry {
     id: string;
+    permissionReview?: string;
     role: AppTranscriptRole;
     text: string;
     detail?: string;

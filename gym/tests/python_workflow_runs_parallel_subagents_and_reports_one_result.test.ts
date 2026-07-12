@@ -44,8 +44,8 @@ describe("Python workflow orchestration", () => {
                                     script: [
                                         'phase("Inspect")',
                                         "results = parallel([",
-                                        '    {"prompt": "Return WORKFLOW_ALPHA only.", "label": "Alpha check"},',
-                                        '    {"prompt": "Return WORKFLOW_BETA only.", "label": "Beta check"},',
+                                        '    {"prompt": "Return WORKFLOW_ALPHA only.", "label": "Alpha check", "model": "openai/gym"},',
+                                        '    {"prompt": "Return WORKFLOW_BETA only.", "label": "Beta check", "model": "openai/gym"},',
                                         "])",
                                         '{"checks": results}',
                                     ].join("\n"),
@@ -60,6 +60,7 @@ describe("Python workflow orchestration", () => {
 
                 if (lastText.includes("Return WORKFLOW_ALPHA only.")) {
                     expect(sessionId).not.toBe(parentSessionId);
+                    expect(request.modelId).toBe("openai/gym");
                     childSessions.add(sessionId ?? "");
                     if (childSessions.size === 2) releaseChildren?.();
                     await bothChildrenStarted;
@@ -68,6 +69,7 @@ describe("Python workflow orchestration", () => {
 
                 if (lastText.includes("Return WORKFLOW_BETA only.")) {
                     expect(sessionId).not.toBe(parentSessionId);
+                    expect(request.modelId).toBe("openai/gym");
                     childSessions.add(sessionId ?? "");
                     if (childSessions.size === 2) releaseChildren?.();
                     await bothChildrenStarted;

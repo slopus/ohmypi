@@ -24,6 +24,7 @@ import { codexListAgentsTool } from "./list_agents.js";
 import { codexWaitAgentTool } from "./wait_agent.js";
 import {
     codexStopWorkflowTool,
+    codexWaitForWorkflowTool,
     codexWorkflowStatusTool,
     codexWorkflowTool,
 } from "../workflows/index.js";
@@ -39,6 +40,7 @@ export const codexTools = [
 
 export const codexCollaborationTools = [
     codexWorkflowTool,
+    codexWaitForWorkflowTool,
     codexWorkflowStatusTool,
     codexStopWorkflowTool,
     codexSpawnAgentTool,

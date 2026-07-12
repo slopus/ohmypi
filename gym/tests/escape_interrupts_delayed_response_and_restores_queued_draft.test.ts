@@ -27,7 +27,7 @@ describe("escape interrupts a delayed response and restores queued input", () =>
 
         gym.terminal.type("Begin a delayed response.");
         gym.terminal.press("enter");
-        await gym.terminal.waitForText("Enter steers · Tab queues", 30_000);
+        await gym.terminal.waitForText("Esc to interrupt", 30_000);
 
         gym.terminal.type("queued prompt");
         await gym.terminal.waitForText("› queued prompt");

@@ -5,6 +5,12 @@ export interface WorkflowAgentCacheEntry {
     signature: string;
 }
 
+export interface WorkflowCheckpoint {
+    nextAgentCallIndex: number;
+    phase: string;
+    snapshot: Uint8Array;
+}
+
 export interface WorkflowExecutionResult {
     agentCalls: readonly (WorkflowAgentCacheEntry | undefined)[];
     output: unknown;
@@ -12,6 +18,7 @@ export interface WorkflowExecutionResult {
 
 export interface WorkflowRun {
     agentCount: number;
+    code?: string;
     description: string;
     error?: string;
     finishedAt?: number;
@@ -27,6 +34,7 @@ export interface WorkflowRun {
 
 export interface WorkflowRunUpdate {
     agentCount?: number;
+    code?: string;
     description?: string;
     error?: string;
     finishedAt?: number;
@@ -41,12 +49,15 @@ export interface WorkflowRunUpdate {
 }
 
 export interface LaunchWorkflowRequest {
+    code: string;
     description: string;
     execute(options: {
         onAgentCall(): void;
         onAgentResult(index: number, result: WorkflowAgentCacheEntry): void;
+        onCheckpoint(checkpoint: WorkflowCheckpoint): void;
         onLog(message: string): void;
         resumeAgentCalls: readonly (WorkflowAgentCacheEntry | undefined)[];
+        resumeCheckpoint?: WorkflowCheckpoint;
         runId: string;
         signal: AbortSignal;
     }): Promise<WorkflowExecutionResult>;
@@ -58,4 +69,5 @@ export interface WorkflowContext {
     get(runId: string): WorkflowRun | undefined;
     launch(request: LaunchWorkflowRequest): WorkflowRun;
     stop(runId: string): WorkflowRun | undefined;
+    wait(runId: string, signal?: AbortSignal): Promise<WorkflowRun | undefined>;
 }

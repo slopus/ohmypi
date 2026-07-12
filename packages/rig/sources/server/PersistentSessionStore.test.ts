@@ -42,6 +42,74 @@ describe("PersistentSessionStore", () => {
         }
     });
 
+    it("persists a Monty checkpoint and completed workflow calls across daemon restarts", async () => {
+        const { cleanup, databasePath } = await createDatabasePath();
+        try {
+            const store = new PersistentSessionStore({ databasePath });
+            const state = sessionState({
+                workflows: [
+                    {
+                        agentCalls: [{ output: "cached", signature: "cached-signature" }],
+                        checkpoint: {
+                            nextAgentCallIndex: 1,
+                            phase: "Verify",
+                            snapshotBase64: Buffer.from([1, 2, 3]).toString("base64"),
+                        },
+                        state: {
+                            agentCount: 1,
+                            code: 'agent("check")',
+                            description: "Persist checkpoint",
+                            logs: [],
+                            name: "persist-checkpoint",
+                            runId: "workflow-before-restart",
+                            startedAt: 1,
+                            status: "running",
+                            taskId: "workflow:workflow-before-restart",
+                        },
+                    },
+                ],
+            });
+            store.saveSession(state);
+            store.close();
+
+            const restoredStore = new PersistentSessionStore({ databasePath });
+            try {
+                const restored = restoredStore.get(state.id);
+                expect(restored?.getWorkflow("workflow-before-restart")).toMatchObject({
+                    error: "The workflow was interrupted when the local server stopped.",
+                    status: "stopped",
+                });
+                let receivedCheckpoint: unknown;
+                let receivedAgentCalls: readonly unknown[] = [];
+                restored?.launchWorkflow({
+                    code: 'agent("check")',
+                    description: "Resume checkpoint",
+                    execute: async (options) => {
+                        receivedCheckpoint = options.resumeCheckpoint;
+                        receivedAgentCalls = options.resumeAgentCalls;
+                        return { agentCalls: options.resumeAgentCalls, output: "resumed" };
+                    },
+                    name: "persist-checkpoint",
+                    resumeFromRunId: "workflow-before-restart",
+                });
+                await new Promise((resolve) => setImmediate(resolve));
+
+                expect(receivedCheckpoint).toMatchObject({
+                    nextAgentCallIndex: 1,
+                    phase: "Verify",
+                    snapshot: new Uint8Array([1, 2, 3]),
+                });
+                expect(receivedAgentCalls).toEqual([
+                    { output: "cached", signature: "cached-signature" },
+                ]);
+            } finally {
+                restoredStore.close();
+            }
+        } finally {
+            await cleanup();
+        }
+    });
+
     it("persists a rewound transcript across daemon restarts", async () => {
         const { cleanup, databasePath } = await createDatabasePath();
         try {

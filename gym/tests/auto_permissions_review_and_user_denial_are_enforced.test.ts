@@ -145,7 +145,18 @@ describe("Auto permissions review and user denial are enforced", () => {
             "automatically approved action and completed turn",
             30_000,
         );
-        expect(automaticallyApproved.text).toContain("Auto permission");
+        expect(automaticallyApproved.rows.some((row) => row.includes("• Auto permission"))).toBe(
+            false,
+        );
+        expect(
+            automaticallyApproved.rows.some(
+                (row, index) =>
+                    row.includes("Approved automatically") &&
+                    automaticallyApproved.rows
+                        .slice(Math.max(0, index - 2), index)
+                        .some((candidate) => candidate.includes("approved by auto review")),
+            ),
+        ).toBe(true);
         expect(normalizeWhitespace(automaticallyApproved.text)).toContain(
             "The user directly requested this local workspace check.",
         );

@@ -60,7 +60,7 @@ describe("codex provider", () => {
         },
     );
 
-    it("passes GPT-5.6 ultra reasoning through to Codex", async () => {
+    it.each(["max", "ultra"])("maps GPT-5.6 %s reasoning to Codex xhigh", async (thinking) => {
         let requestBody: unknown;
         vi.stubGlobal(
             "fetch",
@@ -78,7 +78,7 @@ describe("codex provider", () => {
             transport: "sse",
         });
         const stream = provider.stream(modelOpenaiGpt56Sol, emptyContext(), {
-            thinking: "ultra",
+            thinking,
         });
 
         for await (const _event of stream) {
@@ -88,7 +88,7 @@ describe("codex provider", () => {
         expect(requestBody).toMatchObject({
             model: "gpt-5.6-sol",
             reasoning: {
-                effort: "ultra",
+                effort: "xhigh",
             },
         });
     });

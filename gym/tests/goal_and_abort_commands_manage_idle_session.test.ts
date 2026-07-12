@@ -46,8 +46,12 @@ describe("goal and abort commands manage an idle session", () => {
         const baseline = (await gym.terminal.snapshot()).scroll;
 
         submit(gym, "/goal Ship a verified release");
-        const started = await gym.terminal.waitForText(
-            "Goal started: Ship a verified release",
+        const started = await gym.terminal.waitUntil(
+            (snapshot) =>
+                snapshot.text.includes("Goal started: Ship a verified release") &&
+                snapshot.text.includes("Gym Off • /workspace") &&
+                snapshot.scroll.atBottom,
+            "the started goal with the normal status bar",
             30_000,
         );
         assertHealthyTerminal(started, baseline);
@@ -107,9 +111,7 @@ describe("goal and abort commands manage an idle session", () => {
         assertHealthyTerminal(emptyGoal, baseline);
 
         await gym.terminal.waitUntil(
-            (snapshot) =>
-                !snapshot.text.includes("Esc to interrupt") &&
-                !snapshot.text.includes("Enter steers · Tab queues"),
+            (snapshot) => !snapshot.text.includes("Esc to interrupt"),
             "the cleared goal run to become idle",
             30_000,
         );

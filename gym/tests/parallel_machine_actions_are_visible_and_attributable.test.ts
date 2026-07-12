@@ -15,7 +15,7 @@ afterEach(async () => {
 });
 
 describe("parallel machine actions are visible and attributable", () => {
-    it("shows every active command, its process count, and each completed result", async () => {
+    it("shows every active process and each completed result", async () => {
         const gym = await createGym({
             cols: 100,
             inference(request, callIndex) {
@@ -69,7 +69,7 @@ describe("parallel machine actions are visible and attributable", () => {
         const active = await gym.terminal.waitUntil(
             (snapshot) =>
                 snapshot.text.includes("Running 3 tools") &&
-                snapshot.text.includes("3 processes") &&
+                commands.every((command) => snapshot.text.includes(`Process ${command}`)) &&
                 commands.every((command) => snapshot.text.includes(command)) &&
                 snapshot.scroll.atBottom,
             "three visible commands and processes running together",

@@ -38,6 +38,15 @@ export function createNodeBashContext(options: CreateNodeBashContextOptions): Ba
     let onActiveSessionCountChange: ((count: number) => void) | undefined;
     const activeSessionCount = () =>
         [...sessions.values()].filter((session) => session.result === undefined).length;
+    const activeSessions = () =>
+        [...sessions.values()]
+            .filter((session) => session.result === undefined)
+            .map((session) => ({
+                command: session.command,
+                cwd: session.cwd,
+                sessionId: session.sessionId,
+                status: "running" as const,
+            }));
     const runCwd = (cwd: string | undefined) =>
         cwd === undefined ? options.cwd : isAbsolute(cwd) ? cwd : resolve(options.cwd, cwd);
 
@@ -92,6 +101,7 @@ export function createNodeBashContext(options: CreateNodeBashContextOptions): Ba
 
     return {
         activeSessionCount,
+        activeSessions,
         cwd: options.cwd,
         async killSession(sessionId) {
             const session = sessions.get(sessionId);

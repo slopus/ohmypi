@@ -97,6 +97,9 @@ export class AgentSessionManager {
         if (parent === undefined) {
             throw new Error("The parent session is no longer available.");
         }
+        if (request.modelId !== undefined && !parent.hasModel(request.modelId)) {
+            throw new Error(`Model '${request.modelId}' is not available for workflow agents.`);
+        }
 
         const parentMetadata = parent.agentMetadata();
         const depth = parentMetadata.depth + 1;
@@ -133,6 +136,7 @@ export class AgentSessionManager {
                         depth,
                         this.maxDepth,
                     ),
+                    ...(request.modelId === undefined ? {} : { modelId: request.modelId }),
                 },
                 metadata,
             );

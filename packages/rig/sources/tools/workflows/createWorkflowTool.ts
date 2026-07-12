@@ -15,14 +15,14 @@ The Python script coordinates agents but has no direct filesystem, shell, enviro
 
 Available Python globals:
 - args: the JSON value passed in this tool call, or None.
-- agent(prompt, options={}): run one subagent and return its final text. Options support label and schema. With schema, the agent must return matching JSON and agent() returns the parsed value.
-- parallel(requests): run requests concurrently and return results in input order. Each request is a prompt string or {"prompt": str, "label": str, "schema": object}. Failed items become None.
+- agent(prompt, options={}): run one subagent and return its final text. Options support label, model, and schema. Model is an available model ID; when omitted, the agent inherits the parent model. With schema, the agent must return matching JSON and agent() returns the parsed value.
+- parallel(requests): run requests concurrently and return results in input order. Each request is a prompt string or {"prompt": str, "label": str, "model": str, "schema": object}. Failed items become None.
 - pipeline(items, stages): process all items concurrently through sequential stages. Each stage is a prompt string or request dictionary. The original item and previous result are appended to every stage prompt. Failed items become None.
 - phase(title): group later agent calls under a human-readable phase.
 - log(message): include a progress note in the workflow run.
 - print(...): also records a progress note.
 
-External calls block until their host operation completes, even though subagents run asynchronously. Call agent(), parallel(), and pipeline() directly; do not write await. Use parallel for a barrier and pipeline when every item can advance independently.
+External calls block until their host operation completes, even though subagents run asynchronously. The sandbox is checkpointed at every external-call boundary, so model inference time is outside the 30-second Monty execution budget. Call agent(), parallel(), and pipeline() directly; do not write await. Use parallel for a barrier and pipeline when every item can advance independently.
 
 Example:
 phase("Review")
@@ -37,7 +37,7 @@ verified = pipeline(
 )
 {"verified": [result for result in verified if result is not None]}
 
-Runs are capped at 1,000 total agents and queued at the session's subagent concurrency limit. The tool returns immediately with a task ID. A workflow notification arrives when the consolidated result is ready. Pass resumeFromRunId to reuse unchanged completed agent calls from a stopped or completed run.`;
+Runs are capped at 1,000 total agents and queued at the session's subagent concurrency limit. The tool returns immediately with a task ID. A workflow notification arrives when the consolidated result is ready. When the user asks you to wait for the result, call the workflow wait tool once; it waits for any duration, so do not poll workflow status or end the turn. Pass resumeFromRunId to continue unchanged code from its latest checkpoint and reuse completed agent calls. If the code changed, completed calls from the unchanged prefix can still be reused safely.`;
 
 export function createWorkflowTool(name: "Workflow" | "workflow") {
     return defineTool({
@@ -108,6 +108,7 @@ export function createWorkflowTool(name: "Workflow" | "workflow") {
                     : basename(scriptPath).replace(/\.py$/i, ""));
             const workflowDescription = description?.trim() || `Run ${workflowName}`;
             const run = context.workflows.launch({
+                code: source,
                 description: workflowDescription,
                 execute: async (options) =>
                     new WorkflowScriptRunner({
@@ -115,11 +116,15 @@ export function createWorkflowTool(name: "Workflow" | "workflow") {
                         args: args ?? null,
                         onAgentCall: options.onAgentCall,
                         onAgentResult: options.onAgentResult,
+                        onCheckpoint: options.onCheckpoint,
                         onLog: options.onLog,
                         ...(execution.toolCallId === undefined
                             ? {}
                             : { parentToolCallId: execution.toolCallId }),
                         resumeAgentCalls: options.resumeAgentCalls,
+                        ...(options.resumeCheckpoint === undefined
+                            ? {}
+                            : { resumeCheckpoint: options.resumeCheckpoint }),
                         signal: options.signal,
                         workflowRunId: options.runId,
                     }).run(source),

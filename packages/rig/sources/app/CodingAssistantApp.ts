@@ -26,6 +26,7 @@ import {
     formatSkillInvocation,
     loadSkills,
 } from "../agent/index.js";
+import type { BashSessionActivity } from "../agent/context/BashContext.js";
 import { parseSkillFrontmatter } from "../agent/skills/parseSkillFrontmatter.js";
 import type { NativeProxessManager } from "../processes/index.js";
 import type { Usage } from "../providers/types.js";
@@ -40,11 +41,13 @@ import type {
 } from "../protocol/index.js";
 import type { UserInputRequest, UserInputResponse } from "../user-input/index.js";
 import { createCodeReviewPrompt } from "../review/index.js";
+import type { ActiveWorkItem } from "./ActiveWorkItem.js";
 import type { AppTranscriptEntry } from "./AppTranscriptEntry.js";
 import type {
     CodingAssistantAgentBackend,
     CodingAssistantModelChoice,
 } from "./CodingAssistantAgentBackend.js";
+import { createActiveWorkItems } from "./createActiveWorkItems.js";
 import { createSelectionPanel } from "./createSelectionPanel.js";
 import { createWorkflowMonitor } from "./createWorkflowMonitor.js";
 import { createSlashCommands, type SlashCommandItem } from "./createSlashCommands.js";
@@ -66,6 +69,7 @@ import {
     type ReadClipboardImageOptions,
 } from "./readClipboardImage.js";
 import { ACTIVITY_WAVE_FRAME_COUNT, renderActivityWave } from "./renderActivityWave.js";
+import { renderActiveWorkItem } from "./renderActiveWorkItem.js";
 import { renderAgentMarkdown } from "./renderAgentMarkdown.js";
 import { sanitizeTerminalText } from "./sanitizeTerminalText.js";
 import { upsertSubagentSummary } from "./upsertSubagentSummary.js";
@@ -283,6 +287,7 @@ export class CodingAssistantApp implements Component, Focusable {
     #dismissedSlashCommandText: string | undefined;
     #activeSubmission: Promise<void> | undefined;
     #bracketedPasteBuffer: string | undefined;
+    #backgroundProcesses: readonly BashSessionActivity[] = [];
     #showReasoning: boolean;
     #showUsage: boolean;
     #sessionBacked: boolean;
@@ -311,7 +316,7 @@ export class CodingAssistantApp implements Component, Focusable {
     #toolCallEntryIdsByContentIndex = new Map<number, string>();
     #streamedToolCallEntries = new Set<AppTranscriptEntry>();
     #runningToolCallIds = new Set<string>();
-    #runningBackgroundProcesses = 0;
+    #toolStatusByCallId = new Map<string, string>();
     #usage: Usage = zeroUsage();
     #latestContextTokens = 0;
     #userInputRequests: UserInputRequest[] = [];
@@ -415,6 +420,7 @@ export class CodingAssistantApp implements Component, Focusable {
         this.#activeToolCallIds.clear();
         this.#awaitingApprovalToolCallIds.clear();
         this.#runningToolCallIds.clear();
+        this.#toolStatusByCallId.clear();
         this.#fileMentionAutocomplete?.clear();
         this.#editor.setText("");
         this.#pastedImagesById.clear();
@@ -449,6 +455,7 @@ export class CodingAssistantApp implements Component, Focusable {
         }
 
         if (event.type === "run_started") {
+            this.#abortNotified = false;
             this.#running = true;
             this.#statusText = "Running";
             this.#activityStartedAtMs = this.#now();
@@ -519,7 +526,7 @@ export class CodingAssistantApp implements Component, Focusable {
 
         if (event.type === "run_finished") {
             if (event.data.stopReason === "aborted") {
-                this.#markActiveToolCallsStopped();
+                this.#appendAbortNotice();
             }
             this.#running = false;
             this.#modelLocked = this.#pendingPrompts.length > 0;
@@ -532,6 +539,7 @@ export class CodingAssistantApp implements Component, Focusable {
             this.#activeToolCallIds.clear();
             this.#awaitingApprovalToolCallIds.clear();
             this.#runningToolCallIds.clear();
+            this.#toolStatusByCallId.clear();
             this.#clearUserInputRequests();
             this.#requestRender();
             return;
@@ -545,6 +553,7 @@ export class CodingAssistantApp implements Component, Focusable {
             this.#activeToolCallIds.clear();
             this.#awaitingApprovalToolCallIds.clear();
             this.#runningToolCallIds.clear();
+            this.#toolStatusByCallId.clear();
             this.#clearUserInputRequests();
             this.#appendEntry({ role: "error", text: event.data.errorMessage });
             return;
@@ -560,9 +569,11 @@ export class CodingAssistantApp implements Component, Focusable {
             this.#activeToolCallIds.clear();
             this.#awaitingApprovalToolCallIds.clear();
             this.#runningToolCallIds.clear();
+            this.#toolStatusByCallId.clear();
             this.#usage = zeroUsage();
             this.#latestContextTokens = 0;
             this.#workflows = [];
+            this.#backgroundProcesses = [];
             this.#clearUserInputRequests();
             this.#appendEntry({
                 role: "system",
@@ -585,6 +596,7 @@ export class CodingAssistantApp implements Component, Focusable {
             this.#activeToolCallIds.clear();
             this.#awaitingApprovalToolCallIds.clear();
             this.#runningToolCallIds.clear();
+            this.#toolStatusByCallId.clear();
             this.#clearUserInputRequests();
             this.#requestRender();
             return;
@@ -922,6 +934,9 @@ export class CodingAssistantApp implements Component, Focusable {
                 : this.#selectionPanel.render(safeWidth)),
             "",
             ...footer,
+            ...(this.#selectionPanel === undefined && this.#activeWorkItems().length > 0
+                ? this.#renderActiveWorkList(safeWidth)
+                : []),
             "",
             "",
         ];
@@ -1220,6 +1235,7 @@ export class CodingAssistantApp implements Component, Focusable {
             this.#activeToolCallIds.clear();
             this.#awaitingApprovalToolCallIds.clear();
             this.#runningToolCallIds.clear();
+            this.#toolStatusByCallId.clear();
             this.#appendEntry({ role: "system", text: "Transcript cleared." });
             return true;
         }
@@ -1381,10 +1397,12 @@ export class CodingAssistantApp implements Component, Focusable {
         });
     }
 
-    #openWorkflowMonitor(): void {
+    #openWorkflowMonitor(initialRunId?: string): void {
         this.#showSelectionPanel(
             createWorkflowMonitor({
+                getSubagents: () => this.#subagents,
                 getWorkflows: () => this.#workflows,
+                ...(initialRunId === undefined ? {} : { initialRunId }),
                 now: this.#now,
                 onCancel: () => this.#closeSelectionPanel(),
                 onRequestRender: () => this.#requestRender(),
@@ -1455,6 +1473,7 @@ export class CodingAssistantApp implements Component, Focusable {
         this.#activeToolCallIds.clear();
         this.#awaitingApprovalToolCallIds.clear();
         this.#runningToolCallIds.clear();
+        this.#toolStatusByCallId.clear();
         this.#usage = zeroUsage();
         this.#latestContextTokens = 0;
         this.#abortNotified = false;
@@ -1506,6 +1525,7 @@ export class CodingAssistantApp implements Component, Focusable {
         this.#activeToolCallIds.clear();
         this.#awaitingApprovalToolCallIds.clear();
         this.#runningToolCallIds.clear();
+        this.#toolStatusByCallId.clear();
         this.#activityStartedAtMs = this.#now();
         this.#startActivityAnimation();
         this.#requestRender();
@@ -1565,6 +1585,7 @@ export class CodingAssistantApp implements Component, Focusable {
                 this.#activeToolCallIds.clear();
                 this.#awaitingApprovalToolCallIds.clear();
                 this.#runningToolCallIds.clear();
+                this.#toolStatusByCallId.clear();
                 this.#requestRender();
             }
         }
@@ -1572,7 +1593,15 @@ export class CodingAssistantApp implements Component, Focusable {
 
     #handleEscape(): void {
         this.#restoreQueuedPromptsToComposer();
-        this.#abortActiveRun();
+        if (this.#abortActiveRun()) return;
+        if (this.#running && this.#sessionBacked && this.#agent.abort !== undefined) {
+            this.#statusText = "Stopping";
+            void Promise.resolve(this.#agent.abort()).catch((error: unknown) => {
+                this.#statusText = "Error";
+                this.#appendEntry({ role: "error", text: this.#formatError(error) });
+                this.#requestRender();
+            });
+        }
     }
 
     #openBacktrackMenu(): boolean {
@@ -1655,6 +1684,7 @@ export class CodingAssistantApp implements Component, Focusable {
         this.#activeToolCallIds.clear();
         this.#awaitingApprovalToolCallIds.clear();
         this.#runningToolCallIds.clear();
+        this.#toolStatusByCallId.clear();
         this.#stopActivityAnimation();
         void this.#processManager.killAll({ forceAfterMs: 500 }).catch((error: unknown) => {
             this.#appendEntry({ role: "error", text: this.#formatError(error) });
@@ -1738,18 +1768,19 @@ export class CodingAssistantApp implements Component, Focusable {
         } else if (event.type === "tool_execution_start") {
             this.#activeToolCallIds.add(event.toolCall.id);
             this.#runningToolCallIds.add(event.toolCall.id);
-            this.#statusText = `Running ${this.#runningToolCallIds.size} tool${this.#runningToolCallIds.size === 1 ? "" : "s"}`;
+            this.#toolStatusByCallId.delete(event.toolCall.id);
+            this.#refreshToolActivityStatus();
         } else if (event.type === "tool_execution_end") {
             this.#finishToolResult(event.result);
-            this.#statusText =
-                this.#awaitingApprovalToolCallIds.size > 0
-                    ? "Waiting for approval"
-                    : this.#runningToolCallIds.size === 0
-                      ? "Working"
-                      : `Running ${this.#runningToolCallIds.size} tool${this.#runningToolCallIds.size === 1 ? "" : "s"}`;
+            this.#refreshToolActivityStatus();
         } else if (event.type === "tool_execution_progress") {
             const entry = this.#entries.find((candidate) => candidate.id === event.toolCallId);
             if (entry !== undefined) entry.detail = this.#singleLine(event.display);
+        } else if (event.type === "tool_execution_status") {
+            if (this.#runningToolCallIds.has(event.toolCallId)) {
+                this.#toolStatusByCallId.set(event.toolCallId, this.#singleLine(event.status));
+                this.#refreshToolActivityStatus();
+            }
         } else if (event.type === "tool_batch_rejected") {
             const rejectedIds = new Set(event.toolCallIds);
             this.#entries = this.#entries.filter(
@@ -1761,6 +1792,7 @@ export class CodingAssistantApp implements Component, Focusable {
                 this.#activeToolCallIds.delete(toolCallId);
                 this.#awaitingApprovalToolCallIds.delete(toolCallId);
                 this.#runningToolCallIds.delete(toolCallId);
+                this.#toolStatusByCallId.delete(toolCallId);
                 if (!this.#entries.some((entry) => entry.id === toolCallId)) {
                     this.#seenToolCallIds.delete(toolCallId);
                     this.#stoppedToolCallIds.delete(toolCallId);
@@ -1774,15 +1806,18 @@ export class CodingAssistantApp implements Component, Focusable {
                 this.#awaitingApprovalToolCallIds.add(event.toolCallId);
                 this.#statusText = "Waiting for approval";
             }
-            this.#appendEntry({
-                role: "event",
-                title: "Auto permission",
-                text: `${outcome}: ${event.action}. Risk: ${event.risk}. User authorization: ${event.userAuthorization}. ${event.reason}`,
-            });
+            const toolEntry = this.#entries.find((entry) => entry.id === event.toolCallId);
+            if (toolEntry !== undefined) {
+                toolEntry.permissionReview = `${outcome}: ${event.reason} Risk: ${event.risk}. User authorization: ${event.userAuthorization}.`;
+            }
         } else if (event.type === "background_processes_changed") {
-            this.#runningBackgroundProcesses = event.running;
+            if (event.processes !== undefined) {
+                this.#backgroundProcesses = event.processes;
+            } else if (event.running === 0) {
+                this.#backgroundProcesses = [];
+            }
         } else if (event.type === "background_processes_stopped") {
-            this.#runningBackgroundProcesses = 0;
+            this.#backgroundProcesses = [];
             this.#appendEntry({
                 role: "event",
                 title: "permissions",
@@ -1820,6 +1855,7 @@ export class CodingAssistantApp implements Component, Focusable {
         this.#activeToolCallIds.clear();
         this.#awaitingApprovalToolCallIds.clear();
         this.#runningToolCallIds.clear();
+        this.#toolStatusByCallId.clear();
         if (this.#abortNotified) {
             return;
         }
@@ -2036,6 +2072,9 @@ export class CodingAssistantApp implements Component, Focusable {
         if (entry.detail !== undefined) {
             completeEntry.detail = entry.detail;
         }
+        if (entry.permissionReview !== undefined) {
+            completeEntry.permissionReview = entry.permissionReview;
+        }
         if (entry.title !== undefined) {
             completeEntry.title = entry.title;
         }
@@ -2170,34 +2209,9 @@ export class CodingAssistantApp implements Component, Focusable {
         }
 
         const parts = [`${FOOTER_MODEL_FG}${this.#modelWithReasoningDisplayName()}${RESET}`];
-        if (this.#running) {
-            parts.push(`${FOOTER_QUEUED_FG}Enter steers · Tab queues${RESET}`);
-        }
         parts.push(`${FOOTER_CWD_FG}${this.#cwdDisplayName()}${RESET}`);
         if (this.#pendingPrompts.length > 0) {
             parts.push(`${FOOTER_QUEUED_FG}queued ${this.#pendingPrompts.length}${RESET}`);
-        }
-        const runningAgents = this.#subagents.filter(
-            (subagent) =>
-                subagent.status === "running" && !subagent.taskName?.startsWith("workflow_"),
-        ).length;
-        if (runningAgents > 0) {
-            parts.push(
-                `${FOOTER_QUEUED_FG}${runningAgents} agent${runningAgents === 1 ? "" : "s"}${RESET}`,
-            );
-        }
-        const runningWorkflows = this.#workflows.filter(
-            (workflow) => workflow.status === "running",
-        ).length;
-        if (runningWorkflows > 0) {
-            parts.push(
-                `${FOOTER_QUEUED_FG}${runningWorkflows} workflow${runningWorkflows === 1 ? "" : "s"}${RESET}`,
-            );
-        }
-        if (this.#runningBackgroundProcesses > 0) {
-            parts.push(
-                `${FOOTER_QUEUED_FG}${this.#runningBackgroundProcesses} process${this.#runningBackgroundProcesses === 1 ? "" : "es"}${RESET}`,
-            );
         }
         const permissionMode = this.#agent.permissionMode;
         const permissionColor = permissionMode === "full_access" ? YELLOW : FOOTER_QUEUED_FG;
@@ -2206,6 +2220,19 @@ export class CodingAssistantApp implements Component, Focusable {
 
         const line = `${" ".repeat(visibleWidth(INPUT_PROMPT))}${parts.join(`${DIM} • ${RESET}`)}`;
         return [this.#fitLine(line, width)];
+    }
+
+    #activeWorkItems(): ActiveWorkItem[] {
+        return createActiveWorkItems({
+            processes: this.#backgroundProcesses,
+            subagents: this.#subagents,
+            workflows: this.#workflows,
+        });
+    }
+
+    #renderActiveWorkList(width: number): string[] {
+        const items = this.#activeWorkItems();
+        return items.map((item) => renderActiveWorkItem(item, width));
     }
 
     #usageFooter(): string {
@@ -2643,10 +2670,7 @@ export class CodingAssistantApp implements Component, Focusable {
         if (requestId.endsWith(":permission")) {
             const toolCallId = requestId.slice(0, -":permission".length);
             if (this.#awaitingApprovalToolCallIds.delete(toolCallId)) {
-                this.#statusText =
-                    this.#awaitingApprovalToolCallIds.size > 0
-                        ? "Waiting for approval"
-                        : `Running ${this.#runningToolCallIds.size} tool${this.#runningToolCallIds.size === 1 ? "" : "s"}`;
+                this.#refreshToolActivityStatus();
             }
         }
         this.#userInputRequests = this.#userInputRequests.filter(
@@ -2722,7 +2746,13 @@ export class CodingAssistantApp implements Component, Focusable {
         this.#activeToolCallIds.delete(block.toolCallId);
         this.#awaitingApprovalToolCallIds.delete(block.toolCallId);
         this.#runningToolCallIds.delete(block.toolCallId);
-        if (block.isError === true && block.display === "Interrupted by user.") {
+        this.#toolStatusByCallId.delete(block.toolCallId);
+        if (
+            block.isError === true &&
+            (block.display === "Interrupted by user." ||
+                ((block.toolName === "wait_for_workflow" || block.toolName === "WaitForWorkflow") &&
+                    block.display.includes("workflow wait was cancelled by the user")))
+        ) {
             this.#stoppedToolCallIds.add(block.toolCallId);
         } else {
             this.#stoppedToolCallIds.delete(block.toolCallId);
@@ -2965,6 +2995,20 @@ export class CodingAssistantApp implements Component, Focusable {
                 : ` ${CYAN}${toolName}${RESET}`;
         const title = `${dot}•${RESET} ${RIG_ORANGE}${BOLD}${verb}${NOT_BOLD_OR_DIM}${titleSuffix}`;
         const lines = [this.#fitLine(title, width)];
+        if (entry.permissionReview !== undefined) {
+            const reviewPrefix = `  ${DIM}${entry.detail === undefined ? "└" : "├"}${RESET} ${DIM}`;
+            const reviewWidth = Math.max(1, width - visibleWidth(reviewPrefix));
+            const reviewLines = wrapTextWithAnsi(entry.permissionReview, reviewWidth);
+            const reviewIndent = `${" ".repeat(visibleWidth(reviewPrefix))}${DIM}`;
+            lines.push(
+                ...reviewLines.map((line, index) =>
+                    this.#fitLine(
+                        `${index === 0 ? reviewPrefix : reviewIndent}${line}${RESET}`,
+                        width,
+                    ),
+                ),
+            );
+        }
         if (entry.detail !== undefined) {
             const detailText = entry.detail.length > 0 ? entry.detail : "(empty result)";
             const detailPrefix = `  ${DIM}└${RESET} ${DIM}`;
@@ -3051,6 +3095,26 @@ export class CodingAssistantApp implements Component, Focusable {
         }
 
         return formatActivityElapsedTime(this.#now() - this.#activityStartedAtMs);
+    }
+
+    #refreshToolActivityStatus(): void {
+        if (this.#awaitingApprovalToolCallIds.size > 0) {
+            this.#statusText = "Waiting for approval";
+            return;
+        }
+        if (this.#runningToolCallIds.size === 0) {
+            this.#statusText = "Working";
+            return;
+        }
+        if (this.#runningToolCallIds.size === 1) {
+            const toolCallId = this.#runningToolCallIds.values().next().value as string;
+            const status = this.#toolStatusByCallId.get(toolCallId);
+            if (status !== undefined && status.length > 0) {
+                this.#statusText = status;
+                return;
+            }
+        }
+        this.#statusText = `Running ${this.#runningToolCallIds.size} tool${this.#runningToolCallIds.size === 1 ? "" : "s"}`;
     }
 
     #activityLabel(): string | undefined {

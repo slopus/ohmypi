@@ -6,6 +6,7 @@ import {
     type Component,
 } from "@earendil-works/pi-tui";
 
+import type { SubagentSummary } from "../protocol/index.js";
 import type { WorkflowRun } from "../workflows/index.js";
 import { humanizeWorkflowName, serializeWorkflowValue } from "../workflows/index.js";
 import { formatActivityElapsedTime } from "./formatActivityElapsedTime.js";
@@ -27,6 +28,8 @@ const MAX_DETAIL_LOGS = 6;
 const MAX_DETAIL_RESULT_LINES = 8;
 const MAX_DETAIL_TEXT_CHARS = 4_000;
 const MAX_DETAIL_LOG_CHARS = 500;
+const MAX_DETAIL_ACTIONS = 8;
+const MAX_INSPECTION_LINES = 14;
 const WORKFLOW_STATUS_COLORS = {
     completed: GREEN,
     error: RED,
@@ -35,7 +38,9 @@ const WORKFLOW_STATUS_COLORS = {
 } as const;
 
 export interface CreateWorkflowMonitorOptions {
+    getSubagents(): readonly SubagentSummary[];
     getWorkflows(): readonly WorkflowRun[];
+    initialRunId?: string;
     now?: () => number;
     onCancel(): void;
     onRequestRender?(): void;
@@ -47,6 +52,7 @@ export function createWorkflowMonitor(options: CreateWorkflowMonitorOptions): Co
 }
 
 class WorkflowMonitor implements Component {
+    readonly #getSubagents: () => readonly SubagentSummary[];
     readonly #getWorkflows: () => readonly WorkflowRun[];
     readonly #now: () => number;
     readonly #onCancel: () => void;
@@ -54,10 +60,15 @@ class WorkflowMonitor implements Component {
     readonly #onStop: (runId: string) => void | Promise<void>;
 
     #detailRunId: string | undefined;
+    #detailSelectionIndex = 0;
+    #inspectionScrollOffset = 0;
+    #inspectionView: { kind: "agent"; agentId: string } | { kind: "code" } | undefined;
     #selectedIndex = 0;
     #stoppingRunId: string | undefined;
 
     constructor(options: CreateWorkflowMonitorOptions) {
+        this.#detailRunId = options.initialRunId;
+        this.#getSubagents = options.getSubagents;
         this.#getWorkflows = options.getWorkflows;
         this.#now = options.now ?? Date.now;
         this.#onCancel = options.onCancel;
@@ -73,7 +84,11 @@ class WorkflowMonitor implements Component {
         const lines =
             detail === undefined
                 ? this.#renderList(workflows, width)
-                : this.#renderDetail(detail, width);
+                : this.#inspectionView?.kind === "code"
+                  ? this.#renderCode(detail, width)
+                  : this.#inspectionView?.kind === "agent"
+                    ? this.#renderAgent(detail, this.#inspectionView.agentId, width)
+                    : this.#renderDetail(detail, width);
         return lines.map((line) => this.#surfaceLine(line, Math.max(1, width)));
     }
 
@@ -81,7 +96,10 @@ class WorkflowMonitor implements Component {
         const workflows = this.#getWorkflows();
         const detail = workflows.find((workflow) => workflow.runId === this.#detailRunId);
         if (matchesKey(data, "escape")) {
-            if (detail !== undefined) {
+            if (this.#inspectionView !== undefined) {
+                this.#inspectionView = undefined;
+                this.#inspectionScrollOffset = 0;
+            } else if (detail !== undefined) {
                 this.#detailRunId = undefined;
             } else {
                 this.#onCancel();
@@ -89,6 +107,39 @@ class WorkflowMonitor implements Component {
             return;
         }
         if (detail !== undefined) {
+            if (this.#inspectionView !== undefined) {
+                if (matchesKey(data, "up")) {
+                    this.#inspectionScrollOffset = Math.max(0, this.#inspectionScrollOffset - 1);
+                } else if (matchesKey(data, "down")) {
+                    this.#inspectionScrollOffset += 1;
+                }
+                return;
+            }
+            const agents = this.#workflowAgents(detail.runId);
+            const actionCount = agents.length + 1;
+            if (matchesKey(data, "up")) {
+                this.#detailSelectionIndex = Math.max(0, this.#detailSelectionIndex - 1);
+                return;
+            }
+            if (matchesKey(data, "down")) {
+                this.#detailSelectionIndex = Math.min(
+                    actionCount - 1,
+                    this.#detailSelectionIndex + 1,
+                );
+                return;
+            }
+            if (matchesKey(data, "enter")) {
+                if (this.#detailSelectionIndex === 0) {
+                    this.#inspectionView = { kind: "code" };
+                } else {
+                    const agent = agents[this.#detailSelectionIndex - 1];
+                    if (agent !== undefined) {
+                        this.#inspectionView = { agentId: agent.id, kind: "agent" };
+                    }
+                }
+                this.#inspectionScrollOffset = 0;
+                return;
+            }
             if (data.toLowerCase() === "s" && detail.status === "running") {
                 this.#stop(detail.runId);
             }
@@ -204,12 +255,134 @@ class WorkflowMonitor implements Component {
                 ...resultLines.map((line) => `  ${line}`),
             );
         }
+        const workflowAgents = this.#workflowAgents(workflow.runId);
+        const actions = [
+            { id: "code", label: "View workflow code" },
+            ...workflowAgents.map((agent, index) => ({
+                id: agent.id,
+                label: `Agent ${index + 1}  ${humanizeSubagentStatus(agent.status)} · ${sanitizeTerminalText(agent.description)}`,
+            })),
+        ];
+        this.#detailSelectionIndex = Math.min(
+            this.#detailSelectionIndex,
+            Math.max(0, actions.length - 1),
+        );
+        const actionStart = Math.max(
+            0,
+            Math.min(
+                this.#detailSelectionIndex - Math.floor(MAX_DETAIL_ACTIONS / 2),
+                actions.length - MAX_DETAIL_ACTIONS,
+            ),
+        );
+        lines.push("", `  ${MUTED}Inspect${RESET}`);
+        for (const [offset, action] of actions
+            .slice(actionStart, actionStart + MAX_DETAIL_ACTIONS)
+            .entries()) {
+            const selected = actionStart + offset === this.#detailSelectionIndex;
+            const content = `${selected ? "→ " : "  "}${action.label}`;
+            lines.push(
+                selected
+                    ? `  ${ORANGE}${truncateToWidth(content, contentWidth)}${RESET}`
+                    : `  ${truncateToWidth(content, contentWidth)}`,
+            );
+        }
         lines.push(
             "",
-            `  ${DIM}${MUTED}${workflow.status === "running" ? "S to stop · " : ""}Esc to return to workflows.${RESET}`,
+            `  ${DIM}${MUTED}Use ↑/↓ to move · Enter to open · ${workflow.status === "running" ? "S to stop · " : ""}Esc to return.${RESET}`,
             "",
         );
         return lines;
+    }
+
+    #renderCode(workflow: WorkflowRun, width: number): string[] {
+        const contentWidth = Math.max(1, width - 4);
+        const source = workflow.code ?? "Workflow code is unavailable for this older run.";
+        const content = source.split("\n").flatMap((line, index) => {
+            const prefix = `${String(index + 1).padStart(4)}  `;
+            const wrapped = wrapTextWithAnsi(
+                `${MUTED}${prefix}${RESET}${sanitizeTerminalText(line)}`,
+                contentWidth,
+            );
+            return wrapped.length === 0 ? [`${MUTED}${prefix}${RESET}`] : wrapped;
+        });
+        return this.#renderInspection({
+            content,
+            color: ORANGE,
+            kind: "Workflow code",
+            title: humanizeWorkflowName(workflow.name),
+            width,
+        });
+    }
+
+    #renderAgent(workflow: WorkflowRun, agentId: string, width: number): string[] {
+        const agent = this.#workflowAgents(workflow.runId).find(
+            (candidate) => candidate.id === agentId,
+        );
+        if (agent === undefined) {
+            this.#inspectionView = undefined;
+            return this.#renderDetail(workflow, width);
+        }
+        const contentWidth = Math.max(1, width - 4);
+        const prompt = agent.prompt ?? "The incoming prompt is not available.";
+        const latestText = agent.latestText ?? "No text response yet.";
+        const content = [
+            `${MUTED}Incoming prompt${RESET}`,
+            ...wrapTextWithAnsi(sanitizeTerminalText(prompt), contentWidth),
+            "",
+            `${MUTED}Latest message${RESET}`,
+            ...wrapTextWithAnsi(sanitizeTerminalText(latestText), contentWidth),
+        ];
+        return this.#renderInspection({
+            content,
+            color: "\x1b[36m",
+            kind: "Workflow agent",
+            status: humanizeSubagentStatus(agent.status),
+            title: agent.description,
+            width,
+        });
+    }
+
+    #renderInspection(options: {
+        color: string;
+        content: readonly string[];
+        kind: string;
+        status?: string;
+        title: string;
+        width: number;
+    }): string[] {
+        const maxOffset = Math.max(0, options.content.length - MAX_INSPECTION_LINES);
+        this.#inspectionScrollOffset = Math.min(this.#inspectionScrollOffset, maxOffset);
+        const visible = options.content.slice(
+            this.#inspectionScrollOffset,
+            this.#inspectionScrollOffset + MAX_INSPECTION_LINES,
+        );
+        const scrollStatus =
+            options.content.length <= MAX_INSPECTION_LINES
+                ? ""
+                : ` · Lines ${this.#inspectionScrollOffset + 1}-${this.#inspectionScrollOffset + visible.length} of ${options.content.length}`;
+        return [
+            "",
+            `  ${options.color}${BOLD}${sanitizeTerminalText(options.kind)}${RESET}${SURFACE_BG}${INPUT_FG} ${sanitizeTerminalText(options.title)}`,
+            ...(options.status === undefined
+                ? []
+                : [`  ${MUTED}${sanitizeTerminalText(options.status)}${RESET}`]),
+            "",
+            ...visible.map((line) => `  ${line}`),
+            "",
+            `  ${DIM}${MUTED}${options.content.length > MAX_INSPECTION_LINES ? "Use ↑/↓ to scroll" : "All content visible"}${scrollStatus} · Esc to return.${RESET}`,
+            "",
+        ];
+    }
+
+    #workflowAgents(runId: string): SubagentSummary[] {
+        const prefix = `workflow_${runId}_`;
+        return this.#getSubagents()
+            .filter((agent) => agent.taskName?.startsWith(prefix) === true)
+            .sort((left, right) => {
+                const leftIndex = workflowAgentIndex(left.taskName);
+                const rightIndex = workflowAgentIndex(right.taskName);
+                return leftIndex - rightIndex || left.createdAt - right.createdAt;
+            });
     }
 
     #stop(runId: string): void {
@@ -227,4 +400,18 @@ class WorkflowMonitor implements Component {
         const padding = " ".repeat(Math.max(0, width - visibleWidth(fitted)));
         return `${SURFACE_BG}${INPUT_FG}${fitted}${padding}${RESET}`;
     }
+}
+
+function humanizeSubagentStatus(status: SubagentSummary["status"]): string {
+    if (status === "aborted") return "Stopped";
+    if (status === "completed") return "Completed";
+    if (status === "error") return "Failed";
+    if (status === "idle") return "Idle";
+    if (status === "queued") return "Queued";
+    return "Running";
+}
+
+function workflowAgentIndex(taskName: string | undefined): number {
+    const index = Number(taskName?.split("_").at(-1));
+    return Number.isFinite(index) ? index : Number.MAX_SAFE_INTEGER;
 }

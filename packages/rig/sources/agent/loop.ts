@@ -4,6 +4,7 @@ import { Value } from "@sinclair/typebox/value";
 import { assistantMessageToAgentMessage } from "./assistantMessageToAgentMessage.js";
 import { createAmbiguousToolCallRejection } from "./createAmbiguousToolCallRejection.js";
 import type { AgentContext } from "./context/AgentContext.js";
+import type { BashSessionActivity } from "./context/BashContext.js";
 import { isInvalidImageRequestError } from "./isInvalidImageRequestError.js";
 import { prepareProviderMessageImages } from "./prepareProviderMessageImages.js";
 import { replaceLastTurnToolResultImages } from "./replaceLastTurnToolResultImages.js";
@@ -81,6 +82,11 @@ export type AgentLoopEvent =
           toolCallId: string;
       }
     | {
+          type: "tool_execution_status";
+          status: string;
+          toolCallId: string;
+      }
+    | {
           type: "tool_batch_rejected";
           toolCallIds: readonly string[];
       }
@@ -95,6 +101,7 @@ export type AgentLoopEvent =
       }
     | {
           type: "background_processes_changed";
+          processes?: readonly BashSessionActivity[];
           running: number;
       }
     | {
@@ -324,6 +331,13 @@ export async function runAgentLoop(options: RunAgentLoopOptions): Promise<AgentL
                             toolCallId: toolCall.id,
                         });
                     },
+                    onStatus: (status) => {
+                        void options.onEvent?.({
+                            type: "tool_execution_status",
+                            status,
+                            toolCallId: toolCall.id,
+                        });
+                    },
                     onPermissionReview: (review) =>
                         options.onEvent?.({
                             type: "permission_review",
@@ -345,6 +359,7 @@ export async function runAgentLoop(options: RunAgentLoopOptions): Promise<AgentL
                 });
                 await options.onEvent?.({
                     type: "background_processes_changed",
+                    processes: toolContext.bash.activeSessions?.() ?? [],
                     running: toolContext.bash.activeSessionCount?.() ?? 0,
                 });
                 return result;
@@ -622,6 +637,7 @@ async function executeToolCall(
         model: Model;
         now: () => number;
         onProgress?: (display: string) => void;
+        onStatus?: (status: string) => void;
         onPermissionReview?: (review: {
             action: string;
             decision: "allow" | "ask";
@@ -700,6 +716,7 @@ async function executeToolCall(
             context: AgentContext,
             options: {
                 onProgress?: (display: string) => void;
+                onStatus?: (status: string) => void;
                 signal?: AbortSignal;
                 toolCallId?: string;
             },
@@ -709,12 +726,14 @@ async function executeToolCall(
         const toUI = tool.toUI as (result: unknown, args: unknown) => string;
         const executionOptions: {
             onProgress?: (display: string) => void;
+            onStatus?: (status: string) => void;
             signal?: AbortSignal;
             toolCallId?: string;
         } = {
             toolCallId: toolCall.id,
         };
         if (options.onProgress !== undefined) executionOptions.onProgress = options.onProgress;
+        if (options.onStatus !== undefined) executionOptions.onStatus = options.onStatus;
         if (options.signal !== undefined) executionOptions.signal = options.signal;
         const run = () => execute(toolCall.arguments, context, executionOptions);
         const result =
@@ -756,6 +775,12 @@ function errorToolResultBlock(toolCall: ProviderToolCall, message: string): Tool
 }
 
 function interruptedToolResultBlock(toolCall: ProviderToolCall): ToolResultBlock {
+    if (toolCall.name === "wait_for_workflow" || toolCall.name === "WaitForWorkflow") {
+        return errorToolResultBlock(
+            toolCall,
+            "The workflow wait was cancelled by the user. The workflow is still running in the background.",
+        );
+    }
     return errorToolResultBlock(toolCall, "Interrupted by user.");
 }
 

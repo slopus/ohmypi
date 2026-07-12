@@ -32,8 +32,7 @@ describe("provider error recovers and terminal exits cleanly", () => {
         const failed = await gym.terminal.waitUntil(
             (snapshot) =>
                 snapshot.text.includes("RECOVERABLE_PROVIDER_OUTAGE") &&
-                snapshot.text.includes("Ask Rig to do anything") &&
-                !snapshot.text.includes("Enter steers"),
+                snapshot.text.includes("Ask Rig to do anything"),
             "provider error with the composer idle again",
             30_000,
         );

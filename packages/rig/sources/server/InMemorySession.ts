@@ -1,6 +1,9 @@
+import { Buffer } from "node:buffer";
+
 import { createId } from "@paralleldrive/cuid2";
 
 import { assistantMessageToAgentMessage } from "../agent/assistantMessageToAgentMessage.js";
+import { findFirstUserRequestText, findLastAgentResponseText } from "../agent/index.js";
 import type {
     AgentLoopEvent,
     AgentCompactionResult,
@@ -48,6 +51,7 @@ import {
     serializeWorkflowValue,
     type LaunchWorkflowRequest,
     type WorkflowAgentCacheEntry,
+    type WorkflowCheckpoint,
     type WorkflowRun,
     type WorkflowRunUpdate,
 } from "../workflows/index.js";
@@ -120,6 +124,17 @@ export interface PersistedSessionState {
     titleError?: string;
     titleStatus: SessionTitleStatus;
     tools: readonly string[];
+    workflows?: readonly PersistedWorkflowRun[];
+}
+
+export interface PersistedWorkflowRun {
+    agentCalls: readonly (WorkflowAgentCacheEntry | undefined)[];
+    checkpoint?: {
+        nextAgentCallIndex: number;
+        phase: string;
+        snapshotBase64: string;
+    };
+    state: WorkflowRun;
 }
 
 export interface InMemorySessionPersistence {
@@ -155,11 +170,15 @@ interface ActiveRun {
 
 interface InternalWorkflowRun {
     agentCalls: (WorkflowAgentCacheEntry | undefined)[];
+    checkpoint?: WorkflowCheckpoint;
+    completion: Promise<WorkflowRun>;
     controller: AbortController;
+    resolveCompletion: (run: WorkflowRun) => void;
     state: WorkflowRun;
 }
 
 const MAX_WORKFLOW_LOG_CHARS = 4_000;
+const MAX_SUBAGENT_INSPECTION_TEXT_CHARS = 32_000;
 
 interface PendingUserInput {
     onAbort?: () => void;
@@ -293,6 +312,38 @@ export class InMemorySession {
         this.#messages = [...(options.restore?.messages ?? [])].sort(
             (left, right) => left.position - right.position,
         );
+        for (const persisted of options.restore?.workflows ?? []) {
+            const state = cloneWorkflowRun(persisted.state);
+            if (state.status === "running") {
+                state.error = "The workflow was interrupted when the local server stopped.";
+                state.finishedAt = this.#now();
+                state.status = "stopped";
+            }
+            let resolveCompletion = (_run: WorkflowRun): void => undefined;
+            const completion = new Promise<WorkflowRun>((resolve) => {
+                resolveCompletion = resolve;
+            });
+            const internal: InternalWorkflowRun = {
+                agentCalls: [...persisted.agentCalls],
+                completion,
+                controller: new AbortController(),
+                resolveCompletion,
+                state,
+                ...(persisted.checkpoint === undefined
+                    ? {}
+                    : {
+                          checkpoint: {
+                              nextAgentCallIndex: persisted.checkpoint.nextAgentCallIndex,
+                              phase: persisted.checkpoint.phase,
+                              snapshot: new Uint8Array(
+                                  Buffer.from(persisted.checkpoint.snapshotBase64, "base64"),
+                              ),
+                          },
+                      }),
+            };
+            internal.resolveCompletion(cloneWorkflowRun(state));
+            this.#workflowRuns.set(state.runId, internal);
+        }
         for (const message of this.#messages) {
             if (message.isPartial) {
                 this.#partialPositions.add(message.position);
@@ -352,6 +403,10 @@ export class InMemorySession {
 
     agentMetadata(): SessionAgentMetadata {
         return { ...this.#agentMetadata };
+    }
+
+    hasModel(modelId: string): boolean {
+        return getProviderIdForModel(this.#modelCatalog, modelId) !== undefined;
     }
 
     changeModel(request: ChangeModelRequest): ProtocolSession {
@@ -417,6 +472,7 @@ export class InMemorySession {
             interruption: _interruption,
             title: _title,
             titleError: _titleError,
+            workflows: _workflows,
             ...rest
         } = state;
         const title = state.title === undefined ? undefined : `${state.title} (fork)`;
@@ -433,6 +489,7 @@ export class InMemorySession {
             tasks: [],
             titleStatus: title === undefined ? "idle" : "ready",
             tools: [],
+            workflows: [],
             ...(title !== undefined ? { title } : {}),
         };
     }
@@ -746,6 +803,30 @@ export class InMemorySession {
             .sort((left, right) => right.startedAt - left.startedAt);
     }
 
+    async waitForWorkflow(runId: string, signal?: AbortSignal): Promise<WorkflowRun | undefined> {
+        const internal = this.#workflowRuns.get(runId);
+        if (internal === undefined) return undefined;
+        if (internal.state.status !== "running") return cloneWorkflowRun(internal.state);
+        if (signal?.aborted === true) throw new Error("Waiting for the workflow was cancelled.");
+
+        return await new Promise<WorkflowRun>((resolve, reject) => {
+            let settled = false;
+            const finish = (run: WorkflowRun) => {
+                if (settled) return;
+                settled = true;
+                signal?.removeEventListener("abort", abort);
+                resolve(run);
+            };
+            const abort = () => {
+                if (settled) return;
+                settled = true;
+                reject(new Error("Waiting for the workflow was cancelled."));
+            };
+            signal?.addEventListener("abort", abort, { once: true });
+            void internal.completion.then(finish);
+        });
+    }
+
     launchWorkflow(request: LaunchWorkflowRequest): WorkflowRun {
         const resumed =
             request.resumeFromRunId === undefined
@@ -757,11 +838,18 @@ export class InMemorySession {
         if (resumed?.state.status === "running") {
             throw new Error("Stop the previous workflow run before resuming it.");
         }
+        const resumeCheckpoint =
+            resumed?.state.code === request.code ? resumed.checkpoint : undefined;
 
         const runId = createId();
         const controller = new AbortController();
+        let resolveCompletion = (_run: WorkflowRun): void => undefined;
+        const completion = new Promise<WorkflowRun>((resolve) => {
+            resolveCompletion = resolve;
+        });
         const state: WorkflowRun = {
             agentCount: 0,
+            code: request.code,
             description: request.description,
             logs: [],
             name: request.name,
@@ -772,12 +860,15 @@ export class InMemorySession {
         };
         const internal: InternalWorkflowRun = {
             agentCalls: [],
+            completion,
             controller,
+            resolveCompletion,
             state,
         };
         this.#workflowRuns.set(runId, internal);
         this.#recordWorkflowUpdate({
             agentCount: state.agentCount,
+            code: request.code,
             description: state.description,
             name: state.name,
             runId,
@@ -793,6 +884,11 @@ export class InMemorySession {
                 },
                 onAgentResult: (index, result) => {
                     internal.agentCalls[index] = result;
+                    this.#saveSession();
+                },
+                onCheckpoint: (checkpoint) => {
+                    internal.checkpoint = checkpoint;
+                    this.#saveSession();
                 },
                 onLog: (message) => {
                     const trimmed = message.trim();
@@ -816,6 +912,7 @@ export class InMemorySession {
                     }
                 },
                 resumeAgentCalls: resumed?.agentCalls ?? [],
+                ...(resumeCheckpoint === undefined ? {} : { resumeCheckpoint }),
                 runId,
                 signal: controller.signal,
             })
@@ -848,6 +945,7 @@ export class InMemorySession {
             })
             .finally(() => {
                 if (this.#workflowRuns.get(runId) !== internal) return;
+                internal.resolveCompletion(cloneWorkflowRun(state));
                 const statusText =
                     state.status === "completed"
                         ? "completed"
@@ -1121,6 +1219,21 @@ export class InMemorySession {
             ...(this.#titleError !== undefined ? { titleError: this.#titleError } : {}),
             titleStatus: this.#titleStatus,
             tools: this.#tools,
+            workflows: [...this.#workflowRuns.values()].map((run) => ({
+                agentCalls: [...run.agentCalls],
+                ...(run.checkpoint === undefined
+                    ? {}
+                    : {
+                          checkpoint: {
+                              nextAgentCallIndex: run.checkpoint.nextAgentCallIndex,
+                              phase: run.checkpoint.phase,
+                              snapshotBase64: Buffer.from(run.checkpoint.snapshot).toString(
+                                  "base64",
+                              ),
+                          },
+                      }),
+                state: cloneWorkflowRun(run.state),
+            })),
         };
         if (activeRunId !== undefined) {
             state.activeRunId = activeRunId;
@@ -1256,17 +1369,22 @@ export class InMemorySession {
             throw new Error("Only subagent sessions have subagent summaries.");
         }
 
+        const messages = this.#committedMessages();
+        const latestText = limitInspectionText(findLastAgentResponseText(messages));
+        const prompt = limitInspectionText(findFirstUserRequestText(messages));
         return {
             agentId: this.#agentId,
             createdAt: this.events.firstCreatedAt() ?? this.#now(),
             depth: this.#agentMetadata.depth,
             description: this.#agentMetadata.description ?? "Delegated task",
             id: this.id,
+            ...(latestText === undefined ? {} : { latestText }),
             modelId: this.#modelId,
             parentSessionId: this.#agentMetadata.parentSessionId,
             ...(this.#agentMetadata.parentToolCallId !== undefined
                 ? { parentToolCallId: this.#agentMetadata.parentToolCallId }
                 : {}),
+            ...(prompt === undefined ? {} : { prompt }),
             status: this.#status,
             ...(this.#agentMetadata.taskName !== undefined
                 ? { taskName: this.#agentMetadata.taskName }
@@ -1571,6 +1689,7 @@ export class InMemorySession {
                 get: (runId) => this.getWorkflow(runId),
                 launch: (request) => this.launchWorkflow(request),
                 stop: (runId) => this.stopWorkflow(runId),
+                wait: (runId, signal) => this.waitForWorkflow(runId, signal),
             },
         };
         if (!this.isSubagent()) {
@@ -1603,7 +1722,11 @@ export class InMemorySession {
         runtime.context.bash.setActiveSessionCountListener?.((running) => {
             const runId = this.#activeRun?.runId ?? this.#lastSessionRunId ?? "background";
             this.#append("agent_event", {
-                event: { type: "background_processes_changed", running },
+                event: {
+                    type: "background_processes_changed",
+                    processes: runtime.context.bash.activeSessions?.() ?? [],
+                    running,
+                },
                 runId,
             });
         });
@@ -1898,6 +2021,11 @@ function cloneWorkflowRun(run: WorkflowRun): WorkflowRun {
         ...run,
         logs: [...run.logs],
     };
+}
+
+function limitInspectionText(text: string | undefined): string | undefined {
+    if (text === undefined || text.length <= MAX_SUBAGENT_INSPECTION_TEXT_CHARS) return text;
+    return `${text.slice(0, MAX_SUBAGENT_INSPECTION_TEXT_CHARS - 1)}…`;
 }
 
 function isSignalAborted(signal: AbortSignal | undefined): boolean {

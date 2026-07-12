@@ -98,6 +98,7 @@ describe("createProtocolHttpServer", () => {
             const session = store.get(created.session.id);
             expect(session).toBeDefined();
             const run = session?.launchWorkflow({
+                code: "42",
                 description: "Wait until stopped",
                 execute: ({ signal }) =>
                     new Promise<never>((_resolve, reject) => {

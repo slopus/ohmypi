@@ -1841,7 +1841,8 @@ describe("CodingAssistantApp", () => {
         app.handleInput("\t");
         const queued = stripAnsi(app.render(100).join("\n"));
         expect(queued).toContain("↳ queued queued later");
-        expect(queued).toContain("Enter steers · Tab queues");
+        expect(queued).not.toContain("Enter steers");
+        expect(queued).not.toContain("Tab queues");
 
         submit(app, "steer now");
         gate.release();
@@ -2926,10 +2927,26 @@ describe("CodingAssistantApp", () => {
             sessionId: "session-1",
             type: "agent_event",
         });
+        app.applySessionEvent({
+            createdAt: 3,
+            data: {
+                event: {
+                    status: "Awaiting for workflow to complete",
+                    toolCallId: toolCall.id,
+                    type: "tool_execution_status",
+                },
+                runId: "run-1",
+            },
+            id: "event-status",
+            sessionId: "session-1",
+            type: "agent_event",
+        });
 
         const active = stripAnsi(app.render(80).join("\n"));
         expect(active).toContain("• Running printf progress");
         expect(active).toContain("└ Processed 5 rows");
+        expect(active).toContain("Awaiting for workflow to complete");
+        expect(active).not.toContain("Running 1 tool");
         expect(active).not.toContain("• Ran printf progress");
 
         app.applySessionEvent({

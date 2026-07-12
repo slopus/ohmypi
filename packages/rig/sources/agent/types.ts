@@ -89,6 +89,8 @@ export type Lock<TArgs> = LockConstant | LockForArgs<TArgs>;
 /** A fully typed tool with execution, LLM serialization, and concurrency control. */
 export interface ToolExecutionOptions {
     onProgress?: (display: string) => void;
+    /** Reports a short ephemeral activity label while the tool remains active. */
+    onStatus?: (status: string) => void;
     signal?: AbortSignal;
     toolCallId?: string;
 }

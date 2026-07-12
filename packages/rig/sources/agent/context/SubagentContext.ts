@@ -11,6 +11,7 @@ export interface ManagedSubagent {
 export interface SpawnSubagentRequest {
     background?: boolean;
     description: string;
+    modelId?: string;
     parentToolCallId?: string;
     prompt: string;
     taskName?: string;

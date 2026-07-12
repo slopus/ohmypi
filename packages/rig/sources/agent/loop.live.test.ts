@@ -171,6 +171,7 @@ describe("agent loop live", () => {
             }),
             {
                 onProgress: expect.any(Function),
+                onStatus: expect.any(Function),
                 toolCallId: "call-add",
             },
         );
@@ -190,6 +191,7 @@ describe("agent loop live", () => {
             }),
             {
                 onProgress: expect.any(Function),
+                onStatus: expect.any(Function),
                 toolCallId: "call-shout",
             },
         );

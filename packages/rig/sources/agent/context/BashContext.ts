@@ -34,8 +34,16 @@ export interface BashSessionReadOptions {
     waitMs?: number;
 }
 
+export interface BashSessionActivity {
+    command: string;
+    cwd: string;
+    sessionId: number;
+    status: "running";
+}
+
 export interface BashContext {
     activeSessionCount?(): number;
+    activeSessions?(): readonly BashSessionActivity[];
     cwd: string;
     killSession(sessionId: number): Promise<BashSessionSnapshot | undefined>;
     readSession(

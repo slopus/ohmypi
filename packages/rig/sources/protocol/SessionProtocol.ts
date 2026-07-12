@@ -96,9 +96,11 @@ export interface SubagentSummary {
     depth: number;
     description: string;
     id: string;
+    latestText?: string;
     modelId: string;
     parentSessionId: string;
     parentToolCallId?: string;
+    prompt?: string;
     status: SessionStatus;
     taskName?: string;
     updatedAt: number;

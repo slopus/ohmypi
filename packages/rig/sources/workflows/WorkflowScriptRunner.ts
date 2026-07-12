@@ -1,7 +1,11 @@
 import { Monty } from "@pydantic/monty";
 
 import type { AgentContext } from "../agent/index.js";
-import type { WorkflowAgentCacheEntry, WorkflowExecutionResult } from "./WorkflowContext.js";
+import type {
+    WorkflowAgentCacheEntry,
+    WorkflowCheckpoint,
+    WorkflowExecutionResult,
+} from "./WorkflowContext.js";
 import { parseStructuredWorkflowResult } from "./parseStructuredWorkflowResult.js";
 import { serializeWorkflowValue } from "./serializeWorkflowValue.js";
 import { runMontyWithExternals } from "./runMontyWithExternals.js";
@@ -12,6 +16,7 @@ const MAX_WORKFLOW_BATCH_ITEMS = 4_096;
 
 interface WorkflowAgentOptions {
     label?: string;
+    model?: string;
     schema?: Record<string, unknown>;
 }
 
@@ -24,39 +29,50 @@ interface WorkflowRunnerOptions {
     args: unknown;
     onAgentCall(): void;
     onAgentResult?(index: number, result: WorkflowAgentCacheEntry): void;
+    onCheckpoint?(checkpoint: WorkflowCheckpoint): void;
     onLog(message: string): void;
     parentToolCallId?: string;
     resumeAgentCalls: readonly (WorkflowAgentCacheEntry | undefined)[];
+    resumeCheckpoint?: WorkflowCheckpoint;
     signal: AbortSignal;
     workflowRunId: string;
 }
 
 export class WorkflowScriptRunner {
     readonly #agentContext: AgentContext;
-    readonly #agentCalls: (WorkflowAgentCacheEntry | undefined)[] = [];
+    readonly #agentCalls: (WorkflowAgentCacheEntry | undefined)[];
     readonly #args: unknown;
     readonly #onAgentCall: () => void;
     readonly #onAgentResult: ((index: number, result: WorkflowAgentCacheEntry) => void) | undefined;
+    readonly #onCheckpoint: ((checkpoint: WorkflowCheckpoint) => void) | undefined;
     readonly #onLog: (message: string) => void;
     readonly #parentToolCallId: string | undefined;
     readonly #resumeAgentCalls: readonly (WorkflowAgentCacheEntry | undefined)[];
+    readonly #resumeCheckpoint: WorkflowCheckpoint | undefined;
     readonly #signal: AbortSignal;
     readonly #workflowRunId: string;
 
-    #agentCount = 0;
     #nextAgentCallIndex = 0;
     #phase = "Workflow";
 
     constructor(options: WorkflowRunnerOptions) {
         this.#agentContext = options.agentContext;
+        this.#agentCalls =
+            options.resumeCheckpoint === undefined ? [] : [...options.resumeAgentCalls];
         this.#args = options.args;
         this.#onAgentCall = options.onAgentCall;
         this.#onAgentResult = options.onAgentResult;
+        this.#onCheckpoint = options.onCheckpoint;
         this.#onLog = options.onLog;
         this.#parentToolCallId = options.parentToolCallId;
         this.#resumeAgentCalls = options.resumeAgentCalls;
+        this.#resumeCheckpoint = options.resumeCheckpoint;
         this.#signal = options.signal;
         this.#workflowRunId = options.workflowRunId;
+        if (options.resumeCheckpoint !== undefined) {
+            this.#nextAgentCallIndex = options.resumeCheckpoint.nextAgentCallIndex;
+            this.#phase = options.resumeCheckpoint.phase;
+        }
     }
 
     async run(script: string): Promise<WorkflowExecutionResult> {
@@ -83,7 +99,16 @@ export class WorkflowScriptRunner {
             },
             monty,
             onPrint: (text) => this.#onLog(text.trimEnd()),
+            onSnapshot: (snapshot) =>
+                this.#onCheckpoint?.({
+                    nextAgentCallIndex: this.#nextAgentCallIndex,
+                    phase: this.#phase,
+                    snapshot,
+                }),
             signal: this.#signal,
+            ...(this.#resumeCheckpoint === undefined
+                ? {}
+                : { snapshot: this.#resumeCheckpoint.snapshot }),
         });
         return { agentCalls: [...this.#agentCalls], output: fromMontyValue(output) };
     }
@@ -116,7 +141,6 @@ export class WorkflowScriptRunner {
             this.#onLog(`Reused ${options.label ?? this.#phase} from the previous run.`);
             return cached.output;
         }
-        this.#agentCount += 1;
         this.#onAgentCall();
         const description = options.label ?? this.#phase;
         const taskName = `workflow_${this.#workflowRunId}_${cacheIndex + 1}`;
@@ -126,6 +150,7 @@ export class WorkflowScriptRunner {
                 ...(this.#parentToolCallId === undefined
                     ? {}
                     : { parentToolCallId: this.#parentToolCallId }),
+                ...(options.model === undefined ? {} : { modelId: options.model }),
                 prompt,
                 taskName,
                 waitForSlot: true,
@@ -215,6 +240,12 @@ export class WorkflowScriptRunner {
             if (typeof candidate.label !== "string")
                 throw new Error("Agent label must be a string.");
             options.label = candidate.label;
+        }
+        if (candidate.model !== undefined) {
+            if (typeof candidate.model !== "string" || candidate.model.trim().length === 0) {
+                throw new Error("Agent model must be a non-empty model name.");
+            }
+            options.model = candidate.model.trim();
         }
         if (candidate.schema !== undefined) {
             if (

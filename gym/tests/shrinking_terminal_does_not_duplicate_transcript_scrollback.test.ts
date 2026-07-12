@@ -46,8 +46,11 @@ describe("shrinking terminal does not duplicate transcript scrollback", () => {
         gym.terminal.type("prove the resized terminal remains usable");
         gym.terminal.press("enter");
         await gym.terminal.waitUntil(
-            () => agentRequestCount(gym) === 3,
-            "follow-up tool result to reach inference",
+            (snapshot) =>
+                agentRequestCount(gym) === 3 &&
+                snapshot.text.includes("Ask Rig to do anything") &&
+                !snapshot.text.includes("Esc to interrupt"),
+            "the resized follow-up to finish and return to the idle composer",
             30_000,
         );
         await expect(gym.readFile("resize-ok.txt")).resolves.toBe("usable after resize\n");

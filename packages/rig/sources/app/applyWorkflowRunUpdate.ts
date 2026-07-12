@@ -18,6 +18,7 @@ export function applyWorkflowRunUpdate(
         }
         const created: WorkflowRun = {
             agentCount: update.agentCount,
+            ...(update.code === undefined ? {} : { code: update.code }),
             description: update.description,
             ...(update.error === undefined ? {} : { error: update.error }),
             ...(update.finishedAt === undefined ? {} : { finishedAt: update.finishedAt }),

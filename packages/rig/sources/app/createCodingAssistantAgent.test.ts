@@ -121,6 +121,7 @@ describe("createCodingAssistantAgent", () => {
             "update_plan",
             "request_user_input",
             "workflow",
+            "wait_for_workflow",
             "workflow_status",
             "stop_workflow",
             "spawn_agent",
@@ -140,6 +141,7 @@ describe("createCodingAssistantAgent", () => {
         expect(claudeParent.agent.tools.map((tool) => tool.name)).toContain("Agent");
         expect(claudeParent.agent.tools.map((tool) => tool.name)).toContain("SendMessage");
         expect(claudeParent.agent.tools.map((tool) => tool.name)).toContain("Workflow");
+        expect(claudeParent.agent.tools.map((tool) => tool.name)).toContain("WaitForWorkflow");
         expect(claudeParent.agent.tools.map((tool) => tool.name)).not.toContain("spawn_agent");
     });
 

@@ -32,6 +32,12 @@ describe("shouldReviewToolInAutoMode", () => {
         await expect(
             shouldReviewToolInAutoMode("write_stdin", { session_id: 1 }, cwd),
         ).resolves.toBe(false);
+        await expect(
+            shouldReviewToolInAutoMode("wait_for_workflow", { run_id: "workflow-1" }, cwd),
+        ).resolves.toBe(false);
+        await expect(
+            shouldReviewToolInAutoMode("WaitForWorkflow", { run_id: "workflow-1" }, cwd),
+        ).resolves.toBe(false);
     });
 
     it("reviews shell, external-path, symlink, interactive, and unknown actions", async () => {

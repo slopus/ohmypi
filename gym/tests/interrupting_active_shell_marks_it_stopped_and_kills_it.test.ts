@@ -47,7 +47,7 @@ describe("interrupting an active shell command is honest about what stopped", ()
             (snapshot) =>
                 snapshot.text.includes("• Running trap") &&
                 snapshot.text.includes("└ ACTIVE_PROCESS_STARTED") &&
-                snapshot.text.includes("1 process") &&
+                snapshot.text.includes("Process trap 'printf stopped") &&
                 snapshot.scroll.atBottom,
             "a visibly active real shell command",
             30_000,
@@ -62,7 +62,7 @@ describe("interrupting an active shell command is honest about what stopped", ()
                 snapshot.text.includes("Session interrupted") &&
                 snapshot.text.includes("• Stopped trap") &&
                 !snapshot.text.includes("• Running trap") &&
-                !snapshot.text.includes("1 process") &&
+                !snapshot.text.includes("Process trap 'printf stopped") &&
                 snapshot.text.includes("Ask Rig to do anything") &&
                 snapshot.scroll.atBottom,
             "an interrupted command labelled stopped after its process exits",
@@ -94,7 +94,7 @@ describe("interrupting an active shell command is honest about what stopped", ()
         expect(recovered.text).toContain("• Stopped trap");
         expect(recovered.text).not.toContain("• Running trap");
         expect(recovered.text).not.toContain("• Ran trap");
-        expect(recovered.text).not.toContain("1 process");
+        expect(recovered.text).not.toContain("Process trap 'printf stopped");
         expect(recovered.text).not.toMatch(/session ID/iu);
         expect(recovered.scroll.bottomDepartureCount).toBe(baseline.bottomDepartureCount);
         expect(recovered.scroll.topArrivalCount).toBe(baseline.topArrivalCount);

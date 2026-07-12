@@ -84,7 +84,7 @@ describe("aborting an idle session stops its background processes", () => {
         const idleWithProcess = await gym.terminal.waitUntil(
             (snapshot) =>
                 snapshot.text.includes("The delayed action is still running") &&
-                snapshot.text.includes("1 process") &&
+                snapshot.text.includes("Process printf 'DELAYED_ACTION_ARMED") &&
                 snapshot.text.includes("Ask Rig to do anything") &&
                 snapshot.scroll.atBottom,
             "the completed turn with a background process still active",
@@ -96,7 +96,7 @@ describe("aborting an idle session stops its background processes", () => {
         const stopped = await gym.terminal.waitUntil(
             (snapshot) =>
                 snapshot.text.includes("Stopped 1 background process.") &&
-                !snapshot.text.includes("1 process") &&
+                !snapshot.text.includes("Process printf 'DELAYED_ACTION_ARMED") &&
                 snapshot.text.includes("Ask Rig to do anything") &&
                 snapshot.scroll.atBottom,
             "a clear confirmation that the idle session's process was stopped",

@@ -23,6 +23,7 @@ import {
     modelOpenaiGpt56Sol,
     modelOpenaiGpt56Terra,
 } from "./models.js";
+import { normalizeCodexThinkingLevel } from "./normalizeCodexThinkingLevel.js";
 import { toPiContext, wrapPiStream } from "./pi-bridge.js";
 import { defineProvider, type Model, type Provider, type StreamOptions } from "./types.js";
 
@@ -166,9 +167,10 @@ function toPiStreamOptions(
     };
 
     if (options?.thinking !== undefined && options.thinking !== "off") {
-        const level = isKnownPiThinkingLevel(options.thinking)
-            ? clampThinkingLevel(piModel, options.thinking)
-            : options.thinking;
+        const normalizedLevel = normalizeCodexThinkingLevel(options.thinking);
+        const level = isKnownPiThinkingLevel(normalizedLevel)
+            ? clampThinkingLevel(piModel, normalizedLevel)
+            : normalizedLevel;
         if (level !== "off") {
             piOptions.reasoningEffort = level as NonNullable<
                 OpenAICodexResponsesOptions["reasoningEffort"]

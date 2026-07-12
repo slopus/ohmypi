@@ -71,9 +71,7 @@ describe("pausing an active goal keeps the daemon available for resume", () => {
         expect(paused.text).not.toContain("STALE_GOAL_RESPONSE_MUST_NOT_RENDER");
 
         const settled = await gym.terminal.waitUntil(
-            (snapshot) =>
-                !snapshot.text.includes("Esc to interrupt") &&
-                !snapshot.text.includes("Enter steers · Tab queues"),
+            (snapshot) => !snapshot.text.includes("Esc to interrupt"),
             "the paused goal run to settle before resuming",
             30_000,
         );

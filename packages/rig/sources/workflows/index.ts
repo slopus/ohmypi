@@ -1,6 +1,7 @@
 export type {
     LaunchWorkflowRequest,
     WorkflowAgentCacheEntry,
+    WorkflowCheckpoint,
     WorkflowContext,
     WorkflowExecutionResult,
     WorkflowRun,

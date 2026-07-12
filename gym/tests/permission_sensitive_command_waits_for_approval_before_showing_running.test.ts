@@ -128,7 +128,10 @@ describe("permission-sensitive command waits for approval before showing Running
             "the approved command visibly running",
             30_000,
         );
-        expect(executing.text).toContain("approved-after-prompt.txt");
+        expect(executing.text).toContain(
+            "Needs approval: This writes a proof file after a deliberate delay.",
+        );
+        expect(executing.text).not.toContain("Auto permission");
         assertTerminalHealth(executing, baseline);
 
         const completed = await gym.terminal.waitUntil(

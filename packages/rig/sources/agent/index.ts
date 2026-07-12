@@ -23,6 +23,7 @@ export type { AgentConsole } from "./printAgentMessageToConsole.js";
 export { agentMessageToText } from "./agentMessageToText.js";
 export { createSubagentInstructions } from "./createSubagentInstructions.js";
 export { findLastAgentResponseText } from "./findLastAgentResponseText.js";
+export { findFirstUserRequestText } from "./findFirstUserRequestText.js";
 export { contentBlockToText } from "./contentBlockToText.js";
 export { selectToolsForModel } from "./selectToolsForModel.js";
 export type { SelectToolsForModelOptions } from "./selectToolsForModel.js";

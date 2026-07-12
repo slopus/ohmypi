@@ -10,7 +10,7 @@ afterEach(async () => {
 });
 
 describe("background shell activity stays visible until it really finishes", () => {
-    it("shows a human process count, hides the internal session ID, and clears the count", async () => {
+    it("shows the process, hides the internal session ID, and clears the row", async () => {
         const command =
             "printf 'BACKGROUND_PROCESS_STARTED\\n'; sleep 3; printf 'finished\\n' > background-process-state.txt";
         const gym = await createGym({
@@ -67,7 +67,7 @@ describe("background shell activity stays visible until it really finishes", () 
         const active = await gym.terminal.waitUntil(
             (snapshot) =>
                 snapshot.text.includes("The command is still running") &&
-                snapshot.text.includes("1 process") &&
+                snapshot.text.includes("Process printf 'BACKGROUND_PROCESS_STARTED") &&
                 snapshot.text.includes("Ask Rig to do anything") &&
                 snapshot.scroll.atBottom,
             "an idle composer that still discloses the background process",
@@ -83,10 +83,10 @@ describe("background shell activity stays visible until it really finishes", () 
         const finished = await gym.terminal.waitUntil(
             (snapshot) =>
                 snapshot.text.includes("The command is still running") &&
-                !snapshot.text.includes("1 process") &&
+                !snapshot.text.includes("Process printf 'BACKGROUND_PROCESS_STARTED") &&
                 snapshot.text.includes("Ask Rig to do anything") &&
                 snapshot.scroll.atBottom,
-            "the background process count to clear after real process exit",
+            "the background process row to clear after real process exit",
             30_000,
         );
         await expect(gym.readFile("background-process-state.txt")).resolves.toBe("finished\n");
@@ -107,7 +107,7 @@ describe("background shell activity stays visible until it really finishes", () 
             "a healthy turn after the background process completed",
             30_000,
         );
-        expect(recovered.text).not.toContain("1 process");
+        expect(recovered.text).not.toContain("Process printf 'BACKGROUND_PROCESS_STARTED");
         expect(recovered.text).not.toMatch(/session ID/iu);
         expect(recovered.scroll.bottomDepartureCount).toBe(baseline.bottomDepartureCount);
         expect(recovered.scroll.topArrivalCount).toBe(baseline.topArrivalCount);

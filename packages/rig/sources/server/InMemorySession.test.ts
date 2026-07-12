@@ -88,6 +88,7 @@ describe("InMemorySession", () => {
     it("preserves the user-facing stop reason when workflow cancellation rejects", async () => {
         const session = new InMemorySessionStore().create({ cwd: "/tmp/rig-session-test" });
         const run = session.launchWorkflow({
+            code: "42",
             description: "Wait for cancellation",
             execute: ({ signal }) =>
                 new Promise<never>((_resolve, reject) => {
@@ -115,6 +116,7 @@ describe("InMemorySession", () => {
     it("publishes live workflow phase, progress, and completion state", async () => {
         const session = new InMemorySessionStore().create({ cwd: "/tmp/rig-session-test" });
         const run = session.launchWorkflow({
+            code: "42",
             description: "Inspect the workflow state",
             execute: async ({ onAgentCall, onLog }) => {
                 onLog("Phase: Inspect");
@@ -155,6 +157,46 @@ describe("InMemorySession", () => {
                 }),
             ]),
         );
+        session.abort();
+    });
+
+    it("resumes unchanged workflow code from its latest Monty checkpoint", async () => {
+        const session = new InMemorySessionStore().create({ cwd: "/tmp/rig-session-test" });
+        const checkpoint = {
+            nextAgentCallIndex: 1,
+            phase: "Verify",
+            snapshot: new Uint8Array([1, 2, 3]),
+        };
+        const cachedAgent = { output: "cached", signature: "cached-signature" };
+        const interrupted = session.launchWorkflow({
+            code: 'agent("check")',
+            description: "Checkpoint a workflow",
+            execute: async ({ onAgentResult, onCheckpoint }) => {
+                onAgentResult(0, cachedAgent);
+                onCheckpoint(checkpoint);
+                throw new Error("Simulated workflow interruption.");
+            },
+            name: "checkpointed-workflow",
+        });
+        await new Promise((resolve) => setImmediate(resolve));
+
+        let receivedResumeCheckpoint: unknown;
+        let receivedResumeAgentCalls: readonly unknown[] = [];
+        session.launchWorkflow({
+            code: 'agent("check")',
+            description: "Resume a workflow",
+            execute: async (options) => {
+                receivedResumeCheckpoint = options.resumeCheckpoint;
+                receivedResumeAgentCalls = options.resumeAgentCalls;
+                return { agentCalls: options.resumeAgentCalls, output: "resumed" };
+            },
+            name: "checkpointed-workflow",
+            resumeFromRunId: interrupted.runId,
+        });
+        await new Promise((resolve) => setImmediate(resolve));
+
+        expect(receivedResumeCheckpoint).toEqual(checkpoint);
+        expect(receivedResumeAgentCalls).toEqual([cachedAgent]);
         session.abort();
     });
 

@@ -86,7 +86,7 @@ describe("workflow monitor", () => {
             gym.terminal.press("enter");
             await childStarted;
             await gym.terminal.waitForText("WORKFLOW_STARTED", 30_000);
-            await gym.terminal.waitForText("1 workflow", 30_000);
+            await gym.terminal.waitForText("Workflow Live monitor · Inspect", 30_000);
 
             gym.terminal.type("/workflows");
             gym.terminal.press("enter");

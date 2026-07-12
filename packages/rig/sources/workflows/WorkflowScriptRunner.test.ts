@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import type { AgentContext, SpawnSubagentRequest } from "../agent/index.js";
+import type { WorkflowAgentCacheEntry, WorkflowCheckpoint } from "./WorkflowContext.js";
 import { WorkflowScriptRunner } from "./WorkflowScriptRunner.js";
 
 describe("WorkflowScriptRunner", () => {
@@ -88,6 +89,69 @@ describe("WorkflowScriptRunner", () => {
         expect(spawn).not.toHaveBeenCalled();
     });
 
+    it("checkpoints at external calls and resumes the pending agent without replaying Python", async () => {
+        let latestCheckpoint: WorkflowCheckpoint | undefined;
+        const completedAgentCalls: (WorkflowAgentCacheEntry | undefined)[] = [];
+        const firstSpawn = vi.fn(async (request: SpawnSubagentRequest) => {
+            if (request.prompt === "First prompt") {
+                return completedResult(request, "FIRST_RESULT");
+            }
+            throw new Error("Simulated host interruption");
+        });
+        const script = [
+            'phase("Inspect")',
+            'first = agent("First prompt", {"label": "First"})',
+            'second = agent("Second prompt", {"label": "Second", "model": "openai/gpt-5.6"})',
+            '{"first": first, "second": second}',
+        ].join("\n");
+        const interrupted = new WorkflowScriptRunner({
+            agentContext: createContext(firstSpawn),
+            args: null,
+            onAgentCall: vi.fn(),
+            onAgentResult: (index, result) => {
+                completedAgentCalls[index] = result;
+            },
+            onCheckpoint: (checkpoint) => {
+                latestCheckpoint = checkpoint;
+            },
+            onLog: vi.fn(),
+            resumeAgentCalls: [],
+            signal: new AbortController().signal,
+            workflowRunId: "checkpoint_initial",
+        });
+
+        await expect(interrupted.run(script)).rejects.toThrow("Simulated host interruption");
+        expect(latestCheckpoint).toMatchObject({ nextAgentCallIndex: 1, phase: "Inspect" });
+        expect(completedAgentCalls[0]).toMatchObject({ output: "FIRST_RESULT" });
+
+        const resumedSpawn = vi.fn(async (request: SpawnSubagentRequest) =>
+            completedResult(request, "SECOND_RESULT"),
+        );
+        const resumed = new WorkflowScriptRunner({
+            agentContext: createContext(resumedSpawn),
+            args: null,
+            onAgentCall: vi.fn(),
+            onLog: vi.fn(),
+            resumeAgentCalls: completedAgentCalls,
+            resumeCheckpoint: latestCheckpoint!,
+            signal: new AbortController().signal,
+            workflowRunId: "checkpoint_resumed",
+        });
+
+        await expect(resumed.run(script)).resolves.toMatchObject({
+            output: { first: "FIRST_RESULT", second: "SECOND_RESULT" },
+        });
+        expect(resumedSpawn).toHaveBeenCalledOnce();
+        expect(resumedSpawn).toHaveBeenCalledWith(
+            expect.objectContaining({
+                modelId: "openai/gpt-5.6",
+                prompt: "Second prompt",
+                taskName: "workflow_checkpoint_resumed_2",
+            }),
+            expect.any(AbortSignal),
+        );
+    });
+
     it("keeps pipeline cache identities stable when items finish out of order", async () => {
         let releaseFirstItem: (() => void) | undefined;
         const firstItemCanFinish = new Promise<void>((resolve) => {
@@ -162,4 +226,14 @@ function createContext(spawn: ReturnType<typeof vi.fn>): AgentContext {
             wait: vi.fn(),
         },
     } as unknown as AgentContext;
+}
+
+function completedResult(request: SpawnSubagentRequest, output: string) {
+    return {
+        output,
+        path: `/root/${request.taskName}`,
+        sessionId: request.taskName ?? "child",
+        status: "completed" as const,
+        taskName: request.taskName ?? "child",
+    };
 }

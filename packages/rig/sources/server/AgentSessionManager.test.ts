@@ -4,6 +4,71 @@ import type { InMemorySession } from "./InMemorySession.js";
 import { AgentSessionManager } from "./AgentSessionManager.js";
 
 describe("AgentSessionManager", () => {
+    it("uses a requested model for a workflow child while inheriting the remaining session settings", async () => {
+        const child = {
+            agentMetadata: () => ({
+                depth: 1,
+                parentSessionId: "root-1",
+                rootSessionId: "root-1",
+                taskName: "model_check",
+                type: "subagent" as const,
+            }),
+            id: "child-1",
+            isSubagent: () => true,
+            subagentSummary: () => ({ status: "running" }),
+            submit: vi.fn(() => ({ runId: "child-run" })),
+        } as unknown as InMemorySession;
+        const parent = {
+            agentMetadata: () => ({ depth: 0, rootSessionId: "root-1", type: "primary" }),
+            id: "root-1",
+            hasModel: (modelId: string) => modelId === "anthropic/claude-opus-4.6",
+            isSubagent: () => false,
+            recordSubagentChanged: vi.fn(),
+            requestForSubagent: () => ({
+                cwd: "/tmp/rig-manager-test",
+                instructions: "Inherited instructions",
+                modelId: "openai/gpt-5.5",
+                permissionMode: "auto",
+                providerId: "codex",
+            }),
+        } as unknown as InMemorySession;
+        const createSubagent = vi.fn(() => child);
+        const manager = new AgentSessionManager({
+            repository: {
+                createSubagent,
+                get: (sessionId) => (sessionId === parent.id ? parent : undefined),
+                listByRoot: () => [],
+            },
+        });
+
+        await manager.spawn(parent.id, {
+            background: true,
+            description: "Check another model",
+            modelId: "anthropic/claude-opus-4.6",
+            prompt: "Inspect with the requested model.",
+            taskName: "model_check",
+        });
+
+        expect(createSubagent).toHaveBeenCalledWith(
+            expect.objectContaining({
+                cwd: "/tmp/rig-manager-test",
+                instructions: expect.stringContaining("Inherited instructions"),
+                modelId: "anthropic/claude-opus-4.6",
+                permissionMode: "auto",
+                providerId: "codex",
+            }),
+            expect.objectContaining({ taskName: "model_check" }),
+        );
+        await expect(
+            manager.spawn(parent.id, {
+                description: "Unknown model",
+                modelId: "missing/model",
+                prompt: "This should not start.",
+            }),
+        ).rejects.toThrow("Model 'missing/model' is not available for workflow agents.");
+        expect(createSubagent).toHaveBeenCalledOnce();
+    });
+
     it("updates every subagent permission boundary with the root session", async () => {
         const changeFirst = vi.fn(async () => ({ permissionMode: "read_only" }));
         const changeSecond = vi.fn(async () => ({ permissionMode: "read_only" }));
