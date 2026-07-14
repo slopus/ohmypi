@@ -29,23 +29,15 @@ describe("provider error recovers and terminal exits cleanly", () => {
         });
 
         submit(gym, "Trigger a recoverable provider error.");
-        const failed = await gym.terminal.waitUntil(
-            (snapshot) =>
-                snapshot.text.includes("RECOVERABLE_PROVIDER_OUTAGE") &&
-                snapshot.text.includes("Ask Rig to do anything"),
-            "provider error with the composer idle again",
-            30_000,
-        );
-        assertHealthyInteractiveTerminal(failed, initialScroll);
-
-        submit(gym, "Recover after the provider error.");
         const recovered = await gym.terminal.waitUntil(
             (snapshot) =>
-                snapshot.text.includes("RECOVERY_TURN_OK") || snapshot.text.includes("ECONNRESET"),
-            "successful recovery turn or a visible daemon connection failure",
+                snapshot.text.includes("RECOVERY_TURN_OK") &&
+                snapshot.text.includes("Ask Rig to do anything"),
+            "automatic recovery from the transient provider error",
             30_000,
         );
         expect(recovered.text).toContain("RECOVERY_TURN_OK");
+        expect(recovered.text).not.toContain("RECOVERABLE_PROVIDER_OUTAGE");
         assertHealthyInteractiveTerminal(recovered, initialScroll);
 
         const agentRequests = gym.inference.requests.filter(
@@ -57,7 +49,7 @@ describe("provider error recovers and terminal exits cleanly", () => {
             role: "user",
         });
         expect(agentRequests[1]?.context.messages.at(-1)).toMatchObject({
-            content: [{ text: "Recover after the provider error.", type: "text" }],
+            content: [{ text: "Trigger a recoverable provider error.", type: "text" }],
             role: "user",
         });
 
@@ -93,7 +85,7 @@ describe("provider error recovers and terminal exits cleanly", () => {
         expect(final.cursor.x).toBeLessThan(COLS);
         expect(final.cursor.y).toBeLessThan(ROWS);
         expect(final.title).toContain("Rig");
-        expect(final.text).toContain("RECOVERABLE_PROVIDER_OUTAGE");
+        expect(final.text).not.toContain("RECOVERABLE_PROVIDER_OUTAGE");
         expect(final.text).toContain("RECOVERY_TURN_OK");
         expect(final.text).not.toContain("UNSENT_DRAFT_MUST_CLEAR");
         expect(gym.inference.requests.filter(isAgentRequest)).toHaveLength(2);

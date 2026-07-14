@@ -51,7 +51,7 @@ describe("reducing permissions stops existing Full access processes", () => {
         const active = await gym.terminal.waitUntil(
             (snapshot) =>
                 snapshot.text.includes("FULL_ACCESS_PROCESS_IS_RUNNING") &&
-                snapshot.text.includes("Process printf 'PRIVILEGED_PROCESS_STARTED") &&
+                snapshot.text.includes("1 background terminal running") &&
                 snapshot.text.includes("full access") &&
                 snapshot.scroll.atBottom,
             "the Full access process running in the background",
@@ -68,7 +68,7 @@ describe("reducing permissions stops existing Full access processes", () => {
         const reduced = await gym.terminal.waitUntil(
             (snapshot) =>
                 snapshot.text.includes("Permissions changed to Read only.") &&
-                !snapshot.text.includes("Process printf 'PRIVILEGED_PROCESS_STARTED") &&
+                !snapshot.text.includes("background terminal running") &&
                 snapshot.text.includes("read only") &&
                 snapshot.scroll.atBottom,
             "the privilege downgrade stopping prior processes",
@@ -86,7 +86,6 @@ describe("reducing permissions stops existing Full access processes", () => {
             code: "ENOENT",
         });
         expect(followUp.text).toContain("read only");
-        expect(followUp.text).not.toContain("Process printf 'PRIVILEGED_PROCESS_STARTED");
         assertHealthy(followUp, baseline);
     }, 120_000);
 });

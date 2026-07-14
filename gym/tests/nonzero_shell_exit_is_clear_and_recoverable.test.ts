@@ -63,6 +63,7 @@ describe("nonzero shell exit is clear and recoverable", () => {
                 snapshot.text.includes("Failed printf 'permission probe blocked") &&
                 snapshot.text.includes("Command exited with code 23") &&
                 snapshot.text.includes("permission probe blocked") &&
+                snapshot.text.includes("gym off") &&
                 snapshot.scroll.atBottom,
             "failed command with its exit code and stderr",
             30_000,

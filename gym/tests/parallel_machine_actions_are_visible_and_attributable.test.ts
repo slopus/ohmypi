@@ -69,7 +69,6 @@ describe("parallel machine actions are visible and attributable", () => {
         const active = await gym.terminal.waitUntil(
             (snapshot) =>
                 snapshot.text.includes("Running 3 tools") &&
-                commands.every((command) => snapshot.text.includes(`Process ${command}`)) &&
                 commands.every((command) => snapshot.text.includes(command)) &&
                 snapshot.scroll.atBottom,
             "three visible commands and processes running together",

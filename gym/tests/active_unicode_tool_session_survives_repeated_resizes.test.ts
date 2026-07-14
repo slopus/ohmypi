@@ -119,7 +119,7 @@ describe("active Unicode tool session survives repeated resizes", () => {
             (snapshot) =>
                 waitingForRelease &&
                 snapshot.text.includes("READY_FOR_ACTIVE_RESIZE") &&
-                snapshot.text.includes("Process printf 'READY_FOR_ACTIVE_RESIZE") &&
+                snapshot.text.includes("1 background terminal running") &&
                 snapshot.scroll.atBottom,
             "interactive process waiting while inference is gated",
             30_000,

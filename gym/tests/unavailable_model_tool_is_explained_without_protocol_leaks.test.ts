@@ -63,6 +63,7 @@ describe("unavailable model tool is explained without protocol leaks", () => {
                 normalizeWhitespace(snapshot.text).includes(
                     'The model requested "Erase everything", but that tool is not available in this session.',
                 ) &&
+                snapshot.text.includes("gym off") &&
                 snapshot.scroll.atBottom,
             "plain-language unavailable-tool failure",
             30_000,

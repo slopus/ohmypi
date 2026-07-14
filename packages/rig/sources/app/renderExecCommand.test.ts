@@ -26,6 +26,26 @@ describe("renderExecCommand", () => {
         expect(plain).toContain("  │ … +4 lines");
         expect(plain.at(-1)).toBe("  └ output 14");
     });
+
+    it("keeps an automatic permission review attached to the command", () => {
+        const rendered = renderExecCommand(
+            { command: "printf ok", output: "ok\n", type: "exec_command" },
+            {
+                brand: "",
+                primary: "",
+                review: "Approved automatically: Low-risk local command.",
+                status: "",
+                verb: "Ran",
+                width: 80,
+            },
+        ).map((line) => stripAnsi(line).trimEnd());
+
+        expect(rendered).toEqual([
+            "• Ran printf ok",
+            "  ├ Approved automatically: Low-risk local command.",
+            "  └ ok",
+        ]);
+    });
 });
 
 function stripAnsi(value: string): string {

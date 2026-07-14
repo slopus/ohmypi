@@ -90,7 +90,7 @@ describe("background shell activity stays visible until it really finishes", () 
         expect(summaryRow).toBeLessThan(composerRow);
         expect(composerRow).toBeLessThan(footerRow);
         expect(active.text).toContain("• Ran printf");
-        expect(active.text).toContain("Command is still running in the background.");
+        expect(active.text).toContain("The command is still running");
         expect(active.text).not.toMatch(/session ID/iu);
         expect(active.text).not.toContain("• Running printf");
         expect(active.text).not.toContain("Process printf 'BACKGROUND_PROCESS_STARTED");

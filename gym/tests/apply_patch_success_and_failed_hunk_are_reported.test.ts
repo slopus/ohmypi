@@ -129,7 +129,10 @@ describe("apply_patch success and failed hunk are reported", () => {
         gym.terminal.press("enter");
 
         const applied = await gym.terminal.waitUntil(
-            (snapshot) => snapshot.text.includes("Edited src/greet.ts") && snapshot.scroll.atBottom,
+            (snapshot) =>
+                snapshot.text.includes("Edited src/greet.ts") &&
+                snapshot.text.includes("    2 +  return `hello, ${name}`;") &&
+                snapshot.scroll.atBottom,
             "human-readable successful patch result",
             30_000,
         );

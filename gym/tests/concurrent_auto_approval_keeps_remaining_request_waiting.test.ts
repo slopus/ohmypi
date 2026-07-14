@@ -166,6 +166,7 @@ describe("concurrent Auto approvals keep the remaining request waiting", () => {
                 snapshot.text.includes("BOTH_APPROVED_COMMANDS_FINISHED") &&
                 snapshot.text.includes("• Ran printf 'beta approved") &&
                 snapshot.text.includes("Ask Rig to do anything") &&
+                snapshot.text.includes("gym off") &&
                 snapshot.scroll.atBottom,
             "both approved commands completed",
             30_000,

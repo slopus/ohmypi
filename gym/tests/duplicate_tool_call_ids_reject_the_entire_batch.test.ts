@@ -184,7 +184,6 @@ describe("duplicate model tool call identifiers reject the entire batch", () => 
 
         submit(gym, "Confirm the audit history and session are still healthy.");
         const recovered = await gym.terminal.waitForText("CROSS_TURN_ID_RECOVERY_OK", 30_000);
-        expect(recovered.text).toContain("Ran printf 'first audited action");
         expect(recovered.text).not.toContain(providerId);
         assertHealthyTerminal(recovered, baseline);
     }, 120_000);

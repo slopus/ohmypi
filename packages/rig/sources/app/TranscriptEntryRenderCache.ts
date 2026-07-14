@@ -1,0 +1,82 @@
+import type { AppTranscriptEntry } from "./AppTranscriptEntry.js";
+
+interface CachedEntryRender {
+    readonly backgroundTerminalCompletion: string | undefined;
+    readonly backgroundTerminalInteraction: AppTranscriptEntry["backgroundTerminalInteraction"];
+    readonly detail: string | undefined;
+    readonly dynamicState: string;
+    readonly execCommand: AppTranscriptEntry["execCommand"];
+    readonly fileDiffs: AppTranscriptEntry["fileDiffs"];
+    readonly lines: readonly string[];
+    readonly mcpToolCall: AppTranscriptEntry["mcpToolCall"];
+    readonly omittedFileDiffs: number | undefined;
+    readonly permissionReview: string | undefined;
+    readonly role: AppTranscriptEntry["role"];
+    readonly text: string;
+    readonly theme: object;
+    readonly title: string | undefined;
+    readonly turnElapsedMs: number | undefined;
+    readonly width: number;
+}
+
+export class TranscriptEntryRenderCache {
+    #entries = new WeakMap<AppTranscriptEntry, CachedEntryRender>();
+
+    render(
+        entry: AppTranscriptEntry,
+        options: { dynamicState: string; theme: object; width: number },
+        renderEntry: () => readonly string[],
+    ): readonly string[] {
+        const cached = this.#entries.get(entry);
+        if (cached !== undefined && matches(cached, entry, options)) return cached.lines;
+
+        const lines = renderEntry();
+        this.#entries.set(entry, {
+            backgroundTerminalCompletion: entry.backgroundTerminalCompletion,
+            backgroundTerminalInteraction: entry.backgroundTerminalInteraction,
+            detail: entry.detail,
+            dynamicState: options.dynamicState,
+            execCommand: entry.execCommand,
+            fileDiffs: entry.fileDiffs,
+            lines,
+            mcpToolCall: entry.mcpToolCall,
+            omittedFileDiffs: entry.omittedFileDiffs,
+            permissionReview: entry.permissionReview,
+            role: entry.role,
+            text: entry.text,
+            theme: options.theme,
+            title: entry.title,
+            turnElapsedMs: entry.turnElapsedMs,
+            width: options.width,
+        });
+        return lines;
+    }
+
+    clear(): void {
+        this.#entries = new WeakMap();
+    }
+}
+
+function matches(
+    cached: CachedEntryRender,
+    entry: AppTranscriptEntry,
+    options: { dynamicState: string; theme: object; width: number },
+): boolean {
+    return (
+        cached.backgroundTerminalCompletion === entry.backgroundTerminalCompletion &&
+        cached.backgroundTerminalInteraction === entry.backgroundTerminalInteraction &&
+        cached.detail === entry.detail &&
+        cached.dynamicState === options.dynamicState &&
+        cached.execCommand === entry.execCommand &&
+        cached.fileDiffs === entry.fileDiffs &&
+        cached.mcpToolCall === entry.mcpToolCall &&
+        cached.omittedFileDiffs === entry.omittedFileDiffs &&
+        cached.permissionReview === entry.permissionReview &&
+        cached.role === entry.role &&
+        cached.text === entry.text &&
+        cached.theme === options.theme &&
+        cached.title === entry.title &&
+        cached.turnElapsedMs === entry.turnElapsedMs &&
+        cached.width === options.width
+    );
+}

@@ -2503,7 +2503,7 @@ describe("CodingAssistantApp", () => {
         expect(rendered).not.toContain("↳ queued");
     });
 
-    it("keeps the composer cursor steady while typing and blinks after idle", () => {
+    it("keeps the composer cursor steady without idle redraws", () => {
         vi.useFakeTimers();
         try {
             const model = defineModel({
@@ -2536,12 +2536,13 @@ describe("CodingAssistantApp", () => {
 
             app.focused = true;
             app.handleInput("h");
+            vi.mocked(tui.requestRender).mockClear();
             vi.advanceTimersByTime(530);
             expect(app.render(80).join("\n")).toContain("\x1b[48;5;244m\x1b[38;5;232m ");
 
             vi.advanceTimersByTime(530);
-            expect(app.render(80).join("\n")).not.toContain("\x1b[48;5;244m\x1b[38;5;232m ");
-            expect(tui.requestRender).toHaveBeenCalled();
+            expect(app.render(80).join("\n")).toContain("\x1b[48;5;244m\x1b[38;5;232m ");
+            expect(tui.requestRender).not.toHaveBeenCalled();
             app.focused = false;
         } finally {
             vi.useRealTimers();
@@ -3193,13 +3194,14 @@ describe("CodingAssistantApp", () => {
             expect(stripAnsi(visibleCursor)).toContain("› Ask Rig to do anything");
             expect(stripAnsi(visibleCursor)).not.toContain("›  Ask Rig to do anything");
 
+            vi.mocked(tui.requestRender).mockClear();
             vi.advanceTimersByTime(530);
 
-            const hiddenCursor = app.render(80).join("\n");
-            expect(hiddenCursor).not.toContain("\x1b[48;5;244m\x1b[38;5;232mA");
-            expect(stripAnsi(hiddenCursor)).toContain("› Ask Rig to do anything");
-            expect(stripAnsi(hiddenCursor)).not.toContain("›  Ask Rig to do anything");
-            expect(tui.requestRender).toHaveBeenCalled();
+            const steadyCursor = app.render(80).join("\n");
+            expect(steadyCursor).toContain("\x1b[48;5;244m\x1b[38;5;232mA");
+            expect(stripAnsi(steadyCursor)).toContain("› Ask Rig to do anything");
+            expect(stripAnsi(steadyCursor)).not.toContain("›  Ask Rig to do anything");
+            expect(tui.requestRender).not.toHaveBeenCalled();
             app.focused = false;
         } finally {
             vi.useRealTimers();
@@ -4411,7 +4413,7 @@ describe("CodingAssistantApp", () => {
         await app.waitForIdle();
     });
 
-    it("moves elapsed time into history without resetting for permission input", () => {
+    it("does not add elapsed history for a permission-only conversational turn", () => {
         const model = defineModel({
             id: "openai/gpt-test",
             name: "GPT Test",
@@ -4528,7 +4530,7 @@ describe("CodingAssistantApp", () => {
 
         const rendered = stripAnsi(app.render(100).join("\n"));
         expect(rendered).toContain("TASK_COMPLETE");
-        expect(rendered).toContain("Worked for 1m 5s");
+        expect(rendered).not.toContain("Worked for");
         expect(rendered).not.toContain("esc to interrupt");
     });
 

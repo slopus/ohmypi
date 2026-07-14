@@ -70,7 +70,10 @@ describe("agent response colors", () => {
         expect(stylesForText(snapshot, "Ran")).toEqual([
             expect.objectContaining({ foreground: { kind: "palette", index: 202 } }),
         ]);
-        expect(stylesForText(snapshot, "printf command-orange-check")).toEqual([
+        expect(stylesForText(snapshot, "printf")).toEqual([
+            expect.objectContaining({ foreground: { kind: "palette", index: 75 } }),
+        ]);
+        expect(stylesForText(snapshot, "command-orange-check")).toEqual([
             expect.objectContaining({ foreground: null }),
         ]);
     });

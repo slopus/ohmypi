@@ -15,6 +15,7 @@ export function renderExecCommand(
     options: {
         brand: string;
         primary: string;
+        review?: string;
         status: string;
         verb: string;
         width: number;
@@ -35,6 +36,18 @@ export function renderExecCommand(
             true,
         ),
     );
+
+    if (options.review !== undefined) {
+        const prefix = `${DIM}  ├ ${RESET}${DIM}`;
+        const reviewWidth = Math.max(1, width - visibleWidth(prefix));
+        const wrappedReview = wrapTextWithAnsi(options.review, reviewWidth);
+        const indent = `${" ".repeat(visibleWidth(prefix))}${DIM}`;
+        lines.push(
+            ...wrappedReview.map((line, index) =>
+                truncateToWidth(`${index === 0 ? prefix : indent}${line}${RESET}`, width, "", true),
+            ),
+        );
+    }
 
     const outputLines = selectOutputLines(presentation.output);
     for (const [index, output] of outputLines.entries()) {

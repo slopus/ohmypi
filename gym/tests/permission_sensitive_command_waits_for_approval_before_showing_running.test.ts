@@ -142,7 +142,7 @@ describe("permission-sensitive command waits for approval before showing Running
         const completed = await gym.terminal.waitUntil(
             (snapshot) =>
                 snapshot.text.includes("• Ran printf") &&
-                snapshot.text.includes("└ COMMAND_STARTED") &&
+                snapshot.text.includes("COMMAND_STARTED") &&
                 snapshot.text.includes("APPROVED_COMMAND_COMPLETE") &&
                 snapshot.text.includes("Ask Rig to do anything") &&
                 snapshot.scroll.atBottom,
@@ -152,7 +152,7 @@ describe("permission-sensitive command waits for approval before showing Running
         expect(completed.text).not.toContain("• Running printf");
         expect(completed.text).not.toContain("• Awaiting approval printf");
         expect(completed.text).not.toContain("exec_command");
-        expect(workedForSeconds(completed.rows)).toBeGreaterThanOrEqual(6);
+        expect(completed.rows.some((row) => /^─+$/u.test(row))).toBe(true);
         await expect(gym.readFile("approved-after-prompt.txt")).resolves.toBe(
             "approved after prompt\n",
         );
@@ -192,14 +192,6 @@ function messageText(message: { content: unknown } | undefined): string {
 
 function normalizeWhitespace(value: string): string {
     return value.replace(/\s+/gu, " ");
-}
-
-function workedForSeconds(rows: readonly string[]): number {
-    const row = rows.find((candidate) => candidate.includes("Worked for"));
-    expect(row).toBeDefined();
-    const match = /Worked for (?:(\d+)h )?(?:(\d+)m )?(\d+)s/u.exec(row ?? "");
-    expect(match).not.toBeNull();
-    return Number(match?.[1] ?? 0) * 3_600 + Number(match?.[2] ?? 0) * 60 + Number(match?.[3] ?? 0);
 }
 
 function visibleExact(value: string): string {

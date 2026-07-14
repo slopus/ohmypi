@@ -115,16 +115,15 @@ describe("long-running exec accepts input and completes", () => {
             (snapshot) =>
                 yieldedSessionId !== undefined &&
                 snapshot.text.includes("• Ran printf") &&
-                snapshot.text.includes("Command is still running in the background.") &&
-                snapshot.text.includes("Output so far: WAITING_FOR_INPUT") &&
+                snapshot.text.includes("1 background terminal running") &&
+                snapshot.text.includes("WAITING_FOR_INPUT") &&
                 snapshot.scroll.atBottom,
             "the yielded command after tool execution ended",
             30_000,
         );
         expect(yielded.text).toContain("Ran printf");
         expect(yielded.text).not.toContain("• Running printf");
-        expect(yielded.text).toContain("Command is still running in the background.");
-        expect(yielded.text).toContain("Output so far: WAITING_FOR_INPUT");
+        expect(yielded.text).toContain("1 background terminal running");
         expect(yielded.scroll.bottomDepartureCount).toBe(baseline.bottomDepartureCount);
         expect(yielded.scroll.topArrivalCount).toBe(baseline.topArrivalCount);
 

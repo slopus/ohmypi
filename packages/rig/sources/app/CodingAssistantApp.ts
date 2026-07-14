@@ -85,6 +85,7 @@ import { sanitizeTerminalText } from "./sanitizeTerminalText.js";
 import { renderSubagentSummary } from "./renderSubagentSummary.js";
 import { renderTurnCompletionSeparator } from "./renderTurnCompletionSeparator.js";
 import { renderWorkflowSummary } from "./renderWorkflowSummary.js";
+import { TranscriptEntryRenderCache } from "./TranscriptEntryRenderCache.js";
 import { upsertSubagentSummary } from "./upsertSubagentSummary.js";
 import { applyWorkflowRunUpdate } from "./applyWorkflowRunUpdate.js";
 import type { TerminalTheme } from "./TerminalTheme.js";
@@ -99,8 +100,6 @@ const INPUT_PLACEHOLDER = "Ask Rig to do anything";
 const INPUT_PROMPT = "› ";
 const INPUT_LINE_INDENT = "  ";
 const PENDING_TOOL_CALL_TITLE = "Working";
-const CURSOR_BLINK_MS = 530;
-const CURSOR_TYPING_DEBOUNCE_MS = 530;
 const ACTIVITY_ANIMATION_MS = 120;
 const REASONING_DOWN_RAW_KEYS = new Set(["\x1b,", "\x1b[1;2B"]);
 const REASONING_UP_RAW_KEYS = new Set(["\x1b.", "\x1b[1;2A"]);
@@ -268,11 +267,9 @@ export class CodingAssistantApp implements Component, Focusable {
     #activityAnimationFrame = 0;
     #activityStartedAtMs: number | undefined;
     #activityAnimationTimer: ReturnType<typeof setInterval> | undefined;
-    #cursorBlinkTimer: ReturnType<typeof setInterval> | undefined;
-    #cursorTyping = false;
-    #cursorTypingDebounceTimer: ReturnType<typeof setTimeout> | undefined;
     #cursorVisible = true;
     #entries: AppTranscriptEntry[] = [];
+    readonly #entryRenderCache = new TranscriptEntryRenderCache();
     #showHeaderInFrame = true;
     #transcriptStartIndex = 0;
     #lastRenderedWidth = 80;
@@ -321,6 +318,7 @@ export class CodingAssistantApp implements Component, Focusable {
     #toolCallEntryIdsByContentIndex = new Map<number, string>();
     #streamedToolCallEntries = new Set<AppTranscriptEntry>();
     #deferredTurnSeparator = false;
+    #workSegmentStartedAtMs: number | undefined;
     #renderedCompletionNotices = new Map<string, number>();
     #runningToolCallIds = new Set<string>();
     #stoppingBackgroundTerminals = false;
@@ -403,7 +401,6 @@ export class CodingAssistantApp implements Component, Focusable {
         this.#editor.focused = value && this.#terminalFocused;
         this.#cursorVisible = true;
         if (value && this.#terminalFocused) {
-            this.#cursorTyping = false;
             this.#startCursorBlink();
         } else {
             this.#stopCursorBlink();
@@ -606,6 +603,8 @@ export class CodingAssistantApp implements Component, Focusable {
         }
 
         if (event.type === "run_error") {
+            this.#deferredTurnSeparator = false;
+            this.#workSegmentStartedAtMs = undefined;
             this.#discardPendingToolCallEntries();
             this.#running = false;
             this.#modelLocked = this.#pendingPrompts.length > 0;
@@ -1968,9 +1967,6 @@ export class CodingAssistantApp implements Component, Focusable {
             this.#streamedToolCallEntries.clear();
             this.#thinkingEntryIdsByContentIndex.clear();
             this.#toolCallEntryIdsByContentIndex.clear();
-            if (event.iteration > 1) {
-                this.#deferredTurnSeparator = true;
-            }
         } else if (event.type === "text_start") {
             this.#flushDeferredTurnSeparator();
             this.#statusText = "Running";
@@ -1981,14 +1977,11 @@ export class CodingAssistantApp implements Component, Focusable {
             this.#flushDeferredTurnSeparator();
             this.#finishStreamText(event.content);
         } else if (event.type === "thinking_start") {
-            this.#flushDeferredTurnSeparator();
             this.#statusText = "Thinking";
         } else if (event.type === "thinking_delta") {
-            this.#flushDeferredTurnSeparator();
             this.#statusText = "Thinking";
             this.#appendThinkingText(event.contentIndex, event.delta);
         } else if (event.type === "thinking_end") {
-            this.#flushDeferredTurnSeparator();
             this.#statusText = "Thinking";
             this.#finishThinkingText(event.contentIndex, event.content);
         } else if (event.type === "toolcall_start") {
@@ -2006,6 +1999,7 @@ export class CodingAssistantApp implements Component, Focusable {
             this.#refreshToolActivityStatus();
         } else if (event.type === "tool_execution_end") {
             this.#finishToolResult(event.result);
+            this.#markConcreteWorkCompleted(event.result);
             this.#refreshToolActivityStatus();
         } else if (event.type === "tool_execution_progress") {
             const entry = this.#entries.find((candidate) => candidate.id === event.toolCallId);
@@ -2022,7 +2016,6 @@ export class CodingAssistantApp implements Component, Focusable {
                 text: `Summarized ${event.compactedMessageCount} older messages; ${formatTokens(event.estimatedTokensBefore)} → ${formatTokens(event.estimatedTokensAfter)} tokens.`,
             });
         } else if (event.type === "tool_batch_rejected") {
-            this.#flushDeferredTurnSeparator();
             const rejectedIds = new Set(event.toolCallIds);
             this.#entries = this.#entries.filter(
                 (entry) => !this.#streamedToolCallEntries.has(entry),
@@ -2095,6 +2088,8 @@ export class CodingAssistantApp implements Component, Focusable {
     }
 
     #appendAbortNotice(): void {
+        this.#deferredTurnSeparator = false;
+        this.#workSegmentStartedAtMs = undefined;
         this.#markActiveToolCallsStopped();
         this.#activeToolCallIds.clear();
         this.#awaitingApprovalToolCallIds.clear();
@@ -2164,6 +2159,7 @@ export class CodingAssistantApp implements Component, Focusable {
                 });
             } else if (block.type === "tool_result") {
                 this.#finishToolResult(block);
+                this.#markConcreteWorkCompleted(block);
             }
         }
 
@@ -2293,8 +2289,6 @@ export class CodingAssistantApp implements Component, Focusable {
             return;
         }
 
-        this.#flushDeferredTurnSeparator(existing);
-
         if (existing !== undefined) {
             existing.id = toolCall.id;
             existing.title = this.#toolDisplayName(toolCall.name);
@@ -2356,10 +2350,16 @@ export class CodingAssistantApp implements Component, Focusable {
     #flushDeferredTurnSeparator(beforeEntry?: AppTranscriptEntry): void {
         if (!this.#deferredTurnSeparator) return;
         this.#deferredTurnSeparator = false;
+        const elapsedMs = Math.max(
+            0,
+            this.#now() - (this.#workSegmentStartedAtMs ?? this.#lastUserInputAtMs ?? this.#now()),
+        );
+        this.#workSegmentStartedAtMs = undefined;
         const separator: AppTranscriptEntry = {
             id: this.#idFactory(),
             role: "separator",
             text: "",
+            turnElapsedMs: elapsedMs,
         };
         const beforeIndex = beforeEntry === undefined ? -1 : this.#entries.indexOf(beforeEntry);
         if (beforeIndex < 0) {
@@ -2414,6 +2414,7 @@ export class CodingAssistantApp implements Component, Focusable {
         if (this.#streamEntryId !== undefined) {
             const entry = this.#entries.find((candidate) => candidate.id === this.#streamEntryId);
             if (entry !== undefined) {
+                this.#flushDeferredTurnSeparator(entry);
                 entry.id = messageId;
                 entry.text = text;
                 this.#streamEntryId = undefined;
@@ -2421,6 +2422,7 @@ export class CodingAssistantApp implements Component, Focusable {
             }
         }
 
+        this.#flushDeferredTurnSeparator();
         this.#appendEntry({ id: messageId, role: "assistant", text });
     }
 
@@ -2483,6 +2485,7 @@ export class CodingAssistantApp implements Component, Focusable {
         this.#observedShellProcesses = [];
         this.#yieldedBackgroundTerminals.clear();
         this.#deferredTurnSeparator = false;
+        this.#workSegmentStartedAtMs = undefined;
     }
 
     #discardPendingToolCallEntries(): void {
@@ -2500,7 +2503,6 @@ export class CodingAssistantApp implements Component, Focusable {
             Math.min(this.#transcriptStartIndex - removedBeforeStart, this.#entries.length),
         );
         this.#streamedToolCallEntries.clear();
-        this.#deferredTurnSeparator = false;
         this.#removeOrphanedSeparators();
     }
 
@@ -2540,12 +2542,30 @@ export class CodingAssistantApp implements Component, Focusable {
     #renderTranscriptEntries(entries: readonly AppTranscriptEntry[], width: number): string[] {
         const lines: string[] = [];
         for (const entry of entries) {
-            const entryLines = this.#renderEntry(entry, width);
+            const entryLines = this.#entryRenderCache.render(
+                entry,
+                {
+                    dynamicState: this.#entryRenderState(entry),
+                    theme: this.#theme,
+                    width,
+                },
+                () => this.#renderEntry(entry, width),
+            );
             if (entryLines.length === 0) continue;
             if (lines.length > 0) lines.push("");
             lines.push(...entryLines);
         }
         return lines;
+    }
+
+    #entryRenderState(entry: AppTranscriptEntry): string {
+        if (entry.role !== "tool" && entry.role !== "error") return "";
+        return [
+            this.#activeToolCallIds.has(entry.id),
+            this.#awaitingApprovalToolCallIds.has(entry.id),
+            this.#stoppedToolCallIds.has(entry.id),
+            this.#shouldRenderActivityAsLastMessage(),
+        ].join(":");
     }
 
     #visibleTranscriptEntries(startIndex: number, endIndex: number): AppTranscriptEntry[] {
@@ -2608,6 +2628,7 @@ export class CodingAssistantApp implements Component, Focusable {
             return renderExecCommand(entry.execCommand, {
                 brand: this.#theme.brand,
                 primary: this.#theme.primary,
+                ...(entry.permissionReview === undefined ? {} : { review: entry.permissionReview }),
                 status: stopped || isError ? this.#theme.error : this.#theme.success,
                 verb: stopped ? "Stopped" : isError ? "Failed" : "Ran",
                 width,
@@ -3795,17 +3816,41 @@ export class CodingAssistantApp implements Component, Focusable {
     }
 
     #appendTurnCompletion(elapsedMs: number): void {
+        if (!this.#deferredTurnSeparator) return;
+        this.#deferredTurnSeparator = false;
+        const segmentElapsedMs = Math.max(
+            0,
+            this.#now() - (this.#workSegmentStartedAtMs ?? this.#lastUserInputAtMs ?? this.#now()),
+        );
+        this.#workSegmentStartedAtMs = undefined;
         const latest = this.#entries.at(-1);
         if (latest?.role === "separator") {
-            latest.turnElapsedMs = elapsedMs;
+            latest.turnElapsedMs = segmentElapsedMs || elapsedMs;
             this.#requestRender();
             return;
         }
         this.#appendEntry({
             role: "separator",
             text: "",
-            turnElapsedMs: elapsedMs,
+            turnElapsedMs: segmentElapsedMs || elapsedMs,
         });
+    }
+
+    #markConcreteWorkCompleted(
+        result: Pick<ToolResultBlock, "presentation" | "toolCallId" | "toolName">,
+    ): void {
+        const entry = this.#entries.find((candidate) => candidate.id === result.toolCallId);
+        const normalized = result.toolName.toLowerCase();
+        const concreteTool =
+            result.presentation !== undefined ||
+            entry?.mcpToolCall !== undefined ||
+            normalized === "bash" ||
+            normalized === "web_search" ||
+            normalized === "websearch" ||
+            normalized.startsWith("mcp__");
+        if (!concreteTool) return;
+        this.#deferredTurnSeparator = true;
+        this.#workSegmentStartedAtMs ??= this.#lastUserInputAtMs ?? this.#now();
     }
 
     #recordClosedBackgroundTerminals(nextProcesses: readonly BashSessionActivity[]): void {
@@ -3815,7 +3860,6 @@ export class CodingAssistantApp implements Component, Focusable {
         );
         if (closed.length === 0 || this.#stoppingBackgroundTerminals) return;
 
-        this.#deferredTurnSeparator = false;
         for (const [sessionId, command] of closed) {
             this.#yieldedBackgroundTerminals.delete(sessionId);
             this.#backgroundTerminalEntryIdsBySession.delete(sessionId);
@@ -4291,18 +4335,7 @@ export class CodingAssistantApp implements Component, Focusable {
     }
 
     #markTypingActivity(): void {
-        this.#cursorTyping = true;
         this.#cursorVisible = true;
-
-        if (this.#cursorTypingDebounceTimer !== undefined) {
-            clearTimeout(this.#cursorTypingDebounceTimer);
-        }
-
-        this.#cursorTypingDebounceTimer = setTimeout(() => {
-            this.#cursorTypingDebounceTimer = undefined;
-            this.#cursorTyping = false;
-        }, CURSOR_TYPING_DEBOUNCE_MS);
-        this.#cursorTypingDebounceTimer.unref?.();
     }
 
     #stripEditorChrome(lines: string[]): string[] {
@@ -4350,35 +4383,10 @@ export class CodingAssistantApp implements Component, Focusable {
     }
 
     #startCursorBlink(): void {
-        if (this.#cursorBlinkTimer !== undefined || this.#stopped) {
-            return;
-        }
-
-        this.#cursorBlinkTimer = setInterval(() => {
-            if (!this.#focused || this.#stopped || this.#cursorTyping) {
-                return;
-            }
-
-            this.#cursorVisible = !this.#cursorVisible;
-            this.#requestRender();
-        }, CURSOR_BLINK_MS);
-        this.#cursorBlinkTimer.unref?.();
+        if (!this.#stopped) this.#cursorVisible = true;
     }
 
     #stopCursorBlink(): void {
-        if (this.#cursorTypingDebounceTimer !== undefined) {
-            clearTimeout(this.#cursorTypingDebounceTimer);
-            this.#cursorTypingDebounceTimer = undefined;
-        }
-
-        this.#cursorTyping = false;
-
-        if (this.#cursorBlinkTimer === undefined) {
-            return;
-        }
-
-        clearInterval(this.#cursorBlinkTimer);
-        this.#cursorBlinkTimer = undefined;
         this.#cursorVisible = true;
     }
 
