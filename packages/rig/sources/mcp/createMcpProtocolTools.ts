@@ -4,6 +4,7 @@ import { Type } from "@sinclair/typebox";
 import { defineTool, type AnyDefinedTool, type ContentBlock } from "../agent/types.js";
 import { runMcpClientCall } from "./runMcpClientCall.js";
 import { mcpResultToContentBlocks } from "./mcpResultToContentBlocks.js";
+import { isMcpErrorResult } from "./isMcpErrorResult.js";
 
 interface McpProtocolConnection {
     client: Client;
@@ -87,6 +88,7 @@ export function createMcpProtocolTools(
                     }),
                 );
             },
+            isError: isMcpErrorResult,
             toLLM: mcpResultToContentBlocks,
             toUI: (_result, args) => `Called ${humanize(args.name)} from ${humanize(args.server)}`,
             locks: ["mcp:dynamic"],

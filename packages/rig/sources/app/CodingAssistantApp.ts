@@ -42,6 +42,7 @@ import type { UserInputRequest, UserInputResponse } from "../user-input/index.js
 import { createCodeReviewPrompt } from "../review/index.js";
 import type { ActiveWorkItem } from "./ActiveWorkItem.js";
 import type { AppTranscriptEntry } from "./AppTranscriptEntry.js";
+import type { CodexMcpToolCall } from "./CodexMcpToolCall.js";
 import type {
     CodingAssistantAgentBackend,
     CodingAssistantModelChoice,
@@ -56,6 +57,7 @@ import { describeModelChoice } from "./describeModelChoice.js";
 import { describeReasoningLevel } from "./describeReasoningLevel.js";
 import { encodeModelChoice } from "./encodeModelChoice.js";
 import { formatActivityElapsedTime } from "./formatActivityElapsedTime.js";
+import { formatCodexMcpToolResult } from "./formatCodexMcpToolResult.js";
 import { FileMentionAutocomplete } from "./FileMentionAutocomplete.js";
 import type { FileMentionContext } from "./findFileMentionContext.js";
 import { formatFileMention } from "./formatFileMention.js";
@@ -64,6 +66,7 @@ import { humanizeReasoningLevel } from "./humanizeReasoningLevel.js";
 import { humanizePermissionMode } from "./humanizePermissionMode.js";
 import { humanizeGoalStatus } from "./humanizeGoalStatus.js";
 import { humanizeToolName } from "./humanizeToolName.js";
+import { parseCodexMcpToolInvocation } from "./parseCodexMcpToolInvocation.js";
 import {
     readClipboardImage,
     type ClipboardImage,
@@ -72,6 +75,7 @@ import {
 import { ACTIVITY_WAVE_FRAME_COUNT, renderActivityWave } from "./renderActivityWave.js";
 import { renderActiveWorkItem } from "./renderActiveWorkItem.js";
 import { renderAgentMarkdown } from "./renderAgentMarkdown.js";
+import { renderCodexMcpToolCall } from "./renderCodexMcpToolCall.js";
 import { sanitizeTerminalText } from "./sanitizeTerminalText.js";
 import { upsertSubagentSummary } from "./upsertSubagentSummary.js";
 import { applyWorkflowRunUpdate } from "./applyWorkflowRunUpdate.js";
@@ -530,6 +534,7 @@ export class CodingAssistantApp implements Component, Focusable {
             this.#streamEntryId = undefined;
             this.#thinkingEntryIdsByContentIndex.clear();
             this.#toolCallEntryIdsByContentIndex.clear();
+            this.#markActiveToolCallsStopped();
             this.#activeToolCallIds.clear();
             this.#awaitingApprovalToolCallIds.clear();
             this.#runningToolCallIds.clear();
@@ -545,6 +550,7 @@ export class CodingAssistantApp implements Component, Focusable {
             this.#modelLocked = this.#pendingPrompts.length > 0;
             this.#statusText = "Error";
             this.#stopActivityAnimation();
+            this.#markActiveToolCallsStopped();
             this.#activeToolCallIds.clear();
             this.#awaitingApprovalToolCallIds.clear();
             this.#runningToolCallIds.clear();
@@ -2004,11 +2010,13 @@ export class CodingAssistantApp implements Component, Focusable {
                 this.#finishThinkingMessage(message.id, contentIndex, block.thinking);
             } else if (block.type === "tool_call" && !this.#seenToolCallIds.has(block.id)) {
                 this.#seenToolCallIds.add(block.id);
+                const mcpToolCall = this.#createMcpToolCall(block.name, block.arguments);
                 this.#appendEntry({
                     id: block.id,
                     role: "tool",
                     title: this.#toolDisplayName(block.name),
                     text: this.#formatToolCall(block.name, block.arguments),
+                    ...(mcpToolCall === undefined ? {} : { mcpToolCall }),
                 });
             } else if (block.type === "tool_result") {
                 this.#finishToolResult(block);
@@ -2108,6 +2116,7 @@ export class CodingAssistantApp implements Component, Focusable {
         this.#stoppedToolCallIds.delete(toolCall.id);
         this.#activeToolCallIds.add(toolCall.id);
         this.#statusText = `Calling ${this.#toolDisplayName(toolCall.name)}`;
+        const mcpToolCall = this.#createMcpToolCall(toolCall.name, toolCall.arguments);
 
         const existingId = this.#toolCallEntryIdsByContentIndex.get(contentIndex);
         const existing =
@@ -2119,6 +2128,11 @@ export class CodingAssistantApp implements Component, Focusable {
             existing.id = toolCall.id;
             existing.title = this.#toolDisplayName(toolCall.name);
             existing.text = this.#formatToolCall(toolCall.name, toolCall.arguments);
+            if (mcpToolCall === undefined) {
+                delete existing.mcpToolCall;
+            } else {
+                existing.mcpToolCall = mcpToolCall;
+            }
             this.#toolCallEntryIdsByContentIndex.delete(contentIndex);
             return;
         }
@@ -2129,6 +2143,7 @@ export class CodingAssistantApp implements Component, Focusable {
             role: "tool",
             title: this.#toolDisplayName(toolCall.name),
             text: this.#formatToolCall(toolCall.name, toolCall.arguments),
+            ...(mcpToolCall === undefined ? {} : { mcpToolCall }),
         });
     }
 
@@ -2165,6 +2180,9 @@ export class CodingAssistantApp implements Component, Focusable {
         };
         if (entry.detail !== undefined) {
             completeEntry.detail = entry.detail;
+        }
+        if (entry.mcpToolCall !== undefined) {
+            completeEntry.mcpToolCall = entry.mcpToolCall;
         }
         if (entry.permissionReview !== undefined) {
             completeEntry.permissionReview = entry.permissionReview;
@@ -2297,6 +2315,9 @@ export class CodingAssistantApp implements Component, Focusable {
         }
         if (entry.role === "thinking") {
             return this.#renderThinkingEntry(entry, width);
+        }
+        if (entry.mcpToolCall !== undefined) {
+            return this.#renderMcpToolEntry(entry, width);
         }
         if (entry.role === "tool") {
             return this.#renderToolEntry(entry, width, false);
@@ -2912,7 +2933,8 @@ export class CodingAssistantApp implements Component, Focusable {
     }
 
     #finishToolResult(
-        block: Pick<ToolResultBlock, "display" | "isError" | "toolCallId" | "toolName">,
+        block: Pick<ToolResultBlock, "display" | "isError" | "toolCallId" | "toolName"> &
+            Partial<Pick<ToolResultBlock, "rendered">>,
     ): void {
         this.#activeToolCallIds.delete(block.toolCallId);
         this.#awaitingApprovalToolCallIds.delete(block.toolCallId);
@@ -2933,6 +2955,18 @@ export class CodingAssistantApp implements Component, Focusable {
         if (existing !== undefined) {
             existing.role = block.isError ? "error" : "tool";
             existing.title = this.#toolDisplayName(block.toolName);
+            if (existing.mcpToolCall !== undefined) {
+                const result = formatCodexMcpToolResult(block.rendered);
+                existing.mcpToolCall = {
+                    invocation: existing.mcpToolCall.invocation,
+                    ...(result === undefined
+                        ? existing.mcpToolCall.result === undefined
+                            ? {}
+                            : { result: existing.mcpToolCall.result }
+                        : { result }),
+                    status: block.isError === true ? "error" : "success",
+                };
+            }
             if (block.display === `Unknown tool '${block.toolName}' requested by model`) {
                 existing.text = this.#toolDisplayName(block.toolName);
             }
@@ -3025,6 +3059,11 @@ export class CodingAssistantApp implements Component, Focusable {
         if (normalized === "interrupt_agent") return "Stop delegated work";
 
         return this.#toolDisplayName(toolName);
+    }
+
+    #createMcpToolCall(toolName: string, args: unknown): CodexMcpToolCall | undefined {
+        const invocation = parseCodexMcpToolInvocation(toolName, args);
+        return invocation === undefined ? undefined : { invocation, status: "active" };
     }
 
     #toolDisplayName(toolName: string): string {
@@ -3201,6 +3240,37 @@ export class CodingAssistantApp implements Component, Focusable {
             );
         }
         return lines;
+    }
+
+    #renderMcpToolEntry(entry: AppTranscriptEntry, width: number): string[] {
+        const call = entry.mcpToolCall;
+        if (call === undefined) return [];
+        const stopped = this.#stoppedToolCallIds.has(entry.id);
+        const result: string[] = [];
+        if (call.result !== undefined) {
+            result.push(...(typeof call.result === "string" ? [call.result] : call.result));
+        } else if (entry.detail !== undefined && call.status === "active" && !stopped) {
+            result.push(entry.detail);
+        }
+        if (stopped && result.length === 0) result.push("Interrupted.");
+
+        return renderCodexMcpToolCall(
+            {
+                invocation: call.invocation,
+                ...(entry.permissionReview === undefined ? {} : { review: entry.permissionReview }),
+                ...(result.length === 0 ? {} : { result }),
+                status: stopped ? "error" : call.status,
+            },
+            {
+                palette: {
+                    accent: this.#theme.accent,
+                    error: this.#theme.error,
+                    primary: this.#theme.primary,
+                    success: this.#theme.success,
+                },
+                width,
+            },
+        );
     }
 
     #renderNoticeEntry(title: string, text: string, width: number, color: string): string[] {

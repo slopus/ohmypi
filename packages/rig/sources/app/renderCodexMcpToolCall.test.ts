@@ -1,0 +1,179 @@
+/* eslint-disable no-control-regex -- Tests intentionally inspect terminal ANSI controls. */
+
+import { visibleWidth } from "@earendil-works/pi-tui";
+import { describe, expect, it } from "vitest";
+
+import type { CodexMcpToolCall } from "./CodexMcpToolCall.js";
+import { renderCodexMcpToolCall } from "./renderCodexMcpToolCall.js";
+
+const ANSI_PATTERN = /\x1b\[[0-?]*[ -/]*[@-~]/g;
+
+function stripAnsi(value: string): string {
+    return value.replace(ANSI_PATTERN, "");
+}
+
+describe("renderCodexMcpToolCall", () => {
+    it("renders a short successful invocation inline with compact arguments and Codex styles", () => {
+        const rendered = renderCodexMcpToolCall(
+            {
+                invocation: {
+                    server: "node_repl",
+                    tool: "js",
+                    arguments: { title: "List tabs", timeout_ms: 30_000 },
+                },
+                result: "{ ready: true }",
+                status: "success",
+            },
+            { width: 100 },
+        );
+
+        expect(rendered.map(stripAnsi)).toEqual([
+            '• Called node_repl.js({"title":"List tabs","timeout_ms":30000})',
+            "  └ { ready: true }",
+        ]);
+        expect(rendered[0]).toContain("\x1b[32m\x1b[1m•\x1b[22m\x1b[39m");
+        expect(rendered[0]).toContain("\x1b[1mCalled\x1b[22m");
+        expect(rendered[0]).toContain("\x1b[36mnode_repl\x1b[39m.\x1b[36mjs\x1b[39m(");
+        expect(rendered[0]).toContain('\x1b[2m{"title":"List tabs","timeout_ms":30000}\x1b[22m');
+        expect(rendered[1]).toBe("\x1b[2m  └ { ready: true }\x1b[22m");
+    });
+
+    it("moves a long invocation below the header and preserves multiline structured output", () => {
+        const call: CodexMcpToolCall = {
+            invocation: {
+                server: "node_repl",
+                tool: "js",
+                arguments: {
+                    title: "Final one-click agent creation",
+                    timeout_ms: 60_000,
+                    code: "nodeRepl.write({ dialogs: [0, 0], agent: 1 })",
+                },
+            },
+            result: "{\n  dialogs: [ 0, 0 ],\n  topic: 'workspace',\n  agent: 1\n}",
+            status: "success",
+        };
+        const rendered = renderCodexMcpToolCall(call, { width: 48 });
+        const plain = rendered.map(stripAnsi);
+        const resultStart = plain.indexOf("    {");
+
+        expect(plain[0]).toBe("• Called");
+        expect(plain[1]).toMatch(/^  └ node_repl\.js\(/u);
+        expect(plain.slice(2, resultStart).every((line) => line.startsWith("        "))).toBe(true);
+        expect(plain.slice(resultStart)).toEqual([
+            "    {",
+            "      dialogs: [ 0, 0 ],",
+            "      topic: 'workspace',",
+            "      agent: 1",
+            "    }",
+        ]);
+        expect(rendered.every((line) => visibleWidth(line) <= 48)).toBe(true);
+    });
+
+    it("uses a red completed bullet for failures without changing Called to Failed", () => {
+        const rendered = renderCodexMcpToolCall(
+            {
+                invocation: { server: "search", tool: "find_docs", arguments: { query: "TUI" } },
+                result: "Error: network timeout",
+                status: "error",
+            },
+            { width: 80 },
+        );
+
+        expect(rendered.map(stripAnsi)).toEqual([
+            '• Called search.find_docs({"query":"TUI"})',
+            "  └ Error: network timeout",
+        ]);
+        expect(rendered[0]).toContain("\x1b[31m\x1b[1m•\x1b[22m\x1b[39m");
+        expect(rendered.join("\n")).not.toContain("Failed");
+    });
+
+    it("renders active calls as Calling and accepts a theme palette", () => {
+        const rendered = renderCodexMcpToolCall(
+            {
+                invocation: { server: "metrics", tool: "summary", arguments: {} },
+                status: "active",
+            },
+            {
+                width: 80,
+                palette: {
+                    accent: "\x1b[38;5;81m",
+                    error: "\x1b[38;5;196m",
+                    primary: "\x1b[38;5;252m",
+                    success: "\x1b[38;5;82m",
+                },
+            },
+        );
+
+        expect(rendered.map(stripAnsi)).toEqual(["◦ Calling metrics.summary({})"]);
+        expect(rendered[0]).toMatch(/^\x1b\[38;5;252m\x1b\[2m◦/u);
+        expect(rendered[0]).toContain("\x1b[38;5;81mmetrics\x1b[38;5;252m");
+    });
+
+    it("restores a configured primary color and never exceeds tiny widths", () => {
+        const call: CodexMcpToolCall = {
+            invocation: { server: "tiny", tool: "echo", arguments: { value: "\u0085unsafe" } },
+            result: "done",
+            status: "success",
+        };
+        const palette = {
+            accent: "\x1b[38;5;81m",
+            error: "\x1b[38;5;196m",
+            primary: "\x1b[38;5;252m",
+            success: "\x1b[38;5;82m",
+        };
+
+        const wide = renderCodexMcpToolCall(call, { palette, width: 80 });
+        expect(wide[0]).toContain("\x1b[38;5;81mtiny\x1b[38;5;252m");
+        expect(wide.join("\n")).not.toContain("\u0085");
+        for (let width = 1; width < 9; width += 1) {
+            const narrow = renderCodexMcpToolCall(call, { palette, width });
+            expect(narrow.every((line) => visibleWidth(line) <= width)).toBe(true);
+            expect(narrow.length).toBeLessThanOrEqual(width < 5 ? 1 : 7);
+            expect(narrow.every((line) => stripAnsi(line).trim().length > 0)).toBe(true);
+        }
+    });
+
+    it("budgets approval review separately so it cannot hide the actual result", () => {
+        const rendered = renderCodexMcpToolCall(
+            {
+                invocation: { server: "issues", tool: "close_ticket", arguments: { issue: 42 } },
+                review: "Needs approval because this mutates an external issue and must remain visible without consuming the result budget.",
+                result: "ACTUAL_RESULT",
+                status: "success",
+            },
+            { maxReviewRows: 2, maxResultRows: 1, width: 40 },
+        ).map(stripAnsi);
+
+        expect(rendered).toContain("    ACTUAL_RESULT");
+        expect(
+            rendered.filter((line) => line.includes("approval") || line.includes("because")).length,
+        ).toBeLessThanOrEqual(2);
+    });
+
+    it("sanitizes tool-controlled text and bounds wrapped result rows", () => {
+        const rendered = renderCodexMcpToolCall(
+            {
+                invocation: {
+                    server: "unsafe\x1b]8;;https://example.com\x07",
+                    tool: "echo",
+                    arguments: {},
+                },
+                result: [
+                    "first\nsecond\nthird\nfourth\nfifth",
+                    "\x1b]8;;https://example.com\x07forged link\x1b]8;;\x07",
+                ],
+                status: "success",
+            },
+            { maxResultRows: 3, width: 40 },
+        );
+        const plain = rendered.map(stripAnsi);
+
+        expect(plain).toEqual([
+            "• Called unsafe.echo({})",
+            "  └ first",
+            "    second",
+            "    third...",
+        ]);
+        expect(rendered.join("\n")).not.toContain("]8;;");
+    });
+});

@@ -3,6 +3,7 @@ import { Type } from "@sinclair/typebox";
 
 import { defineTool, type AnyDefinedTool } from "../agent/types.js";
 import { mcpResultToContentBlocks } from "./mcpResultToContentBlocks.js";
+import { isMcpErrorResult } from "./isMcpErrorResult.js";
 import { normalizeMcpName } from "./normalizeMcpName.js";
 import { runMcpClientCall } from "./runMcpClientCall.js";
 
@@ -39,25 +40,14 @@ export function createMcpTool(options: {
                     },
                 ),
             );
-            if (result.isError === true) {
-                throw new Error(firstText(result) ?? "The MCP tool reported an error.");
-            }
             return result;
         },
+        isError: isMcpErrorResult,
         toLLM: (result) => mcpResultToContentBlocks(result),
         toUI: () => `${humanizeName(options.serverName)} · ${humanizeName(options.tool.name)}`,
         locks: options.tool.annotations?.readOnlyHint === true ? [] : [`mcp:${options.serverName}`],
     });
     return tool as AnyDefinedTool;
-}
-
-function firstText(result: unknown): string | undefined {
-    if (!isRecord(result) || !Array.isArray(result.content)) return undefined;
-    const text = result.content.find(
-        (content): content is { text: string } =>
-            isRecord(content) && content.type === "text" && typeof content.text === "string",
-    );
-    return text?.text;
 }
 
 function humanizeName(value: string): string {

@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { createGym, type Gym } from "../../packages/gym/sources/index.js";
 
-const COLS = 80;
+const COLS = 140;
 const ROWS = 24;
 const MCP_TOOL_NAME = "mcp__Echo_Service__echo_value";
 const WORKSPACE_SHADOW_MARKER = "workspace-mcp-shadow-started.txt";
@@ -20,9 +20,36 @@ server.registerTool(
     {
         annotations: { readOnlyHint: true },
         description: "Echo a value from the Gym MCP server.",
-        inputSchema: { value: z.string() },
+        inputSchema: {
+            value: z.string(),
+            options: z.object({
+                format: z.literal("multiline"),
+                includeMetadata: z.boolean(),
+            }),
+        },
     },
-    async ({ value }) => ({ content: [{ type: "text", text: "Echo: " + value }] }),
+    async ({ value, options }) =>
+        value === "error from gym"
+            ? {
+                  isError: true,
+                  content: [
+                      { type: "text", text: "Error: requested gym failure" },
+                      { type: "text", text: "Failure metadata: retryable=false" },
+                  ],
+              }
+            : {
+                  content: [
+                      { type: "text", text: "Echo: " + value },
+                      {
+                          type: "text",
+                          text:
+                              "Echo metadata: format=" +
+                              options.format +
+                              ", includeMetadata=" +
+                              options.includeMetadata,
+                      },
+                  ],
+              },
 );
 
 server.registerResource(
@@ -84,7 +111,13 @@ describe("stdio MCP server connects and echoes through the agent", () => {
                     return {
                         content: [
                             {
-                                arguments: { value: "hello from gym" },
+                                arguments: {
+                                    value: "hello from gym",
+                                    options: {
+                                        format: "multiline",
+                                        includeMetadata: true,
+                                    },
+                                },
                                 id: "mcp-echo-call",
                                 name: MCP_TOOL_NAME,
                                 type: "toolCall",
@@ -95,7 +128,13 @@ describe("stdio MCP server connects and echoes through the agent", () => {
 
                 if (callIndex === 1) {
                     expect(request.context.messages.at(-1)).toMatchObject({
-                        content: [{ text: "Echo: hello from gym", type: "text" }],
+                        content: [
+                            { text: "Echo: hello from gym", type: "text" },
+                            {
+                                text: "Echo metadata: format=multiline, includeMetadata=true",
+                                type: "text",
+                            },
+                        ],
                         isError: false,
                         role: "toolResult",
                         toolCallId: "mcp-echo-call",
@@ -112,6 +151,41 @@ describe("stdio MCP server connects and echoes through the agent", () => {
                 }
 
                 if (callIndex === 2) {
+                    return {
+                        content: [
+                            {
+                                arguments: {
+                                    value: "error from gym",
+                                    options: {
+                                        format: "multiline",
+                                        includeMetadata: true,
+                                    },
+                                },
+                                id: "mcp-error-call",
+                                name: MCP_TOOL_NAME,
+                                type: "toolCall",
+                            },
+                        ],
+                    };
+                }
+
+                if (callIndex === 3) {
+                    expect(request.context.messages.at(-1)).toMatchObject({
+                        content: [
+                            { text: "Error: requested gym failure", type: "text" },
+                            { text: "Failure metadata: retryable=false", type: "text" },
+                        ],
+                        isError: true,
+                        role: "toolResult",
+                        toolCallId: "mcp-error-call",
+                        toolName: MCP_TOOL_NAME,
+                    });
+                    return {
+                        content: [{ text: "MCP_APPLICATION_ERROR_OBSERVED", type: "text" }],
+                    };
+                }
+
+                if (callIndex === 4) {
                     expect(JSON.stringify(request.context.messages)).toContain(
                         "Echo: hello from gym",
                     );
@@ -144,8 +218,11 @@ describe("stdio MCP server connects and echoes through the agent", () => {
             30_000,
         );
         assertHealthyTerminal(echoed, baseline);
-        expect(echoed.text).toContain("Used Echo Service · Echo Value");
-        expect(echoed.text).toContain("└ Echo Service · Echo Value");
+        expect(echoed.text).toContain(
+            '• Called Echo_Service.echo_value({"value":"hello from gym","options":{"format":"multiline","includeMetadata":true}})',
+        );
+        expect(echoed.text).toContain("  └ Echo: hello from gym");
+        expect(echoed.text).toContain("    Echo metadata: format=multiline, includeMetadata=true");
         await expect(gym.readFile(WORKSPACE_SHADOW_MARKER)).rejects.toMatchObject({
             code: "ENOENT",
         });
@@ -160,11 +237,21 @@ describe("stdio MCP server connects and echoes through the agent", () => {
         );
         assertHealthyTerminal(status, baseline);
 
+        submit(gym, "Use the Echo Service tool with error from gym.");
+        const failed = await gym.terminal.waitForText("MCP_APPLICATION_ERROR_OBSERVED", 30_000);
+        assertHealthyTerminal(failed, baseline);
+        expect(failed.text).toContain(
+            '• Called Echo_Service.echo_value({"value":"error from gym","options":{"format":"multiline","includeMetadata":true}})',
+        );
+        expect(failed.text).toContain("  └ Error: requested gym failure");
+        expect(failed.text).toContain("    Failure metadata: retryable=false");
+        expect(failed.text).not.toContain("Failed Echo_Service.echo_value");
+
         submit(gym, "Confirm the session still works after the MCP call.");
         const followUp = await gym.terminal.waitForText("FOLLOW_UP_AFTER_MCP", 30_000);
         assertHealthyTerminal(followUp, baseline);
         expect(followUp.text).toContain("Ask Rig to do anything");
-        expect(agentRequests(gym)).toHaveLength(3);
+        expect(agentRequests(gym)).toHaveLength(5);
     }, 120_000);
 });
 
@@ -190,7 +277,7 @@ function assertHealthyTerminal(
     expect(snapshot.scroll.topArrivalCount).toBe(baseline.topArrivalCount);
     expect(snapshot.cursor.x).toBeLessThan(COLS);
     expect(snapshot.cursor.y).toBeLessThan(ROWS);
-    expect(snapshot.text).toContain("Gym Off");
+    expect(snapshot.text).toContain("gym off");
     expect(snapshot.text).toContain("/workspace");
     expect(snapshot.text).not.toContain("�");
 }

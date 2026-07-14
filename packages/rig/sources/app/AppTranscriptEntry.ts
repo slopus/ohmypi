@@ -1,3 +1,5 @@
+import type { CodexMcpToolCall } from "./CodexMcpToolCall.js";
+
 export type AppTranscriptRole =
     | "system"
     | "user"
@@ -10,6 +12,7 @@ export type AppTranscriptRole =
 
 export interface AppTranscriptEntry {
     id: string;
+    mcpToolCall?: CodexMcpToolCall;
     permissionReview?: string;
     role: AppTranscriptRole;
     text: string;

@@ -3353,6 +3353,159 @@ describe("CodingAssistantApp", () => {
         });
     });
 
+    it("renders structured MCP calls, replayed results, errors, and approval detail", () => {
+        const model = defineModel({
+            id: "openai/gpt-test",
+            name: "GPT Test",
+            thinkingLevels: ["off"],
+            defaultThinkingLevel: "off",
+        });
+        const provider = defineProvider({
+            id: "codex",
+            models: [model],
+            stream() {
+                return streamText("unused");
+            },
+        });
+        const harness = createJustBashToolHarness();
+        const app = new CodingAssistantApp({
+            agent: new Agent({
+                provider,
+                modelId: model.id,
+                context: harness.context,
+                printToConsole: false,
+            }),
+            cwd: harness.context.fs.cwd,
+            processManager: new NativeProxessManager(),
+            tui: fakeTui(),
+        });
+
+        app.applySessionEvent({
+            createdAt: 1,
+            data: {
+                message: {
+                    blocks: [
+                        {
+                            arguments: { title: "List tabs", timeout_ms: 30_000 },
+                            id: "mcp-success",
+                            name: "mcp__node_repl__js",
+                            type: "tool_call",
+                        },
+                        {
+                            display: "Node Repl · Js",
+                            isError: false,
+                            rendered: [
+                                { type: "text", text: "{ ready: true }" },
+                                { type: "text", text: "tabs: 3" },
+                            ],
+                            toolCallId: "mcp-success",
+                            toolName: "mcp__node_repl__js",
+                            type: "tool_result",
+                        },
+                        {
+                            arguments: {
+                                arguments: { query: "TUI" },
+                                name: "find_docs",
+                                server: "search",
+                            },
+                            id: "mcp-error",
+                            name: "call_mcp_tool",
+                            type: "tool_call",
+                        },
+                        {
+                            display: "Called Find Docs from Search",
+                            isError: true,
+                            rendered: [
+                                { type: "text", text: "Error: network timeout" },
+                                { type: "text", text: "Try again later." },
+                            ],
+                            toolCallId: "mcp-error",
+                            toolName: "call_mcp_tool",
+                            type: "tool_result",
+                        },
+                        {
+                            arguments: { issue: 42 },
+                            id: "mcp-pending",
+                            name: "mcp__issues__close_ticket",
+                            type: "tool_call",
+                        },
+                    ],
+                    id: "mcp-message",
+                    role: "agent",
+                },
+                runId: "run-1",
+            },
+            id: "mcp-agent-message",
+            sessionId: "session-1",
+            type: "agent_message",
+        });
+        app.applySessionEvent({
+            createdAt: 2,
+            data: {
+                event: {
+                    action: "Close ticket 42",
+                    decision: "ask",
+                    reason: "This changes external issue state.",
+                    risk: "medium",
+                    toolCallId: "mcp-pending",
+                    type: "permission_review",
+                    userAuthorization: "low",
+                },
+                runId: "run-1",
+            },
+            id: "mcp-permission",
+            sessionId: "session-1",
+            type: "agent_event",
+        });
+        app.applySessionEvent({
+            createdAt: 3,
+            data: {
+                event: {
+                    display: "Waiting for approval",
+                    toolCallId: "mcp-pending",
+                    type: "tool_execution_progress",
+                },
+                runId: "run-1",
+            },
+            id: "mcp-progress",
+            sessionId: "session-1",
+            type: "agent_event",
+        });
+
+        const raw = app.render(120).join("\n");
+        const rendered = stripAnsi(raw);
+        expect(rendered).toContain(
+            '• Called node_repl.js({"title":"List tabs","timeout_ms":30000})',
+        );
+        expect(rendered).toContain("  └ { ready: true }");
+        expect(rendered).toContain("    tabs: 3");
+        expect(rendered).toContain('• Called search.find_docs({"query":"TUI"})');
+        expect(rendered).toContain("  └ Error: network timeout");
+        expect(rendered).toContain("    Try again later.");
+        expect(rendered).not.toContain("Failed search.find_docs");
+        expect(rendered).toContain('◦ Calling issues.close_ticket({"issue":42})');
+        expect(rendered).toContain("Needs approval: This changes external issue state.");
+        expect(rendered).toContain("Waiting for approval");
+        expect(raw).toContain("\x1b[36mnode_repl");
+        expect(raw).toContain("\x1b[31m\x1b[1m•");
+
+        app.applySessionEvent({
+            createdAt: 4,
+            data: {
+                errorMessage: "The daemon restarted during the tool call.",
+                modelLocked: false,
+                runId: "run-1",
+            },
+            id: "mcp-run-error",
+            sessionId: "session-1",
+            type: "run_error",
+        });
+        const afterRunError = stripAnsi(app.render(120).join("\n"));
+        expect(afterRunError).not.toContain('◦ Calling issues.close_ticket({"issue":42})');
+        expect(afterRunError).toContain('• Called issues.close_ticket({"issue":42})');
+        expect(afterRunError).toContain("Interrupted.");
+    });
+
     it("names an unavailable model tool instead of presenting its argument as the failed action", async () => {
         const model = defineModel({
             id: "openai/gpt-test",
