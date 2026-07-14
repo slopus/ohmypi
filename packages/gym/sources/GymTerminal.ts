@@ -1,7 +1,8 @@
 import type { IPty } from "@lydell/node-pty";
 
 import { GhosttyTerminal } from "./GhosttyTerminal.js";
-import type { TerminalSnapshot } from "./types.js";
+import { renderTerminalSnapshotPng } from "./renderTerminalSnapshotPng.js";
+import type { TerminalScreenshotOptions, TerminalSnapshot } from "./types.js";
 
 const KEYS = {
     backspace: "\x7f",
@@ -54,6 +55,10 @@ export class GymTerminal {
 
     snapshot(): Promise<TerminalSnapshot> {
         return this.#ghostty.snapshot();
+    }
+
+    async screenshot(outputPath: string, options?: TerminalScreenshotOptions): Promise<void> {
+        await renderTerminalSnapshotPng(await this.snapshot(), outputPath, options);
     }
 
     type(text: string): void {

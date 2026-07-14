@@ -14,6 +14,7 @@ export {
     type InterceptedHttpResponse,
 } from "./InterceptingHttpProxy.js";
 export { MockInferenceServer } from "./MockInferenceServer.js";
+export { renderTerminalSnapshotPng } from "./renderTerminalSnapshotPng.js";
 export type {
     GymFixture,
     GymInferenceHandler,
@@ -23,5 +24,6 @@ export type {
     TerminalColorSnapshot,
     TerminalCursorSnapshot,
     TerminalScrollSnapshot,
+    TerminalScreenshotOptions,
     TerminalSnapshot,
 } from "./types.js";

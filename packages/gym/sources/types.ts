@@ -82,3 +82,13 @@ export interface TerminalSnapshot {
     text: string;
     title: string;
 }
+
+export interface TerminalScreenshotOptions {
+    background?: string;
+    cellHeight?: number;
+    cellWidth?: number;
+    fontFamily?: string;
+    fontSize?: number;
+    foreground?: string;
+    padding?: number;
+}
