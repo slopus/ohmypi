@@ -1,6 +1,11 @@
 import { afterEach, describe, expect, it } from "vitest";
+import { resolve } from "node:path";
 
-import { createGym, type Gym } from "../../packages/gym/sources/index.js";
+import {
+    createGym,
+    renderTerminalSnapshotPng,
+    type Gym,
+} from "../../packages/gym/sources/index.js";
 
 const running = new Set<Gym>();
 
@@ -167,6 +172,29 @@ describe("background subagent completion routes to its parent", () => {
         expect(completed.scroll.bottomDepartureCount).toBe(baseline.bottomDepartureCount);
         expect(completed.scroll.topArrivalCount).toBe(baseline.topArrivalCount);
         expect(completed.text).toContain("gym off · /workspace");
+        expect(completed.text).toContain('• Background work "Inspect workspace" completed.');
+        expect(completed.text).not.toContain('› Background work "Inspect workspace" completed.');
+        const notificationRow = completed.rows.findIndex((row) =>
+            row.includes('Background work "Inspect workspace" completed.'),
+        );
+        expect(
+            completed.cells
+                .filter((cell) => cell.y === notificationRow)
+                .every((cell) => cell.background === null),
+        ).toBe(true);
+        expect({
+            notificationCells: completed.cells.filter(
+                (cell) => cell.y === notificationRow && cell.text !== " ",
+            ),
+            rows: completed.rows.slice(notificationRow),
+        }).toMatchSnapshot("passive background completion");
+        const screenshotDirectory = process.env.RIG_GYM_SCREENSHOT_DIR;
+        if (screenshotDirectory !== undefined) {
+            await renderTerminalSnapshotPng(
+                completed,
+                resolve(screenshotDirectory, "background-subagent-completed.png"),
+            );
+        }
         expect(completed.text).not.toContain("�");
         expect(completed.cursor.x).toBeLessThan(92);
         expect(completed.cursor.y).toBeLessThan(28);

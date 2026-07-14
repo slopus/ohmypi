@@ -4,6 +4,7 @@ import type { BashSessionSnapshot } from "../../agent/index.js";
 
 export const unifiedExecOutputSchema = Type.Object({
     chunk_id: Type.Optional(Type.String()),
+    command: Type.Optional(Type.String()),
     exit_code: Type.Optional(Type.Number()),
     original_token_count: Type.Optional(Type.Number()),
     output: Type.String(),
@@ -44,6 +45,7 @@ export function createUnifiedExecOutput(
             ? rawOutput
             : `${rawOutput.slice(0, maxCharacters)}\n[output truncated]`;
     return {
+        command: snapshot.command,
         ...(snapshot.status === "running" ? { session_id: snapshot.sessionId } : {}),
         ...(snapshot.status !== "running" && snapshot.exitCode !== null
             ? { exit_code: snapshot.exitCode }

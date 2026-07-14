@@ -72,6 +72,12 @@ export const codexWriteStdinTool = defineTool({
     },
     isError: (result) => result.exit_code !== undefined && result.exit_code !== 0,
     toLLM: (result) => [{ type: "text", text: formatUnifiedExecOutput(result) }],
+    toPresentation: (result, args) => ({
+        command: result.command ?? "",
+        input: args.chars ?? "",
+        sessionId: args.session_id,
+        type: "background_terminal_interaction",
+    }),
     toUI: (result, args) => {
         if (result.exit_code !== undefined && result.exit_code !== 0) {
             const summary = summarizeTextOutput(result.output, "");

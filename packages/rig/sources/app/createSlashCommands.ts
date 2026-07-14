@@ -63,6 +63,18 @@ export function createSlashCommands(
             aliases: [],
         },
         {
+            value: "ps",
+            label: "/ps",
+            description: "List background terminals.",
+            aliases: [],
+        },
+        {
+            value: "stop",
+            label: "/stop",
+            description: "Stop all background terminals.",
+            aliases: [],
+        },
+        {
             value: "goal",
             label: "/goal",
             description: "Set or manage a persistent long-running goal.",

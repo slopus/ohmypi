@@ -80,6 +80,12 @@ export const codexExecCommandTool = defineTool({
     },
     isError: (result) => result.exit_code !== undefined && result.exit_code !== 0,
     toLLM: (result) => [{ type: "text", text: formatUnifiedExecOutput(result) }],
+    toPresentation: (result) => ({
+        command: result.command ?? "",
+        output: result.output,
+        ...(result.session_id === undefined ? {} : { sessionId: result.session_id }),
+        type: "exec_command",
+    }),
     toUI: (result) => {
         const summary = summarizeTextOutput(result.output, "");
         if (result.exit_code !== undefined && result.exit_code !== 0) {

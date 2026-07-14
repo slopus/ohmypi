@@ -30,4 +30,21 @@ export interface FileDiffToolResultPresentation {
     readonly omittedFiles?: number;
 }
 
-export type ToolResultPresentation = FileDiffToolResultPresentation;
+export interface BackgroundTerminalInteractionPresentation {
+    readonly command: string;
+    readonly input: string;
+    readonly sessionId: number;
+    readonly type: "background_terminal_interaction";
+}
+
+export interface ExecCommandPresentation {
+    readonly command: string;
+    readonly output: string;
+    readonly sessionId?: number;
+    readonly type: "exec_command";
+}
+
+export type ToolResultPresentation =
+    | BackgroundTerminalInteractionPresentation
+    | ExecCommandPresentation
+    | FileDiffToolResultPresentation;

@@ -1,4 +1,8 @@
-import type { FileDiff } from "../agent/ToolResultPresentation.js";
+import type {
+    BackgroundTerminalInteractionPresentation,
+    ExecCommandPresentation,
+    FileDiff,
+} from "../agent/ToolResultPresentation.js";
 import type { CodexMcpToolCall } from "./CodexMcpToolCall.js";
 
 export type AppTranscriptRole =
@@ -12,6 +16,9 @@ export type AppTranscriptRole =
     | "separator";
 
 export interface AppTranscriptEntry {
+    backgroundTerminalCompletion?: string;
+    backgroundTerminalInteraction?: BackgroundTerminalInteractionPresentation;
+    execCommand?: ExecCommandPresentation;
     fileDiffs?: readonly FileDiff[];
     omittedFileDiffs?: number;
     id: string;
@@ -21,4 +28,5 @@ export interface AppTranscriptEntry {
     text: string;
     detail?: string;
     title?: string;
+    turnElapsedMs?: number;
 }

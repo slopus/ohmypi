@@ -92,16 +92,16 @@ describe("CodingAssistantApp", () => {
         const rawLines = app.render(80);
         const strippedLines = rawLines.map(stripAnsi);
         expect(rawLines.at(-1)).toBe("");
-        expect(rawLines.at(-2)).toBe("");
+        expect(rawLines.at(-2)).toContain("gpt-test off");
         const inputLineIndex = strippedLines.findIndex((line) => line.includes("› h"));
         const footerLineIndex = strippedLines.findIndex((line) => line.startsWith("  gpt-test"));
         expect(inputLineIndex).toBeGreaterThan(0);
-        expect(footerLineIndex).toBe(inputLineIndex + 3);
+        expect(footerLineIndex).toBe(inputLineIndex + 2);
         expect(rawLines[inputLineIndex - 1]).toContain("\x1b[48;5;235m");
         expect(rawLines[inputLineIndex]).toContain("\x1b[48;5;235m");
         expect(rawLines[inputLineIndex]).toContain("\x1b[39m");
         expect(rawLines[inputLineIndex + 1]).toContain("\x1b[48;5;235m");
-        expect(rawLines[inputLineIndex + 2]).toBe("");
+        expect(rawLines[inputLineIndex + 2]).toContain("gpt-test off");
     });
 
     it("uses the idle abort command to stop session background processes", async () => {
@@ -1521,6 +1521,34 @@ describe("CodingAssistantApp", () => {
             sessionId: "session-1",
             type: "subagent_changed",
         });
+
+        const statusTransition = stripAnsi(app.render(100).join("\n"));
+        expect(statusTransition).not.toContain("agent running · /agents to view");
+        expect(statusTransition).toContain(
+            'Background work "Inspect the implementation" completed.',
+        );
+        app.applySessionEvent({
+            createdAt: 3,
+            data: {
+                displayText: 'Background work "Inspect the implementation" completed.',
+                message: {
+                    blocks: [{ text: "<subagent-notification>", type: "text" }],
+                    id: "notification-1",
+                    role: "user",
+                },
+                runId: "notification-run-1",
+                source: "notification",
+            },
+            id: "event-2",
+            sessionId: "session-1",
+            type: "message_submitted",
+        });
+        const completed = stripAnsi(app.render(100).join("\n"));
+        expect(completed).not.toContain("agent running · /agents to view");
+        expect(completed).toContain('Background work "Inspect the implementation" completed.');
+        expect(
+            completed.match(/Background work "Inspect the implementation" completed\./gu),
+        ).toHaveLength(1);
 
         submit(app, "/agents");
 
@@ -3331,15 +3359,14 @@ describe("CodingAssistantApp", () => {
 
         const raw = app.render(80).join("\n");
         const rendered = stripAnsi(raw);
-        expect(raw).toContain(
-            "\x1b[38;5;202m\x1b[1mRan\x1b[22m\x1b[39m printf 'line one\\nline two\\n'",
-        );
-        expect(raw).not.toContain("\x1b[38;5;202mprintf 'line one");
-        expect(rendered).toContain("• Ran printf 'line one\\nline two\\n' (Shell: /bin/zsh)");
-        expect(rendered).toContain("└ line one (+1 lines)");
-        const resultLines = rendered.split("\n").filter((line) => line.trimStart().startsWith("└"));
-        expect(resultLines).toHaveLength(1);
-        expect(resultLines.join("\n")).not.toContain("line two");
+        expect(raw).toContain("\x1b[38;5;202m\x1b[1mRan\x1b[22m");
+        expect(raw).toContain("\x1b[38;5;75mprintf\x1b[39m");
+        expect(raw).toContain("\x1b[38;5;71m'line one\\nline two\\n'\x1b[39m");
+        expect(rendered).toContain("• Ran printf 'line one\\nline two\\n'");
+        expect(rendered).toContain("│ line one");
+        expect(rendered).toContain("└ line two");
+        const resultLines = rendered.split("\n").filter((line) => /^[ ]+[│└] /u.test(line));
+        expect(resultLines).toHaveLength(2);
         expect(contexts[1]?.messages[2]).toMatchObject({
             role: "toolResult",
             toolCallId: "tool-call-1",
@@ -4320,7 +4347,7 @@ describe("CodingAssistantApp", () => {
 
         const renderedDuringSecondTurn = stripAnsi(app.render(80).join("\n"));
         expect(streamCalls).toBe(2);
-        expect(renderedDuringSecondTurn).toContain(
+        expect(renderedDuringSecondTurn).not.toContain(
             "────────────────────────────────────────────────────────────────────────────────",
         );
         expect(renderedDuringSecondTurn).toContain("◦ Working");
@@ -4371,17 +4398,138 @@ describe("CodingAssistantApp", () => {
         const thinkingLine =
             rawWhileThinking.find((line) => stripAnsi(line).includes("◦ Thinking")) ?? "";
         const renderedWhileThinking = stripAnsi(rawWhileThinking.join("\n"));
-        expect(renderedWhileThinking).toContain("◦ Thinking (1m 5s • esc to interrupt)");
+        expect(renderedWhileThinking).toContain("◦ Thinking (1m 5s · esc to interrupt)");
         expect(renderedWhileThinking).toContain("gpt-test high");
         expect(renderedWhileThinking).not.toContain("Idle |");
         expect(thinkingLine).toContain("\x1b[38;5;255m");
         expect(thinkingLine).toContain("\x1b[38;5;244m");
-        expect(thinkingLine).toContain("\x1b[2m\x1b[2m\x1b[39m(1m 5s • esc to interrupt)");
+        expect(thinkingLine).toContain("\x1b[2m\x1b[2m\x1b[39m(1m 5s · esc to interrupt)");
         expect(thinkingLine).not.toContain("\x1b[38;5;255m(");
         expect(thinkingLine).not.toContain("\x1b[38;5;244m(");
 
         gate.release();
         await app.waitForIdle();
+    });
+
+    it("moves elapsed time into history without resetting for permission input", () => {
+        const model = defineModel({
+            id: "openai/gpt-test",
+            name: "GPT Test",
+            thinkingLevels: ["off"],
+            defaultThinkingLevel: "off",
+        });
+        const provider = defineProvider({
+            id: "codex",
+            models: [model],
+            stream() {
+                return streamText("unused");
+            },
+        });
+        const harness = createJustBashToolHarness();
+        let now = 10_000;
+        const app = new CodingAssistantApp({
+            agent: new Agent({
+                provider,
+                modelId: model.id,
+                context: harness.context,
+                printToConsole: false,
+            }),
+            cwd: harness.context.fs.cwd,
+            now: () => now,
+            processManager: new NativeProxessManager(),
+            sessionBacked: true,
+            tui: fakeTui(),
+        });
+
+        app.applySessionEvent({
+            createdAt: 10_000,
+            data: {
+                displayText: "Complete the task.",
+                message: {
+                    blocks: [{ text: "Complete the task.", type: "text" }],
+                    id: "user-message-1",
+                    role: "user",
+                },
+                runId: "run-1",
+            },
+            id: "event-user-message",
+            sessionId: "session-1",
+            type: "message_submitted",
+        });
+        app.applySessionEvent({
+            createdAt: 10_001,
+            data: { runId: "run-1" },
+            id: "event-run-started",
+            sessionId: "session-1",
+            type: "run_started",
+        });
+
+        now = 40_000;
+        app.applySessionEvent({
+            createdAt: 40_000,
+            data: {
+                questions: [
+                    {
+                        header: "Permission",
+                        id: "permission",
+                        multiSelect: false,
+                        options: [
+                            { label: "Allow", description: "Run this command once." },
+                            { label: "Deny", description: "Do not run this command." },
+                        ],
+                        question: "Allow this command?",
+                    },
+                ],
+                requestId: "tool-call-1:permission",
+            },
+            id: "event-permission-requested",
+            sessionId: "session-1",
+            type: "user_input_requested",
+        });
+        app.applySessionEvent({
+            createdAt: 60_000,
+            data: {
+                answers: { permission: ["Allow"] },
+                requestId: "tool-call-1:permission",
+                status: "answered",
+            },
+            id: "event-permission-resolved",
+            sessionId: "session-1",
+            type: "user_input_resolved",
+        });
+
+        now = 75_000;
+        app.applySessionEvent({
+            createdAt: 75_000,
+            data: {
+                message: {
+                    blocks: [{ text: "TASK_COMPLETE", type: "text" }],
+                    id: "agent-message-1",
+                    role: "agent",
+                },
+                runId: "run-1",
+            },
+            id: "event-agent-message",
+            sessionId: "session-1",
+            type: "agent_message",
+        });
+        app.applySessionEvent({
+            createdAt: 75_000,
+            data: {
+                agentRunId: "agent-run-1",
+                modelLocked: false,
+                runId: "run-1",
+                stopReason: "stop",
+            },
+            id: "event-run-finished",
+            sessionId: "session-1",
+            type: "run_finished",
+        });
+
+        const rendered = stripAnsi(app.render(100).join("\n"));
+        expect(rendered).toContain("TASK_COMPLETE");
+        expect(rendered).toContain("Worked for 1m 5s");
+        expect(rendered).not.toContain("esc to interrupt");
     });
 
     it("renders completed thinking blocks as transcript text", async () => {

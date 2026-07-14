@@ -10,7 +10,7 @@ afterEach(async () => {
 });
 
 describe("passive active-work list", () => {
-    it("stays below the status bar while multiline input remains usable", async () => {
+    it("stays above the composer while multiline input remains usable", async () => {
         let parentSessionId: string | undefined;
         let releaseWorkflow: (() => void) | undefined;
         const workflowCanFinish = new Promise<void>((resolve) => {
@@ -75,19 +75,23 @@ describe("passive active-work list", () => {
             const passiveList = await gym.terminal.waitUntil(
                 (snapshot) =>
                     snapshot.text.includes("WORKFLOW_RUNNING") &&
-                    snapshot.text.includes("Workflow Visible workflow") &&
+                    snapshot.text.includes("1 workflow running · /workflows to view") &&
                     snapshot.text.includes("gym off · /workspace · main [default] · full access"),
-                "workflow row below the normal status bar",
+                "workflow row above the composer",
                 30_000,
             );
             const statusRow = passiveList.rows.findIndex((row) => row.includes("gym off"));
             const workflowRow = passiveList.rows.findIndex((row) =>
-                row.includes("Workflow Visible workflow"),
+                row.includes("1 workflow running"),
+            );
+            const composerRow = passiveList.rows.findIndex((row) =>
+                row.includes("Ask Rig to do anything"),
             );
             expect(statusRow).toBeGreaterThanOrEqual(0);
-            expect(workflowRow).toBeGreaterThan(statusRow);
+            expect(workflowRow).toBeLessThan(composerRow);
+            expect(composerRow).toBeLessThan(statusRow);
             expect(passiveList.text).not.toContain("Active work");
-            expect(passiveList.text).not.toContain("1 workflow");
+            expect(passiveList.text).not.toContain("Workflow Visible workflow");
             expect(passiveList.text).not.toContain("select");
             expect(passiveList.text).not.toContain("Enter opens");
             expect(passiveList.text).not.toContain("→ Workflow");
@@ -99,7 +103,7 @@ describe("passive active-work list", () => {
                 (snapshot) =>
                     snapshot.text.includes("first line") &&
                     snapshot.text.includes("second line") &&
-                    snapshot.text.includes("Workflow Visible workflow"),
+                    snapshot.text.includes("1 workflow running · /workflows to view"),
                 "multiline draft while workflow remains visible",
                 30_000,
             );
@@ -107,7 +111,24 @@ describe("passive active-work list", () => {
 
             gym.terminal.press("enter");
             const sent = await gym.terminal.waitForText("MULTILINE_SENT_DURING_WORKFLOW", 30_000);
-            expect(sent.text).toContain("Workflow Visible workflow");
+            expect(sent.text).toContain("1 workflow running · /workflows to view");
+            const stableComposerRow = sent.rows.findIndex((row) =>
+                row.includes("Ask Rig to do anything"),
+            );
+
+            releaseWorkflow?.();
+            const completed = await gym.terminal.waitUntil(
+                (snapshot) =>
+                    snapshot.text.includes("Workflow Visible workflow completed.") &&
+                    snapshot.text.includes("WORKFLOW_NOTIFICATION_ACK") &&
+                    !snapshot.text.includes("workflow running · /workflows to view") &&
+                    snapshot.text.includes("Ask Rig to do anything"),
+                "workflow completion moved from live status into history",
+                30_000,
+            );
+            expect(completed.rows.findIndex((row) => row.includes("Ask Rig to do anything"))).toBe(
+                stableComposerRow,
+            );
         } finally {
             releaseWorkflow?.();
         }

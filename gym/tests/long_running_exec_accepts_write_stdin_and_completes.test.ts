@@ -130,7 +130,8 @@ describe("long-running exec accepts input and completes", () => {
 
         const inputSent = await gym.terminal.waitUntil(
             (snapshot) =>
-                snapshot.text.includes("Sent input; the shell command has finished.") &&
+                snapshot.text.includes("Interacted with background terminal") &&
+                snapshot.text.includes("gym-input") &&
                 snapshot.scroll.atBottom,
             "write_stdin to finish the interactive command",
             30_000,
@@ -186,6 +187,6 @@ describe("long-running exec accepts input and completes", () => {
             role: "toolResult",
             toolName: "write_stdin",
         });
-        expect(inputSent.text).toContain("Edited Write stdin");
+        expect(inputSent.text).not.toContain("Edited Write stdin");
     }, 120_000);
 });

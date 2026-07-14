@@ -8,6 +8,10 @@ Build the best combined coding-agent experience from Codex and Claude Code, with
 
 Do not implement a dedicated Plan mode, Vim or other modal editing modes, Jupyter notebook parsing or editing, durable command allow/deny history, dedicated IDE integrations, a separate Rig login flow, or niche compatibility features whose primary value is exhaustive upstream parity. Rig uses the credentials managed by the system Codex and Claude Code installations, so users should sign in through those assistants instead. Planning should remain part of the normal agent workflow. Auto permissions should review the current action and user authorization without learning a persistent command-execution policy. Skills should follow Codex behavior and scope, not Claude Code's expanded skill runtime. Only reconsider these boundaries when the user explicitly changes the product direction.
 
+## Retry policy
+
+Automatically retry only low-level inference transport failures, and only before response content begins. Do not automatically replay tools, commands, or session mutations; those failures usually indicate real breakage that retrying will not fix.
+
 ## Reference sources
 
 Coding-agent source trees are located at `~/Developer/coding-assistant-sources`. Use the Codex and Claude Code sources there as the implementation reference whenever adding, comparing, or updating provider-aligned behavior. Adapt their strongest ideas to rig's simpler product model instead of copying complexity that does not improve the experience.
@@ -31,6 +35,14 @@ Run the suite with `pnpm test:gym`. Read [`gym/README.md`](gym/README.md) before
 ## User-facing text
 
 All strings displayed to users must be human-readable English. Prefer natural, human-like labels and messages over raw identifiers, internal enum values, file names, protocol names, or placeholder text. Convert technical values into clear display text before rendering them in the UI or CLI.
+
+## Terminal layout stability
+
+Treat the visible transcript as append-only. Once a timeline row has rendered, update it in place when its state changes; do not remove it or replace it at a later position. In particular, repeated background-terminal waits must keep one stable timeline entry that changes from waiting to waited without disappearing between polls.
+
+Keep above-composer live UI compact and predictable, with at most one truncated summary row per active-work category. Live components may grow downward, but shrinking or completing work must not pull transcript content downward or make the composer jump upward. Pair the removal of a final live status row with its corresponding history event in the same render so the occupied height moves into history instead of collapsing.
+
+When an agent turn completes, move its live working timer into an immutable history row. Measure elapsed time from the most recent composer-submitted user message; permission decisions and other interactive answers must not reset that clock.
 
 ## Remote pushes
 

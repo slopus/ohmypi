@@ -118,6 +118,11 @@ describe("permission-sensitive command waits for approval before showing Running
         });
         assertTerminalHealth(awaitingApproval, baseline);
 
+        await gym.terminal.waitUntil(
+            (snapshot) => snapshot.text.includes("(2s · esc to interrupt)"),
+            "permission wait counted from the user message",
+            30_000,
+        );
         gym.terminal.press("enter");
         const executing = await gym.terminal.waitUntil(
             (snapshot) =>
@@ -147,6 +152,7 @@ describe("permission-sensitive command waits for approval before showing Running
         expect(completed.text).not.toContain("• Running printf");
         expect(completed.text).not.toContain("• Awaiting approval printf");
         expect(completed.text).not.toContain("exec_command");
+        expect(workedForSeconds(completed.rows)).toBeGreaterThanOrEqual(6);
         await expect(gym.readFile("approved-after-prompt.txt")).resolves.toBe(
             "approved after prompt\n",
         );
@@ -186,6 +192,14 @@ function messageText(message: { content: unknown } | undefined): string {
 
 function normalizeWhitespace(value: string): string {
     return value.replace(/\s+/gu, " ");
+}
+
+function workedForSeconds(rows: readonly string[]): number {
+    const row = rows.find((candidate) => candidate.includes("Worked for"));
+    expect(row).toBeDefined();
+    const match = /Worked for (?:(\d+)h )?(?:(\d+)m )?(\d+)s/u.exec(row ?? "");
+    expect(match).not.toBeNull();
+    return Number(match?.[1] ?? 0) * 3_600 + Number(match?.[2] ?? 0) * 60 + Number(match?.[3] ?? 0);
 }
 
 function visibleExact(value: string): string {

@@ -1,6 +1,12 @@
 import { afterEach, describe, expect, it } from "vitest";
+import { resolve } from "node:path";
 
-import { createGym, type Gym } from "../../packages/gym/sources/index.js";
+import {
+    createGym,
+    renderTerminalSnapshotPng,
+    type Gym,
+    type TerminalSnapshot,
+} from "../../packages/gym/sources/index.js";
 
 const running = new Set<Gym>();
 
@@ -10,9 +16,9 @@ afterEach(async () => {
 });
 
 describe("background shell activity stays visible until it really finishes", () => {
-    it("shows the process, hides the internal session ID, and clears the row", async () => {
+    it("matches the Codex summary above the composer and supports /ps and /stop", async () => {
         const command =
-            "printf 'BACKGROUND_PROCESS_STARTED\\n'; sleep 3; printf 'finished\\n' > background-process-state.txt";
+            "printf 'BACKGROUND_PROCESS_STARTED\\n'; sleep 60; printf 'finished\\n' > background-process-state.txt";
         const gym = await createGym({
             cols: 88,
             inference(request, callIndex) {
@@ -67,35 +73,68 @@ describe("background shell activity stays visible until it really finishes", () 
         const active = await gym.terminal.waitUntil(
             (snapshot) =>
                 snapshot.text.includes("The command is still running") &&
-                snapshot.text.includes("Process printf 'BACKGROUND_PROCESS_STARTED") &&
+                snapshot.text.includes(
+                    "1 background terminal running · /ps to view · /stop to close",
+                ) &&
                 snapshot.text.includes("Ask Rig to do anything") &&
                 snapshot.scroll.atBottom,
             "an idle composer that still discloses the background process",
             30_000,
         );
+        const summaryRow = active.rows.findIndex((row) =>
+            row.includes("1 background terminal running"),
+        );
+        const composerRow = active.rows.findIndex((row) => row.includes("Ask Rig to do anything"));
+        const footerRow = active.rows.findIndex((row) => row.includes("gym off · /workspace"));
+        expect(summaryRow).toBeGreaterThanOrEqual(0);
+        expect(summaryRow).toBeLessThan(composerRow);
+        expect(composerRow).toBeLessThan(footerRow);
         expect(active.text).toContain("• Ran printf");
         expect(active.text).toContain("Command is still running in the background.");
         expect(active.text).not.toMatch(/session ID/iu);
         expect(active.text).not.toContain("• Running printf");
+        expect(active.text).not.toContain("Process printf 'BACKGROUND_PROCESS_STARTED");
         expect(active.scroll.bottomDepartureCount).toBe(baseline.bottomDepartureCount);
         expect(active.scroll.topArrivalCount).toBe(baseline.topArrivalCount);
+        expect(bottomPaneSnapshot(active)).toMatchSnapshot(
+            "active background terminal bottom pane",
+        );
+        await captureReviewImage(active, "background-terminal-active.png");
 
-        const finished = await gym.terminal.waitUntil(
+        gym.terminal.type("/ps");
+        gym.terminal.press("enter");
+        const listed = await gym.terminal.waitUntil(
             (snapshot) =>
-                snapshot.text.includes("The command is still running") &&
-                !snapshot.text.includes("Process printf 'BACKGROUND_PROCESS_STARTED") &&
-                snapshot.text.includes("Ask Rig to do anything") &&
+                snapshot.text.includes("Background terminals") &&
+                snapshot.text.includes("printf 'BACKGROUND_PROCESS_STARTED") &&
+                snapshot.text.includes("1 background terminal running") &&
                 snapshot.scroll.atBottom,
-            "the background process row to clear after real process exit",
+            "/ps to list the running background terminal",
             30_000,
         );
-        await expect(gym.readFile("background-process-state.txt")).resolves.toBe("finished\n");
-        expect(finished.text).not.toMatch(/session ID/iu);
-        expect(finished.rows).toHaveLength(24);
-        expect(finished.text).toContain("gym off · /workspace");
-        expect(finished.text).not.toContain("�");
-        expect(finished.scroll.bottomDepartureCount).toBe(baseline.bottomDepartureCount);
-        expect(finished.scroll.topArrivalCount).toBe(baseline.topArrivalCount);
+        expect(listed.text).not.toMatch(/session ID/iu);
+
+        gym.terminal.type("/stop");
+        gym.terminal.press("enter");
+        const stopped = await gym.terminal.waitUntil(
+            (snapshot) =>
+                snapshot.text.includes("Stopping all background terminals.") &&
+                !snapshot.text.includes("1 background terminal running") &&
+                snapshot.text.includes("Ask Rig to do anything") &&
+                snapshot.scroll.atBottom,
+            "/stop to close the running background terminal",
+            30_000,
+        );
+        await expect(gym.readFile("background-process-state.txt")).rejects.toMatchObject({
+            code: "ENOENT",
+        });
+        expect(stopped.text).not.toMatch(/session ID/iu);
+        expect(stopped.rows).toHaveLength(24);
+        expect(stopped.text).toContain("gym off · /workspace");
+        expect(stopped.text).not.toContain("�");
+        expect(stopped.scroll.bottomDepartureCount).toBe(baseline.bottomDepartureCount);
+        expect(stopped.scroll.topArrivalCount).toBe(baseline.topArrivalCount);
+        await captureReviewImage(stopped, "background-terminal-stopped.png");
 
         gym.terminal.type("Confirm you are ready for the next request.");
         gym.terminal.press("enter");
@@ -108,11 +147,39 @@ describe("background shell activity stays visible until it really finishes", () 
             30_000,
         );
         expect(recovered.text).not.toContain("Process printf 'BACKGROUND_PROCESS_STARTED");
+        expect(recovered.text).not.toContain("background terminal running");
         expect(recovered.text).not.toMatch(/session ID/iu);
         expect(recovered.scroll.bottomDepartureCount).toBe(baseline.bottomDepartureCount);
         expect(recovered.scroll.topArrivalCount).toBe(baseline.topArrivalCount);
     }, 120_000);
 });
+
+function bottomPaneSnapshot(snapshot: TerminalSnapshot): object {
+    const summaryRow = snapshot.rows.findIndex((row) =>
+        row.includes("background terminal running"),
+    );
+    const footerRow = snapshot.rows.findIndex((row) => row.includes("gym off · /workspace"));
+    return {
+        rows: snapshot.rows.slice(summaryRow, footerRow + 1),
+        summaryCells: snapshot.cells
+            .filter((cell) => cell.y === summaryRow && cell.text !== " ")
+            .map(({ background, bold, dim, foreground, italic, text, x }) => ({
+                background,
+                bold,
+                dim,
+                foreground,
+                italic,
+                text,
+                x,
+            })),
+    };
+}
+
+async function captureReviewImage(snapshot: TerminalSnapshot, fileName: string): Promise<void> {
+    const directory = process.env.RIG_GYM_SCREENSHOT_DIR;
+    if (directory === undefined) return;
+    await renderTerminalSnapshotPng(snapshot, resolve(directory, fileName));
+}
 
 function toolResultText(content: unknown): string {
     if (typeof content === "string") return content;

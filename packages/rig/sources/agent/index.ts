@@ -43,6 +43,8 @@ export type {
     UserMessage,
 } from "./types.js";
 export type {
+    BackgroundTerminalInteractionPresentation,
+    ExecCommandPresentation,
     FileDiff,
     FileDiffHunk,
     FileDiffKind,

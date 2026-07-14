@@ -44,6 +44,9 @@ describe("Codex composer and footer visual contract", () => {
 
         const footer = "gym off · /workspace · main [default] · full access";
         expect(snapshot.text).toContain(footer);
+        const footerRow = rowContaining(snapshot, footer);
+        expect(footerRow).toBe(inputRow + 2);
+        expect(snapshot.rows[footerRow + 1]).toBe("");
         expect(stylesForText(snapshot, "gym off")).toEqual([
             expect.objectContaining({ foreground: { kind: "palette", index: 3 } }),
         ]);

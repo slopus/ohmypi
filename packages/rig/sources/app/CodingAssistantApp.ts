@@ -40,8 +40,8 @@ import type {
     WorkflowRun,
 } from "../protocol/index.js";
 import type { UserInputRequest, UserInputResponse } from "../user-input/index.js";
+import { humanizeWorkflowName } from "../workflows/index.js";
 import { createCodeReviewPrompt } from "../review/index.js";
-import type { ActiveWorkItem } from "./ActiveWorkItem.js";
 import type { AppTranscriptEntry } from "./AppTranscriptEntry.js";
 import type { CodexMcpToolCall } from "./CodexMcpToolCall.js";
 import { CODEX_DARK_DIFF_PALETTE, CODEX_LIGHT_DIFF_PALETTE } from "./CodexFileDiff.js";
@@ -49,7 +49,6 @@ import type {
     CodingAssistantAgentBackend,
     CodingAssistantModelChoice,
 } from "./CodingAssistantAgentBackend.js";
-import { createActiveWorkItems } from "./createActiveWorkItems.js";
 import { createEditorTheme } from "./createEditorTheme.js";
 import { createSelectionPanel } from "./createSelectionPanel.js";
 import { createWorkflowMonitor } from "./createWorkflowMonitor.js";
@@ -75,11 +74,17 @@ import {
     type ReadClipboardImageOptions,
 } from "./readClipboardImage.js";
 import { ACTIVITY_WAVE_FRAME_COUNT, renderActivityWave } from "./renderActivityWave.js";
-import { renderActiveWorkItem } from "./renderActiveWorkItem.js";
 import { renderAgentMarkdown } from "./renderAgentMarkdown.js";
+import { renderBackgroundTerminalCompletion } from "./renderBackgroundTerminalCompletion.js";
+import { renderBackgroundTerminalInteraction } from "./renderBackgroundTerminalInteraction.js";
+import { renderBackgroundTerminalSummary } from "./renderBackgroundTerminalSummary.js";
 import { renderCodexFileDiff } from "./renderCodexFileDiff.js";
 import { renderCodexMcpToolCall } from "./renderCodexMcpToolCall.js";
+import { renderExecCommand } from "./renderExecCommand.js";
 import { sanitizeTerminalText } from "./sanitizeTerminalText.js";
+import { renderSubagentSummary } from "./renderSubagentSummary.js";
+import { renderTurnCompletionSeparator } from "./renderTurnCompletionSeparator.js";
+import { renderWorkflowSummary } from "./renderWorkflowSummary.js";
 import { upsertSubagentSummary } from "./upsertSubagentSummary.js";
 import { applyWorkflowRunUpdate } from "./applyWorkflowRunUpdate.js";
 import type { TerminalTheme } from "./TerminalTheme.js";
@@ -284,6 +289,9 @@ export class CodingAssistantApp implements Component, Focusable {
     #activeSubmission: Promise<void> | undefined;
     #bracketedPasteBuffer: string | undefined;
     #backgroundProcesses: readonly BashSessionActivity[] = [];
+    #backgroundTerminalEntryIdsBySession = new Map<number, string>();
+    #observedShellProcesses: readonly BashSessionActivity[] = [];
+    #yieldedBackgroundTerminals = new Map<number, string>();
     #durableGlobalEventQueue: boolean;
     #showReasoning: boolean;
     #showUsage: boolean;
@@ -312,10 +320,14 @@ export class CodingAssistantApp implements Component, Focusable {
     #thinkingEntryIdsByContentIndex = new Map<number, string>();
     #toolCallEntryIdsByContentIndex = new Map<number, string>();
     #streamedToolCallEntries = new Set<AppTranscriptEntry>();
+    #deferredTurnSeparator = false;
+    #renderedCompletionNotices = new Map<string, number>();
     #runningToolCallIds = new Set<string>();
+    #stoppingBackgroundTerminals = false;
     #toolStatusByCallId = new Map<string, string>();
     #usage: Usage = zeroUsage();
     #latestContextTokens = 0;
+    #lastUserInputAtMs: number | undefined;
     #userInputRequests: UserInputRequest[] = [];
     #workflows: readonly WorkflowRun[];
     #workflowsEnabled: boolean;
@@ -448,10 +460,21 @@ export class CodingAssistantApp implements Component, Focusable {
     applySessionEvent(event: SessionEvent): void {
         if (event.type === "message_submitted") {
             this.#modelLocked = true;
+            const notificationPrefix = "Background work ";
+            if (event.data.source === "notification") {
+                if (this.#consumeRenderedCompletionNotice(event.data.displayText)) return;
+            } else {
+                this.#recordUserInput(event.createdAt);
+            }
             this.#appendEntry({
                 id: event.data.message.id,
-                role: "user",
-                text: event.data.displayText,
+                role: event.data.source === "notification" ? "event" : "user",
+                text:
+                    event.data.source === "notification" &&
+                    event.data.displayText.startsWith(notificationPrefix)
+                        ? event.data.displayText.slice(notificationPrefix.length)
+                        : event.data.displayText,
+                ...(event.data.source === "notification" ? { title: "Background work" } : {}),
             });
             return;
         }
@@ -460,7 +483,7 @@ export class CodingAssistantApp implements Component, Focusable {
             this.#abortNotified = false;
             this.#running = true;
             this.#statusText = "Running";
-            this.#activityStartedAtMs = this.#now();
+            this.#activityStartedAtMs = this.#lastUserInputAtMs ?? this.#now();
             this.#startActivityAnimation();
             this.#requestRender();
             return;
@@ -515,18 +538,50 @@ export class CodingAssistantApp implements Component, Focusable {
         }
 
         if (event.type === "subagent_changed") {
+            const previous = this.#subagents.find(
+                (subagent) => subagent.id === event.data.subagent.id,
+            );
             this.#subagents = upsertSubagentSummary(this.#subagents, event.data.subagent);
+            if (
+                previous !== undefined &&
+                this.#isActiveSubagent(previous) &&
+                !this.#isActiveSubagent(event.data.subagent)
+            ) {
+                this.#recordSubagentCompletion(event.data.subagent);
+            }
             this.#requestRender();
             return;
         }
 
+        if (event.type === "subagents_suspended") {
+            this.#appendEntry({
+                role: "event",
+                title: "Subagents suspended",
+                text: event.data.displayText,
+            });
+            return;
+        }
+
         if (event.type === "workflow_changed") {
+            const previous = this.#workflows.find(
+                (workflow) => workflow.runId === event.data.update.runId,
+            );
             this.#workflows = applyWorkflowRunUpdate(this.#workflows, event.data.update);
+            const next = this.#workflows.find(
+                (workflow) => workflow.runId === event.data.update.runId,
+            );
+            if (previous?.status === "running" && next !== undefined && next.status !== "running") {
+                this.#recordWorkflowCompletion(next);
+            }
             this.#requestRender();
             return;
         }
 
         if (event.type === "run_finished") {
+            const turnElapsedMs =
+                event.data.stopReason === "aborted"
+                    ? undefined
+                    : this.#elapsedSinceLastUserInput(event.createdAt);
             if (event.data.stopReason === "aborted") {
                 this.#appendAbortNotice();
             }
@@ -545,6 +600,7 @@ export class CodingAssistantApp implements Component, Focusable {
             this.#runningToolCallIds.clear();
             this.#toolStatusByCallId.clear();
             this.#clearUserInputRequests();
+            if (turnElapsedMs !== undefined) this.#appendTurnCompletion(turnElapsedMs);
             this.#requestRender();
             return;
         }
@@ -578,8 +634,13 @@ export class CodingAssistantApp implements Component, Focusable {
             this.#toolStatusByCallId.clear();
             this.#usage = zeroUsage();
             this.#latestContextTokens = 0;
+            this.#lastUserInputAtMs = undefined;
             this.#workflows = [];
             this.#backgroundProcesses = [];
+            this.#backgroundTerminalEntryIdsBySession.clear();
+            this.#observedShellProcesses = [];
+            this.#yieldedBackgroundTerminals.clear();
+            this.#renderedCompletionNotices.clear();
             this.#clearUserInputRequests();
             this.#appendEntry({
                 role: "system",
@@ -937,6 +998,8 @@ export class CodingAssistantApp implements Component, Focusable {
                 : (fileMentionSnapshot?.selectedIndex ?? 0),
         );
         const input = this.#renderInput(safeWidth);
+        const activeWork =
+            this.#selectionPanel === undefined ? this.#renderActiveWorkList(safeWidth) : [];
 
         if (this.#exiting) {
             return [...header, ...this.#renderTranscript(safeWidth)];
@@ -947,15 +1010,12 @@ export class CodingAssistantApp implements Component, Focusable {
             ...this.#renderTranscript(safeWidth),
             "",
             ...this.#renderQueuedPrompts(safeWidth),
+            ...activeWork,
+            ...(activeWork.length > 0 ? [""] : []),
             ...(this.#selectionPanel === undefined
                 ? input
                 : this.#selectionPanel.render(safeWidth)),
-            "",
             ...footer,
-            ...(this.#selectionPanel === undefined && this.#activeWorkItems().length > 0
-                ? this.#renderActiveWorkList(safeWidth)
-                : []),
-            "",
             "",
         ];
     }
@@ -1036,6 +1096,7 @@ export class CodingAssistantApp implements Component, Focusable {
             return;
         }
 
+        if (!this.#sessionBacked) this.#recordUserInput(this.#now());
         this.#modelLocked = true;
         if (this.#running) {
             await this.#agent.steer(submission.content, { displayText: submission.displayText });
@@ -1156,6 +1217,7 @@ export class CodingAssistantApp implements Component, Focusable {
             parsed[2] ?? "",
         );
 
+        if (!this.#sessionBacked) this.#recordUserInput(this.#now());
         this.#modelLocked = true;
         if (this.#running) {
             await this.#agent.steer(expandedPrompt, { displayText: prompt });
@@ -1231,6 +1293,16 @@ export class CodingAssistantApp implements Component, Focusable {
 
         if (prompt === "/agents") {
             this.#showSubagents();
+            return true;
+        }
+
+        if (prompt === "/ps") {
+            this.#showBackgroundTerminals();
+            return true;
+        }
+
+        if (prompt === "/stop") {
+            this.#stopBackgroundTerminals();
             return true;
         }
 
@@ -1487,6 +1559,7 @@ export class CodingAssistantApp implements Component, Focusable {
             idle: "Idle",
             queued: "Queued",
             running: "Running",
+            suspended: "Suspended",
         } as const;
         this.#appendEntry({
             role: "event",
@@ -1495,6 +1568,49 @@ export class CodingAssistantApp implements Component, Focusable {
                 .map((subagent) => `${labels[subagent.status]} · ${subagent.description}`)
                 .join("\n"),
         });
+    }
+
+    #showBackgroundTerminals(): void {
+        this.#appendEntry({
+            role: "event",
+            title: "Background terminals",
+            text:
+                this.#backgroundProcesses.length === 0
+                    ? "No background terminals running."
+                    : this.#backgroundProcesses
+                          .map((process) => `• ${process.command}\n  ${process.cwd}`)
+                          .join("\n"),
+        });
+    }
+
+    #stopBackgroundTerminals(): void {
+        this.#appendEntry({
+            role: "event",
+            title: "Background terminals",
+            text: "Stopping all background terminals.",
+        });
+        this.#stoppingBackgroundTerminals = true;
+        const stop =
+            this.#agent.stopBackgroundProcesses === undefined
+                ? (this.#agent.context.bash.killAllSessions?.() ?? Promise.resolve(0))
+                : this.#agent.stopBackgroundProcesses();
+        void stop
+            .then(() => {
+                this.#backgroundProcesses = [];
+                this.#yieldedBackgroundTerminals.clear();
+                this.#requestRender();
+            })
+            .catch((error: unknown) => {
+                this.#appendEntry({
+                    role: "error",
+                    title: "Background terminals",
+                    text: this.#formatError(error),
+                });
+                this.#requestRender();
+            })
+            .finally(() => {
+                this.#stoppingBackgroundTerminals = false;
+            });
     }
 
     #openWorkflowMonitor(initialRunId?: string): void {
@@ -1577,6 +1693,7 @@ export class CodingAssistantApp implements Component, Focusable {
         this.#toolStatusByCallId.clear();
         this.#usage = zeroUsage();
         this.#latestContextTokens = 0;
+        this.#lastUserInputAtMs = undefined;
         this.#abortNotified = false;
         this.#statusText = "Idle";
         this.#agent.reset();
@@ -1627,7 +1744,7 @@ export class CodingAssistantApp implements Component, Focusable {
         this.#awaitingApprovalToolCallIds.clear();
         this.#runningToolCallIds.clear();
         this.#toolStatusByCallId.clear();
-        this.#activityStartedAtMs = this.#now();
+        this.#activityStartedAtMs = this.#lastUserInputAtMs ?? this.#now();
         this.#startActivityAnimation();
         this.#requestRender();
         this.#clearSubmittedImages(prompt.displayText);
@@ -1635,6 +1752,7 @@ export class CodingAssistantApp implements Component, Focusable {
             this.#appendEntry({ role: "user", text: prompt.displayText });
         }
 
+        let turnCompleted = false;
         try {
             await this.#refreshSkillCommands({ force: true });
             if (!this.#isCurrentRun(runToken)) {
@@ -1659,6 +1777,7 @@ export class CodingAssistantApp implements Component, Focusable {
                 this.#statusText = "Idle";
                 this.#appendAbortNotice();
             } else {
+                turnCompleted = true;
                 this.#statusText =
                     result.stopReason === "stop" ? "Idle" : `Stopped: ${result.stopReason}`;
             }
@@ -1688,6 +1807,11 @@ export class CodingAssistantApp implements Component, Focusable {
                 this.#awaitingApprovalToolCallIds.clear();
                 this.#runningToolCallIds.clear();
                 this.#toolStatusByCallId.clear();
+                const turnElapsedMs =
+                    !this.#sessionBacked && turnCompleted
+                        ? this.#elapsedSinceLastUserInput(this.#now())
+                        : undefined;
+                if (turnElapsedMs !== undefined) this.#appendTurnCompletion(turnElapsedMs);
                 this.#requestRender();
             }
         }
@@ -1845,20 +1969,26 @@ export class CodingAssistantApp implements Component, Focusable {
             this.#thinkingEntryIdsByContentIndex.clear();
             this.#toolCallEntryIdsByContentIndex.clear();
             if (event.iteration > 1) {
-                this.#appendEntry({ role: "separator", text: "" });
+                this.#deferredTurnSeparator = true;
             }
         } else if (event.type === "text_start") {
+            this.#flushDeferredTurnSeparator();
             this.#statusText = "Running";
         } else if (event.type === "text_delta") {
+            this.#flushDeferredTurnSeparator();
             this.#appendStreamText(event.delta);
         } else if (event.type === "text_end") {
+            this.#flushDeferredTurnSeparator();
             this.#finishStreamText(event.content);
         } else if (event.type === "thinking_start") {
+            this.#flushDeferredTurnSeparator();
             this.#statusText = "Thinking";
         } else if (event.type === "thinking_delta") {
+            this.#flushDeferredTurnSeparator();
             this.#statusText = "Thinking";
             this.#appendThinkingText(event.contentIndex, event.delta);
         } else if (event.type === "thinking_end") {
+            this.#flushDeferredTurnSeparator();
             this.#statusText = "Thinking";
             this.#finishThinkingText(event.contentIndex, event.content);
         } else if (event.type === "toolcall_start") {
@@ -1885,7 +2015,14 @@ export class CodingAssistantApp implements Component, Focusable {
                 this.#toolStatusByCallId.set(event.toolCallId, this.#singleLine(event.status));
                 this.#refreshToolActivityStatus();
             }
+        } else if (event.type === "context_compacted") {
+            this.#appendEntry({
+                role: "event",
+                title: "Context compacted",
+                text: `Summarized ${event.compactedMessageCount} older messages; ${formatTokens(event.estimatedTokensBefore)} → ${formatTokens(event.estimatedTokensAfter)} tokens.`,
+            });
         } else if (event.type === "tool_batch_rejected") {
+            this.#flushDeferredTurnSeparator();
             const rejectedIds = new Set(event.toolCallIds);
             this.#entries = this.#entries.filter(
                 (entry) => !this.#streamedToolCallEntries.has(entry),
@@ -1915,20 +2052,23 @@ export class CodingAssistantApp implements Component, Focusable {
                 toolEntry.permissionReview = `${outcome}: ${event.reason} Risk: ${event.risk}. User authorization: ${event.userAuthorization}.`;
             }
         } else if (event.type === "background_processes_changed") {
-            if (event.processes !== undefined) {
-                this.#backgroundProcesses = event.processes;
-            } else if (event.running === 0) {
-                this.#backgroundProcesses = [];
-            }
+            const nextProcesses =
+                event.processes ?? (event.running === 0 ? [] : this.#observedShellProcesses);
+            this.#recordClosedBackgroundTerminals(nextProcesses);
+            this.#observedShellProcesses = nextProcesses;
+            this.#backgroundProcesses = nextProcesses.filter((process) =>
+                this.#yieldedBackgroundTerminals.has(process.sessionId),
+            );
         } else if (event.type === "background_processes_stopped") {
             this.#backgroundProcesses = [];
+            this.#yieldedBackgroundTerminals.clear();
             this.#appendEntry({
                 role: "event",
                 title: "permissions",
                 text: `Stopped ${event.count} running process${event.count === 1 ? "" : "es"} before reducing permissions.`,
             });
         } else if (event.type === "done") {
-            this.#statusText = event.reason === "toolUse" ? "Running tools" : "Idle";
+            this.#statusText = event.reason === "toolUse" ? "Running tools" : "Working";
         } else if (event.type === "error") {
             if (event.reason === "aborted") {
                 this.#statusText = "Idle";
@@ -2128,6 +2268,33 @@ export class CodingAssistantApp implements Component, Focusable {
                 ? undefined
                 : this.#entries.find((entry) => entry.id === existingId);
 
+        const reusableBackgroundWait = this.#reusableBackgroundTerminalWait(
+            toolCall.name,
+            toolCall.arguments,
+        );
+        if (existing !== undefined && reusableBackgroundWait !== undefined) {
+            const sessionId = this.#backgroundTerminalSessionId(toolCall.arguments);
+            if (sessionId === undefined) return;
+            const previousId = reusableBackgroundWait.id;
+            this.#activeToolCallIds.delete(previousId);
+            this.#awaitingApprovalToolCallIds.delete(previousId);
+            this.#runningToolCallIds.delete(previousId);
+            this.#toolStatusByCallId.delete(previousId);
+            this.#removeUnrenderedToolEntry(existing);
+            reusableBackgroundWait.id = toolCall.id;
+            reusableBackgroundWait.role = "tool";
+            reusableBackgroundWait.title = this.#toolDisplayName(toolCall.name);
+            reusableBackgroundWait.text = this.#formatToolCall(toolCall.name, toolCall.arguments);
+            delete reusableBackgroundWait.backgroundTerminalInteraction;
+            delete reusableBackgroundWait.detail;
+            this.#backgroundTerminalEntryIdsBySession.set(sessionId, toolCall.id);
+            this.#toolCallEntryIdsByContentIndex.delete(contentIndex);
+            this.#requestRender();
+            return;
+        }
+
+        this.#flushDeferredTurnSeparator(existing);
+
         if (existing !== undefined) {
             existing.id = toolCall.id;
             existing.title = this.#toolDisplayName(toolCall.name);
@@ -2149,6 +2316,87 @@ export class CodingAssistantApp implements Component, Focusable {
             text: this.#formatToolCall(toolCall.name, toolCall.arguments),
             ...(mcpToolCall === undefined ? {} : { mcpToolCall }),
         });
+    }
+
+    #backgroundTerminalSessionId(args: unknown): number | undefined {
+        if (!this.#isRecord(args) || typeof args.session_id !== "number") return undefined;
+        return args.session_id;
+    }
+
+    #reusableBackgroundTerminalWait(
+        toolName: string,
+        args: unknown,
+    ): AppTranscriptEntry | undefined {
+        if (toolName.toLowerCase() !== "write_stdin" || !this.#isRecord(args)) return undefined;
+        if (typeof args.chars === "string" && args.chars.length > 0) return undefined;
+        const sessionId = this.#backgroundTerminalSessionId(args);
+        if (sessionId === undefined) return undefined;
+        const entryId = this.#backgroundTerminalEntryIdsBySession.get(sessionId);
+        if (entryId === undefined) return undefined;
+        const entry = this.#entries.find((candidate) => candidate.id === entryId);
+        if (
+            entry?.backgroundTerminalInteraction?.input === "" &&
+            entry.backgroundTerminalInteraction.sessionId === sessionId
+        ) {
+            return entry;
+        }
+        this.#backgroundTerminalEntryIdsBySession.delete(sessionId);
+        return undefined;
+    }
+
+    #removeUnrenderedToolEntry(entry: AppTranscriptEntry): void {
+        const index = this.#entries.indexOf(entry);
+        if (index < 0) return;
+        this.#entries.splice(index, 1);
+        this.#streamedToolCallEntries.delete(entry);
+        if (index < this.#transcriptStartIndex) this.#transcriptStartIndex -= 1;
+        this.#removeOrphanedSeparators();
+    }
+
+    #flushDeferredTurnSeparator(beforeEntry?: AppTranscriptEntry): void {
+        if (!this.#deferredTurnSeparator) return;
+        this.#deferredTurnSeparator = false;
+        const separator: AppTranscriptEntry = {
+            id: this.#idFactory(),
+            role: "separator",
+            text: "",
+        };
+        const beforeIndex = beforeEntry === undefined ? -1 : this.#entries.indexOf(beforeEntry);
+        if (beforeIndex < 0) {
+            if (this.#entries.at(-1)?.role === "separator") return;
+            this.#entries.push(separator);
+        } else {
+            if (this.#entries[beforeIndex - 1]?.role === "separator") return;
+            this.#entries.splice(beforeIndex, 0, separator);
+            if (beforeIndex < this.#transcriptStartIndex) this.#transcriptStartIndex += 1;
+        }
+        this.#requestRender();
+    }
+
+    #removeOrphanedSeparators(): void {
+        const retained: AppTranscriptEntry[] = [];
+        let removedBeforeStart = 0;
+        for (const [index, entry] of this.#entries.entries()) {
+            if (entry.role === "separator" && retained.at(-1)?.role === "separator") {
+                if (entry.turnElapsedMs !== undefined) {
+                    retained[retained.length - 1]!.turnElapsedMs = entry.turnElapsedMs;
+                }
+                if (index < this.#transcriptStartIndex) removedBeforeStart += 1;
+                continue;
+            }
+            retained.push(entry);
+        }
+        const trailing = retained.at(-1);
+        if (trailing?.role === "separator" && trailing.turnElapsedMs === undefined) {
+            const index = this.#entries.indexOf(trailing);
+            if (index >= 0 && index < this.#transcriptStartIndex) removedBeforeStart += 1;
+            retained.pop();
+        }
+        this.#entries = retained;
+        this.#transcriptStartIndex = Math.max(
+            0,
+            Math.min(this.#transcriptStartIndex - removedBeforeStart, this.#entries.length),
+        );
     }
 
     #finishThinkingMessage(messageId: string, contentIndex: number, text: string): void {
@@ -2185,6 +2433,15 @@ export class CodingAssistantApp implements Component, Focusable {
         if (entry.detail !== undefined) {
             completeEntry.detail = entry.detail;
         }
+        if (entry.backgroundTerminalCompletion !== undefined) {
+            completeEntry.backgroundTerminalCompletion = entry.backgroundTerminalCompletion;
+        }
+        if (entry.backgroundTerminalInteraction !== undefined) {
+            completeEntry.backgroundTerminalInteraction = entry.backgroundTerminalInteraction;
+        }
+        if (entry.execCommand !== undefined) {
+            completeEntry.execCommand = entry.execCommand;
+        }
         if (entry.fileDiffs !== undefined) {
             completeEntry.fileDiffs = entry.fileDiffs;
         }
@@ -2199,6 +2456,9 @@ export class CodingAssistantApp implements Component, Focusable {
         }
         if (entry.title !== undefined) {
             completeEntry.title = entry.title;
+        }
+        if (entry.turnElapsedMs !== undefined) {
+            completeEntry.turnElapsedMs = entry.turnElapsedMs;
         }
 
         this.#entries.push(completeEntry);
@@ -2219,6 +2479,10 @@ export class CodingAssistantApp implements Component, Focusable {
         this.#transcriptStartIndex = 0;
         this.#streamedToolCallEntries.clear();
         this.#stoppedToolCallIds.clear();
+        this.#backgroundTerminalEntryIdsBySession.clear();
+        this.#observedShellProcesses = [];
+        this.#yieldedBackgroundTerminals.clear();
+        this.#deferredTurnSeparator = false;
     }
 
     #discardPendingToolCallEntries(): void {
@@ -2236,6 +2500,8 @@ export class CodingAssistantApp implements Component, Focusable {
             Math.min(this.#transcriptStartIndex - removedBeforeStart, this.#entries.length),
         );
         this.#streamedToolCallEntries.clear();
+        this.#deferredTurnSeparator = false;
+        this.#removeOrphanedSeparators();
     }
 
     #renderHeader(width: number): string[] {
@@ -2315,7 +2581,11 @@ export class CodingAssistantApp implements Component, Focusable {
 
     #renderEntry(entry: AppTranscriptEntry, width: number): string[] {
         if (entry.role === "separator") {
-            return [this.#turnSeparator(width)];
+            return [
+                entry.turnElapsedMs === undefined
+                    ? this.#turnSeparator(width)
+                    : renderTurnCompletionSeparator(entry.turnElapsedMs, width),
+            ];
         }
         if (entry.role === "user") {
             return this.#renderUserEntry(entry, width);
@@ -2325,6 +2595,23 @@ export class CodingAssistantApp implements Component, Focusable {
         }
         if (entry.role === "thinking") {
             return this.#renderThinkingEntry(entry, width);
+        }
+        if (entry.backgroundTerminalCompletion !== undefined) {
+            return [renderBackgroundTerminalCompletion(entry.backgroundTerminalCompletion, width)];
+        }
+        if (entry.backgroundTerminalInteraction !== undefined) {
+            return renderBackgroundTerminalInteraction(entry.backgroundTerminalInteraction, width);
+        }
+        if (entry.execCommand !== undefined) {
+            const stopped = this.#stoppedToolCallIds.has(entry.id);
+            const isError = entry.role === "error";
+            return renderExecCommand(entry.execCommand, {
+                brand: this.#theme.brand,
+                primary: this.#theme.primary,
+                status: stopped || isError ? this.#theme.error : this.#theme.success,
+                verb: stopped ? "Stopped" : isError ? "Failed" : "Ran",
+                width,
+            });
         }
         if (entry.mcpToolCall !== undefined) {
             return this.#renderMcpToolEntry(entry, width);
@@ -2381,17 +2668,28 @@ export class CodingAssistantApp implements Component, Focusable {
         return [this.#fitLine(line, width)];
     }
 
-    #activeWorkItems(): ActiveWorkItem[] {
-        return createActiveWorkItems({
-            processes: this.#backgroundProcesses,
-            subagents: this.#subagents,
-            workflows: this.#workflows,
-        });
+    #activeSubagentCount(): number {
+        return this.#subagents.filter((subagent) => this.#isActiveSubagent(subagent)).length;
+    }
+
+    #isActiveSubagent(subagent: SubagentSummary): boolean {
+        return (
+            (subagent.status === "queued" || subagent.status === "running") &&
+            !subagent.taskName?.startsWith("workflow_")
+        );
+    }
+
+    #activeWorkflowCount(): number {
+        return this.#workflows.filter((workflow) => workflow.status === "running").length;
     }
 
     #renderActiveWorkList(width: number): string[] {
-        const items = this.#activeWorkItems();
-        return items.map((item) => renderActiveWorkItem(item, width, this.#theme));
+        const rows = [
+            renderSubagentSummary(this.#activeSubagentCount(), width),
+            renderWorkflowSummary(this.#activeWorkflowCount(), width),
+            renderBackgroundTerminalSummary(this.#backgroundProcesses.length, width),
+        ];
+        return rows.filter((row): row is string => row !== undefined);
     }
 
     #usageFooter(): string {
@@ -2971,9 +3269,31 @@ export class CodingAssistantApp implements Component, Focusable {
         if (existing !== undefined) {
             existing.role = block.isError ? "error" : "tool";
             existing.title = this.#toolDisplayName(block.toolName);
-            if (block.isError === true) {
+            if (block.presentation?.type === "exec_command") {
+                existing.execCommand = block.presentation;
+                delete existing.backgroundTerminalInteraction;
+                delete existing.detail;
                 delete existing.fileDiffs;
                 delete existing.omittedFileDiffs;
+                this.#trackYieldedBackgroundTerminal(block.presentation);
+                return;
+            } else if (block.isError === true) {
+                delete existing.backgroundTerminalInteraction;
+                delete existing.execCommand;
+                delete existing.fileDiffs;
+                delete existing.omittedFileDiffs;
+            } else if (block.presentation?.type === "background_terminal_interaction") {
+                existing.backgroundTerminalInteraction = block.presentation;
+                delete existing.detail;
+                delete existing.fileDiffs;
+                delete existing.omittedFileDiffs;
+                if (block.presentation.input === "") {
+                    this.#backgroundTerminalEntryIdsBySession.set(
+                        block.presentation.sessionId,
+                        existing.id,
+                    );
+                }
+                return;
             } else if (
                 block.presentation?.type === "file_diff" &&
                 block.presentation.files.length > 0
@@ -3004,12 +3324,16 @@ export class CodingAssistantApp implements Component, Focusable {
             return;
         }
 
-        this.#appendEntry({
+        const appended = this.#appendEntry({
             id: block.toolCallId,
             role: block.isError ? "error" : "tool",
             title: this.#toolDisplayName(block.toolName),
             text: this.#toolDisplayName(block.toolName),
-            detail,
+            ...(block.presentation?.type === "background_terminal_interaction"
+                ? { backgroundTerminalInteraction: block.presentation }
+                : block.presentation?.type === "exec_command"
+                  ? { execCommand: block.presentation }
+                  : { detail }),
             ...(block.isError !== true &&
             block.presentation?.type === "file_diff" &&
             block.presentation.files.length > 0
@@ -3021,6 +3345,15 @@ export class CodingAssistantApp implements Component, Focusable {
                 ? { omittedFileDiffs: block.presentation.omittedFiles }
                 : {}),
         });
+        if (appended.backgroundTerminalInteraction?.input === "") {
+            this.#backgroundTerminalEntryIdsBySession.set(
+                appended.backgroundTerminalInteraction.sessionId,
+                appended.id,
+            );
+        }
+        if (appended.execCommand !== undefined) {
+            this.#trackYieldedBackgroundTerminal(appended.execCommand);
+        }
     }
 
     #formatToolCall(toolName: string, args: unknown): string {
@@ -3031,6 +3364,12 @@ export class CodingAssistantApp implements Component, Focusable {
         };
 
         const normalized = toolName.toLowerCase();
+        if (normalized === "write_stdin") {
+            const chars = record.chars;
+            return typeof chars === "string" && chars.length > 0
+                ? "Interacting with background terminal"
+                : "Waiting for background terminal";
+        }
         if (normalized === "request_user_input" || normalized === "askuserquestion") {
             const questions = record.questions;
             const firstQuestion = Array.isArray(questions) ? questions[0] : undefined;
@@ -3097,6 +3436,7 @@ export class CodingAssistantApp implements Component, Focusable {
         if (normalized === "wait_agent") return "Wait for delegated work";
         if (normalized === "list_agents") return "Show delegated work";
         if (normalized === "interrupt_agent") return "Stop delegated work";
+        if (normalized === "resume_agent") return "Resume delegated work";
 
         return this.#toolDisplayName(toolName);
     }
@@ -3248,6 +3588,9 @@ export class CodingAssistantApp implements Component, Focusable {
                   : this.#theme.success;
         const callText = this.#singleLine(entry.text);
         const displayText = callText.length > 0 && callText !== toolName ? callText : toolName;
+        if (toolName === "Write stdin" && active) {
+            return [this.#fitLine(`${DIM}• ${displayText}${RESET}`, width)];
+        }
         const title = `${dot}•${RESET} ${this.#theme.brand}${BOLD}${verb}${NOT_BOLD_OR_DIM}${this.#theme.primary} ${displayText}${RESET}`;
         const lines = [this.#fitLine(title, width)];
         if (entry.permissionReview !== undefined && width >= 5) {
@@ -3441,6 +3784,105 @@ export class CodingAssistantApp implements Component, Focusable {
         return formatActivityElapsedTime(this.#now() - this.#activityStartedAtMs);
     }
 
+    #recordUserInput(createdAt: number): void {
+        this.#lastUserInputAtMs = createdAt;
+        if (this.#running) this.#activityStartedAtMs = createdAt;
+    }
+
+    #elapsedSinceLastUserInput(completedAt: number): number | undefined {
+        if (this.#lastUserInputAtMs === undefined) return undefined;
+        return Math.max(0, completedAt - this.#lastUserInputAtMs);
+    }
+
+    #appendTurnCompletion(elapsedMs: number): void {
+        const latest = this.#entries.at(-1);
+        if (latest?.role === "separator") {
+            latest.turnElapsedMs = elapsedMs;
+            this.#requestRender();
+            return;
+        }
+        this.#appendEntry({
+            role: "separator",
+            text: "",
+            turnElapsedMs: elapsedMs,
+        });
+    }
+
+    #recordClosedBackgroundTerminals(nextProcesses: readonly BashSessionActivity[]): void {
+        const nextSessionIds = new Set(nextProcesses.map((process) => process.sessionId));
+        const closed = [...this.#yieldedBackgroundTerminals].filter(
+            ([sessionId]) => !nextSessionIds.has(sessionId),
+        );
+        if (closed.length === 0 || this.#stoppingBackgroundTerminals) return;
+
+        this.#deferredTurnSeparator = false;
+        for (const [sessionId, command] of closed) {
+            this.#yieldedBackgroundTerminals.delete(sessionId);
+            this.#backgroundTerminalEntryIdsBySession.delete(sessionId);
+            this.#appendEntry({
+                backgroundTerminalCompletion: command,
+                role: "event",
+                text: command,
+            });
+        }
+    }
+
+    #trackYieldedBackgroundTerminal(
+        presentation: NonNullable<AppTranscriptEntry["execCommand"]>,
+    ): void {
+        if (presentation.sessionId === undefined) return;
+        this.#yieldedBackgroundTerminals.set(presentation.sessionId, presentation.command);
+        this.#backgroundProcesses = this.#observedShellProcesses.filter((process) =>
+            this.#yieldedBackgroundTerminals.has(process.sessionId),
+        );
+    }
+
+    #recordSubagentCompletion(subagent: SubagentSummary): void {
+        const outcome =
+            subagent.status === "completed"
+                ? "completed"
+                : subagent.status === "suspended"
+                  ? "was suspended"
+                  : subagent.status === "aborted"
+                    ? "was stopped"
+                    : "failed";
+        const displayText = `Background work "${subagent.description}" ${outcome}.`;
+        this.#recordCompletionNotice(displayText, "Background work", "Background work ");
+    }
+
+    #recordWorkflowCompletion(workflow: WorkflowRun): void {
+        const outcome =
+            workflow.status === "completed"
+                ? "completed"
+                : workflow.status === "stopped"
+                  ? "was stopped"
+                  : "failed";
+        const displayText = `Workflow ${humanizeWorkflowName(workflow.name)} ${outcome}.`;
+        this.#recordCompletionNotice(displayText, "Workflow", "Workflow ");
+    }
+
+    #recordCompletionNotice(displayText: string, title: string, prefix: string): void {
+        const count = this.#renderedCompletionNotices.get(displayText) ?? 0;
+        this.#renderedCompletionNotices.set(displayText, count + 1);
+        if (this.#renderedCompletionNotices.size > 100) {
+            const oldest = this.#renderedCompletionNotices.keys().next().value;
+            if (oldest !== undefined) this.#renderedCompletionNotices.delete(oldest);
+        }
+        this.#appendEntry({
+            role: "event",
+            title,
+            text: displayText.startsWith(prefix) ? displayText.slice(prefix.length) : displayText,
+        });
+    }
+
+    #consumeRenderedCompletionNotice(displayText: string): boolean {
+        const count = this.#renderedCompletionNotices.get(displayText) ?? 0;
+        if (count === 0) return false;
+        if (count === 1) this.#renderedCompletionNotices.delete(displayText);
+        else this.#renderedCompletionNotices.set(displayText, count - 1);
+        return true;
+    }
+
     #refreshToolActivityStatus(): void {
         if (this.#awaitingApprovalToolCallIds.size > 0) {
             this.#statusText = "Waiting for approval";
@@ -3484,7 +3926,7 @@ export class CodingAssistantApp implements Component, Focusable {
         const frame = this.#activityAnimationFrame;
         const elapsed = this.#activityElapsedText();
         const elapsedText = elapsed ?? "0s";
-        const elapsedSuffix = ` ${DIM}${this.#theme.secondary}(${elapsedText} • esc to interrupt)${RESET}`;
+        const elapsedSuffix = ` ${DIM}${this.#theme.secondary}(${elapsedText} · esc to interrupt)${RESET}`;
 
         return [
             this.#fitLine(`${prefix}${renderActivityWave(label, frame)}${elapsedSuffix}`, width),
