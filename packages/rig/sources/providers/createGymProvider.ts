@@ -18,6 +18,7 @@ export const gymModel = defineModel({
 });
 
 export interface CreateGymProviderOptions {
+    contextWindow?: number;
     endpoint: string;
     fetch?: typeof globalThis.fetch;
     token?: string;
@@ -25,9 +26,13 @@ export interface CreateGymProviderOptions {
 
 export function createGymProvider(options: CreateGymProviderOptions) {
     const request = options.fetch ?? globalThis.fetch;
+    const model =
+        options.contextWindow === undefined
+            ? gymModel
+            : { ...gymModel, contextWindow: options.contextWindow };
     return defineProvider({
         id: "gym",
-        models: [gymModel],
+        models: [model],
         serviceTiers: ["fast"],
         stream(model, context, streamOptions = {}) {
             return createInferenceStream(async function* () {

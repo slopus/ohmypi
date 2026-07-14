@@ -23,6 +23,7 @@ import { createCodexProvider, type CodexProviderOptions } from "../providers/cod
 import { createGymProvider } from "../providers/createGymProvider.js";
 import { getBedrockModelRoute } from "../providers/getBedrockModelRoute.js";
 import { modelOpenaiGpt56Sol } from "../providers/models.js";
+import { readGymContextWindow } from "../providers/readGymContextWindow.js";
 import type { ServiceTier } from "../providers/types.js";
 import { claudeCodeTools, claudeCollaborationTools } from "../tools/claude/index.js";
 import { codexCollaborationTools, codexTools } from "../tools/codex/index.js";
@@ -179,7 +180,9 @@ function createGymProviderFromEnvironment(env: NodeJS.ProcessEnv) {
     if (endpoint === undefined || endpoint.trim().length === 0) {
         throw new Error("RIG_GYM_INFERENCE_URL is required for the gym provider.");
     }
+    const contextWindow = readGymContextWindow(env);
     return createGymProvider({
+        ...(contextWindow === undefined ? {} : { contextWindow }),
         endpoint,
         ...(env.RIG_GYM_TOKEN === undefined ? {} : { token: env.RIG_GYM_TOKEN }),
     });

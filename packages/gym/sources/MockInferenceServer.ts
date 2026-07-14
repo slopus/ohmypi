@@ -86,6 +86,10 @@ export class MockInferenceServer {
                       stopReason: "stop" as const,
                   }
                 : await this.#handler(payload, this.#agentCallIndex++);
+            if ("disconnect" in reply) {
+                response.destroy();
+                return;
+            }
             if ("httpStatus" in reply) {
                 send(response, reply.httpStatus, reply.body ?? "Mock inference failure.");
                 return;

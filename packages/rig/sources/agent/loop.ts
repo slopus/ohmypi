@@ -7,6 +7,7 @@ import type { AgentContext } from "./context/AgentContext.js";
 import type { BashSessionActivity } from "./context/BashContext.js";
 import { isContextWindowExceededError } from "./isContextWindowExceededError.js";
 import { isInvalidImageRequestError } from "./isInvalidImageRequestError.js";
+import { isRetryableInferenceError } from "./isRetryableInferenceError.js";
 import { prepareProviderMessageImages } from "./prepareProviderMessageImages.js";
 import { replaceLastTurnToolResultImages } from "./replaceLastTurnToolResultImages.js";
 import { createSystemPrompt } from "./createSystemPrompt.js";
@@ -45,6 +46,9 @@ import {
     summarizePermissionAction,
 } from "../permissions/index.js";
 
+const INFERENCE_MAX_RETRIES = 5;
+const INFERENCE_RETRY_INITIAL_DELAY_MS = 200;
+
 export interface RunAgentLoopOptions {
     provider: Provider;
     modelId: string;
@@ -77,6 +81,13 @@ export interface RunAgentLoopOptions {
 
 export type AgentLoopEvent =
     | AssistantMessageEvent
+    | {
+          type: "context_compacted";
+          compactedMessageCount: number;
+          estimatedTokensAfter: number;
+          estimatedTokensBefore: number;
+          reason: "context_window" | "threshold";
+      }
     | {
           type: "inference_iteration_start";
           iteration: number;
@@ -172,35 +183,67 @@ export async function runAgentLoop(options: RunAgentLoopOptions): Promise<AgentL
 
         let assistantMessage: ProviderAssistantMessage;
         let pendingStartEvent: AgentLoopEvent | undefined;
-        const deferredErrorEvents: AgentLoopEvent[] = [];
+        let deferredErrorEvents: AgentLoopEvent[] = [];
+        let inferenceRetryCount = 0;
         try {
-            const preparedProviderMessages = await prepareProviderMessageImages(
-                providerMessages,
-                options.provider.id === "claude-sdk" ? "claude" : "codex",
-            );
-            const stream = options.provider.stream(
-                model,
-                toProviderContext(systemPrompt, preparedProviderMessages, providerTools),
-                toStreamOptions(options),
-            );
+            for (;;) {
+                pendingStartEvent = undefined;
+                deferredErrorEvents = [];
+                let emittedContent = false;
+                try {
+                    const preparedProviderMessages = await prepareProviderMessageImages(
+                        providerMessages,
+                        options.provider.id === "claude-sdk" ? "claude" : "codex",
+                    );
+                    const stream = options.provider.stream(
+                        model,
+                        toProviderContext(systemPrompt, preparedProviderMessages, providerTools),
+                        toStreamOptions(options),
+                    );
 
-            for await (const event of stream) {
-                if (event.type === "start") {
-                    pendingStartEvent = event;
+                    for await (const event of stream) {
+                        if (event.type === "start") {
+                            pendingStartEvent = event;
+                            continue;
+                        }
+                        if (event.type === "error") {
+                            deferredErrorEvents.push(event);
+                            continue;
+                        }
+                        if (pendingStartEvent !== undefined) {
+                            await options.onEvent?.(pendingStartEvent);
+                            pendingStartEvent = undefined;
+                        }
+                        emittedContent = true;
+                        await options.onEvent?.(event);
+                    }
+
+                    assistantMessage = await stream.result();
+                } catch (error) {
+                    if (
+                        !emittedContent &&
+                        inferenceRetryCount < INFERENCE_MAX_RETRIES &&
+                        isRetryableInferenceError(error)
+                    ) {
+                        inferenceRetryCount += 1;
+                        await delayBeforeInferenceRetry(inferenceRetryCount, options.signal);
+                        continue;
+                    }
+                    throw error;
+                }
+
+                if (
+                    !emittedContent &&
+                    assistantMessage.stopReason === "error" &&
+                    inferenceRetryCount < INFERENCE_MAX_RETRIES &&
+                    isRetryableInferenceError(assistantMessage)
+                ) {
+                    inferenceRetryCount += 1;
+                    await delayBeforeInferenceRetry(inferenceRetryCount, options.signal);
                     continue;
                 }
-                if (event.type === "error") {
-                    deferredErrorEvents.push(event);
-                    continue;
-                }
-                if (pendingStartEvent !== undefined) {
-                    await options.onEvent?.(pendingStartEvent);
-                    pendingStartEvent = undefined;
-                }
-                await options.onEvent?.(event);
+                break;
             }
-
-            assistantMessage = await stream.result();
         } catch (error) {
             if (options.signal?.aborted) {
                 return {
@@ -447,6 +490,27 @@ export async function runAgentLoop(options: RunAgentLoopOptions): Promise<AgentL
         });
         appendSteering(options, transcript, contextTranscript, providerMessages, now);
     }
+}
+
+async function delayBeforeInferenceRetry(attempt: number, signal: AbortSignal | undefined) {
+    const baseDelayMs = INFERENCE_RETRY_INITIAL_DELAY_MS * 2 ** (attempt - 1);
+    const delayMs = baseDelayMs * (0.9 + Math.random() * 0.2);
+    await new Promise<void>((resolve, reject) => {
+        const onAbort = () => {
+            clearTimeout(timeout);
+            reject(signal?.reason ?? new Error("Inference retry aborted."));
+        };
+        const timeout = setTimeout(() => {
+            signal?.removeEventListener("abort", onAbort);
+            resolve();
+        }, delayMs);
+        if (signal === undefined) return;
+        if (signal.aborted) {
+            onAbort();
+            return;
+        }
+        signal.addEventListener("abort", onAbort, { once: true });
+    });
 }
 
 async function compactLoopContext(

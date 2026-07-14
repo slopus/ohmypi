@@ -7,6 +7,7 @@ import { createCodexProvider } from "../providers/codex.js";
 import { createGymProvider } from "../providers/createGymProvider.js";
 import { modelOpenaiGpt56Sol } from "../providers/models.js";
 import { readBedrockBearerToken } from "../providers/readBedrockBearerToken.js";
+import { readGymContextWindow } from "../providers/readGymContextWindow.js";
 import type { Provider } from "../providers/types.js";
 import { claudeCodeTools } from "../tools/claude/index.js";
 import { uniqueModelsById } from "./uniqueModelsById.js";
@@ -33,8 +34,10 @@ export function createModelCatalog(options: CreateModelCatalogOptions = {}): Mod
     const gymEndpoint = env.RIG_GYM_INFERENCE_URL;
     const gymEnabled = gymEndpoint !== undefined && gymEndpoint.trim().length > 0;
     if (gymEnabled) {
+        const contextWindow = readGymContextWindow(env);
         providers.unshift(
             createGymProvider({
+                ...(contextWindow === undefined ? {} : { contextWindow }),
                 endpoint: gymEndpoint,
                 ...(env.RIG_GYM_TOKEN === undefined ? {} : { token: env.RIG_GYM_TOKEN }),
             }),

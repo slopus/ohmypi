@@ -308,11 +308,23 @@ export class Agent {
 
         try {
             try {
-                await this.#compactContext({
+                const compaction = await this.#compactContext({
                     force: false,
                     preserveLatestUserMessage: true,
                     ...(options.signal !== undefined ? { signal: options.signal } : {}),
                 });
+                if (compaction.compacted) {
+                    await this.#handleEvent(
+                        {
+                            type: "context_compacted",
+                            compactedMessageCount: compaction.compactedMessageCount,
+                            estimatedTokensAfter: compaction.estimatedTokensAfter,
+                            estimatedTokensBefore: compaction.estimatedTokensBefore,
+                            reason: "threshold",
+                        },
+                        options,
+                    );
+                }
             } catch (error) {
                 // The main loop still gets a chance to report an abort or the provider's
                 // context-limit error when automatic compaction is unavailable.
@@ -346,6 +358,18 @@ export class Agent {
                             ...(options.signal === undefined ? {} : { signal: options.signal }),
                         });
                         contextCompactedDuringRun ||= result.compacted;
+                        if (result.compacted) {
+                            await this.#handleEvent(
+                                {
+                                    type: "context_compacted",
+                                    compactedMessageCount: result.compactedMessageCount,
+                                    estimatedTokensAfter: result.estimatedTokensAfter,
+                                    estimatedTokensBefore: result.estimatedTokensBefore,
+                                    reason: compaction.force ? "context_window" : "threshold",
+                                },
+                                options,
+                            );
+                        }
                         return result;
                     } catch (error) {
                         if (!options.signal?.aborted) {

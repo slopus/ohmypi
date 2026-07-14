@@ -68,6 +68,9 @@ export async function createGym(options: GymOptions): Promise<Gym> {
                 `RIG_GYM_INFERENCE_URL=${inference.url}`,
                 "--env",
                 `RIG_GYM_TOKEN=${inference.token}`,
+                ...(options.contextWindow === undefined
+                    ? []
+                    : ["--env", `RIG_GYM_CONTEXT_WINDOW=${options.contextWindow}`]),
                 "--env",
                 "RIG_GYM_OUTER_ISOLATION=docker",
                 "--env",

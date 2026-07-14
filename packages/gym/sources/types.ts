@@ -6,6 +6,7 @@ import type { HttpInterceptHandler } from "./InterceptingHttpProxy.js";
 
 export type GymMockResponse =
     | GymInferenceResponse
+    | { disconnect: true }
     | {
           body?: string;
           httpStatus: number;
@@ -27,6 +28,7 @@ export type GymFixture =
 export interface GymOptions {
     args?: readonly string[];
     cols?: number;
+    contextWindow?: number;
     dockerSocket?: boolean;
     entrypoint?: readonly [string, ...string[]];
     environment?: Readonly<Record<string, string>>;

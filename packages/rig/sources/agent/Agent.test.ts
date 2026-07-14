@@ -563,6 +563,56 @@ describe("Agent", () => {
         });
     });
 
+    it("retries transient provider errors without ending the turn", async () => {
+        const model = defineModel({
+            id: "openai/gpt-test",
+            name: "GPT Test",
+            thinkingLevels: ["off"],
+            defaultThinkingLevel: "off",
+        });
+        let requestCount = 0;
+        const provider = defineProvider({
+            id: "codex",
+            models: [model],
+            stream() {
+                requestCount += 1;
+                return streamFor({
+                    role: "assistant",
+                    content: requestCount === 1 ? [] : [{ type: "text", text: "recovered" }],
+                    api: "test",
+                    provider: "codex",
+                    model: model.id,
+                    usage: zeroUsage(),
+                    stopReason: requestCount === 1 ? "error" : "stop",
+                    ...(requestCount === 1 ? { errorMessage: "fetch failed" } : {}),
+                    timestamp: requestCount,
+                });
+            },
+        });
+        const observedEventTypes: string[] = [];
+        const harness = createJustBashToolHarness();
+        const agent = new Agent({
+            provider,
+            modelId: model.id,
+            context: harness.context,
+            printToConsole: false,
+            onEvent: (event) => {
+                observedEventTypes.push(event.type);
+            },
+        });
+
+        agent.enqueueUserMessage("Continue without manual intervention.");
+        const result = await agent.run();
+
+        expect(result.stopReason).toBe("stop");
+        expect(requestCount).toBe(2);
+        expect(observedEventTypes).toEqual(["inference_iteration_start", "start", "done"]);
+        expect(agent.messages.at(-1)).toMatchObject({
+            role: "agent",
+            blocks: [{ type: "text", text: "recovered" }],
+        });
+    });
+
     it("manually compacts with the active reasoning and service tier without changing history", async () => {
         const model = defineModel({
             id: "openai/gpt-test",
