@@ -46,6 +46,109 @@ describe("PersistentSessionStore", () => {
         }
     });
 
+    it("keeps the global event queue disabled unless explicitly enabled", async () => {
+        const { cleanup, databasePath } = await createDatabasePath();
+        try {
+            const store = new PersistentSessionStore({ databasePath });
+            store.create({ cwd: "/tmp/rig-persistent-session-test" });
+            expect(store.globalEventQueue).toBeUndefined();
+            store.close();
+
+            const enabledStore = new PersistentSessionStore({
+                databasePath,
+                durableGlobalEventQueue: true,
+            });
+            expect(enabledStore.globalEventQueue?.list()).toEqual([]);
+            const queuedSession = enabledStore.create({
+                cwd: "/tmp/rig-persistent-session-test-enabled",
+            });
+            enabledStore.close();
+
+            const disabledStore = new PersistentSessionStore({ databasePath });
+            disabledStore.create({ cwd: "/tmp/rig-persistent-session-test-disabled" });
+            disabledStore.close();
+
+            const restoredStore = new PersistentSessionStore({
+                databasePath,
+                durableGlobalEventQueue: true,
+            });
+            try {
+                expect(restoredStore.globalEventQueue?.list()).toEqual([
+                    expect.objectContaining({
+                        event: expect.objectContaining({ sessionId: queuedSession.id }),
+                    }),
+                ]);
+            } finally {
+                restoredStore.close();
+            }
+        } finally {
+            await cleanup();
+        }
+    });
+
+    it("persists and trims global events independently from session history", async () => {
+        const { cleanup, databasePath } = await createDatabasePath();
+        try {
+            const store = new PersistentSessionStore({
+                databasePath,
+                durableGlobalEventQueue: true,
+            });
+            const firstSession = store.create({ cwd: "/tmp/rig-persistent-session-test-a" });
+            const secondSession = store.create({ cwd: "/tmp/rig-persistent-session-test-b" });
+            const initial = store.globalEventQueue?.list() ?? [];
+
+            expect(initial.map((entry) => entry.event.sessionId)).toEqual([
+                firstSession.id,
+                secondSession.id,
+            ]);
+            const firstCursor = initial[0]?.cursor;
+            const secondCursor = initial[1]?.cursor;
+            expect(firstCursor).toBeDefined();
+            expect(secondCursor).toBeDefined();
+            if (firstCursor === undefined || secondCursor === undefined) {
+                throw new Error("Expected two global event cursors.");
+            }
+            expect(store.globalEventQueue?.trim(firstCursor)).toEqual({
+                trimmed: 1,
+                through: firstCursor,
+            });
+            expect(store.globalEventQueue?.trim(firstCursor)).toEqual({
+                trimmed: 0,
+                through: firstCursor,
+            });
+            expect(store.globalEventQueue?.list({ after: 0 })).toBeUndefined();
+            expect(firstSession.events.since(undefined)).toHaveLength(1);
+            store.close();
+
+            const restoredStore = new PersistentSessionStore({
+                databasePath,
+                durableGlobalEventQueue: true,
+            });
+            try {
+                expect(restoredStore.globalEventQueue?.list()).toEqual([
+                    expect.objectContaining({
+                        cursor: secondCursor,
+                        event: expect.objectContaining({ sessionId: secondSession.id }),
+                    }),
+                ]);
+                const thirdSession = restoredStore.create({
+                    cwd: "/tmp/rig-persistent-session-test-c",
+                });
+                const appended = restoredStore.globalEventQueue?.list({ after: secondCursor });
+                expect(appended).toEqual([
+                    expect.objectContaining({
+                        event: expect.objectContaining({ sessionId: thirdSession.id }),
+                    }),
+                ]);
+                expect(appended?.[0]?.cursor).toBeGreaterThan(secondCursor);
+            } finally {
+                restoredStore.close();
+            }
+        } finally {
+            await cleanup();
+        }
+    });
+
     it("restores persisted session state and messages without creating a runtime", async () => {
         const { cleanup, databasePath } = await createDatabasePath();
         try {

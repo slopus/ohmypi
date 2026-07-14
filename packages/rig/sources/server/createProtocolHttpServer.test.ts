@@ -14,6 +14,7 @@ import type { SessionStore } from "./SessionStore.js";
 import { createProtocolHttpServer } from "./createProtocolHttpServer.js";
 import type { FileSearchServiceContract } from "./FileSearchService.js";
 import type { DockerExecutionConfig } from "../execution/index.js";
+import type { GlobalEventQueue } from "./GlobalEventQueue.js";
 
 describe("createProtocolHttpServer", () => {
     it("uses Docker defaults unless the new session chooses another environment", async () => {
@@ -64,6 +65,144 @@ describe("createProtocolHttpServer", () => {
             ).rejects.toThrow("absolute container path");
         } finally {
             await close();
+        }
+    });
+
+    it("does not expose global events when the durable queue is disabled", async () => {
+        const { client, close } = await startServer();
+        try {
+            await expect(client.getDaemonConfig()).resolves.toEqual({
+                config: { settings: { durableGlobalEventQueue: false } },
+            });
+            await expect(client.getGlobalEvents()).rejects.toThrow(
+                "The durable global event queue is disabled.",
+            );
+            await expect(client.health()).resolves.toMatchObject({
+                durableGlobalEventQueue: false,
+            });
+        } finally {
+            await close();
+        }
+    });
+
+    it("enables and disables the durable queue through daemon configuration", async () => {
+        const store = new PersistentSessionStore({ databasePath: ":memory:" });
+        const { client, close } = await startServer({
+            onDurableGlobalEventQueueChange: (enabled) => store.setDurableGlobalEventQueue(enabled),
+            store,
+        });
+        try {
+            await expect(
+                client.updateDaemonConfig({
+                    settings: { durableGlobalEventQueue: true },
+                }),
+            ).resolves.toEqual({
+                config: { settings: { durableGlobalEventQueue: true } },
+            });
+            let resolveObserved: (() => void) | undefined;
+            const observed = new Promise<void>((resolve) => {
+                resolveObserved = resolve;
+            });
+            const watching = client.watchGlobalEvents({
+                onEvent: () => resolveObserved?.(),
+            });
+            const stoppedWatching = expect(watching).rejects.toThrow("SSE failed with HTTP 404");
+            const created = await client.createSession({ cwd: "/tmp/rig-socket-config" });
+            await observed;
+            const queued = await client.getGlobalEvents();
+            expect(queued.events).toEqual([
+                expect.objectContaining({
+                    event: expect.objectContaining({
+                        sessionId: created.session.id,
+                        type: "session_created",
+                    }),
+                }),
+            ]);
+
+            await client.updateDaemonConfig({
+                settings: { durableGlobalEventQueue: false },
+            });
+            await stoppedWatching;
+            await expect(client.getGlobalEvents()).rejects.toThrow(
+                "The durable global event queue is disabled.",
+            );
+            await expect(client.getDaemonConfig()).resolves.toEqual({
+                config: { settings: { durableGlobalEventQueue: false } },
+            });
+
+            await client.updateDaemonConfig({
+                settings: { durableGlobalEventQueue: true },
+            });
+            await expect(client.getGlobalEvents()).resolves.toEqual(queued);
+        } finally {
+            await close();
+            store.close();
+        }
+    });
+
+    it("streams and trims durable events across every session", async () => {
+        const store = new PersistentSessionStore({
+            databasePath: ":memory:",
+            durableGlobalEventQueue: true,
+        });
+        const globalEventQueue = store.globalEventQueue;
+        if (globalEventQueue === undefined) throw new Error("Expected the global event queue.");
+        const { client, close } = await startServer({
+            globalEventQueue,
+            store,
+        });
+        try {
+            const first = await client.createSession({ cwd: "/tmp/rig-global-events-a" });
+            const second = await client.createSession({ cwd: "/tmp/rig-global-events-b" });
+            const queued = await client.getGlobalEvents();
+
+            expect(queued.events.map((entry) => entry.event.sessionId)).toEqual([
+                first.session.id,
+                second.session.id,
+            ]);
+            const firstCursor = queued.events[0]?.cursor;
+            const secondCursor = queued.events[1]?.cursor;
+            if (firstCursor === undefined || secondCursor === undefined) {
+                throw new Error("Expected global event cursors.");
+            }
+
+            const controller = new AbortController();
+            const streamed = new Promise<SessionEvent>((resolve) => {
+                void client.watchGlobalEvents({
+                    after: secondCursor,
+                    onEvent: (entry) => {
+                        controller.abort();
+                        resolve(entry.event);
+                    },
+                    signal: controller.signal,
+                });
+            });
+            await client.changeEffort(first.session.id, { effort: "high" });
+            await expect(streamed).resolves.toMatchObject({
+                sessionId: first.session.id,
+                type: "effort_changed",
+            });
+
+            await expect(client.trimGlobalEvents(firstCursor)).resolves.toEqual({
+                trimmed: 1,
+                through: firstCursor,
+            });
+            await expect(client.getGlobalEvents(0)).rejects.toThrow(
+                "The global event cursor is not available.",
+            );
+            const remaining = await client.getGlobalEvents(firstCursor);
+            expect(remaining.events[0]?.event.sessionId).toBe(second.session.id);
+            await expect(client.getEvents(first.session.id)).resolves.toMatchObject({
+                events: expect.arrayContaining([
+                    expect.objectContaining({ type: "session_created" }),
+                ]),
+            });
+            await expect(client.health()).resolves.toMatchObject({
+                durableGlobalEventQueue: true,
+            });
+        } finally {
+            await close();
+            store.close();
         }
     });
 
@@ -505,6 +644,10 @@ async function startServer(
     options: {
         defaultDocker?: DockerExecutionConfig;
         fileSearchService?: FileSearchServiceContract;
+        globalEventQueue?: GlobalEventQueue;
+        onDurableGlobalEventQueueChange?: (
+            enabled: boolean,
+        ) => GlobalEventQueue | undefined | Promise<GlobalEventQueue | undefined>;
         onShutdown?: () => void;
         store?: SessionStore;
     } = {},
@@ -522,7 +665,15 @@ async function startServer(
         ...(options.fileSearchService !== undefined
             ? { fileSearchService: options.fileSearchService }
             : {}),
+        ...(options.globalEventQueue === undefined
+            ? {}
+            : { globalEventQueue: options.globalEventQueue }),
         ...(options.onShutdown !== undefined ? { onShutdown: options.onShutdown } : {}),
+        ...(options.onDurableGlobalEventQueueChange === undefined
+            ? {}
+            : {
+                  onDurableGlobalEventQueueChange: options.onDurableGlobalEventQueueChange,
+              }),
         store,
         token: "secret",
     });

@@ -2,6 +2,12 @@ export { InMemorySession } from "./InMemorySession.js";
 export { InMemorySessionStore } from "./InMemorySessionStore.js";
 export { getLocalServerPaths, type LocalServerPaths } from "./LocalServerPaths.js";
 export { PersistentSessionStore } from "./PersistentSessionStore.js";
+export { PersistentGlobalEventQueue } from "./PersistentGlobalEventQueue.js";
+export type {
+    GlobalEventQueue,
+    GlobalEventQueueListener,
+    ListGlobalEventQueueOptions,
+} from "./GlobalEventQueue.js";
 export { SessionEventLog, type SessionEventListener } from "./SessionEventLog.js";
 export { getDefaultSessionDatabasePath } from "./getDefaultSessionDatabasePath.js";
 export { createModelCatalog, type CreateModelCatalogOptions } from "./createModelCatalog.js";

@@ -27,6 +27,9 @@ export function mergeConfigValues(base: RigConfig, ...configs: PartialRigConfig[
         if (config.settings?.showReasoning !== undefined) {
             settings.showReasoning = config.settings.showReasoning;
         }
+        if (config.settings?.durableGlobalEventQueue !== undefined) {
+            settings.durableGlobalEventQueue = config.settings.durableGlobalEventQueue;
+        }
         if (config.settings?.showUsage !== undefined)
             settings.showUsage = config.settings.showUsage;
         if (config.features?.workflows !== undefined) {

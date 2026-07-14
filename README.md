@@ -335,6 +335,32 @@ workflow tools and the `/workflows` command are not offered to the model or in
 command suggestions. Existing saved sessions keep the setting they were created
 with when the daemon restarts.
 
+### Durable global event queue
+
+The daemon can keep an opt-in, durable queue of every session and subagent event
+for synchronizing Rig with another backend. Enable it from `/configure` or in the
+user-wide `~/.config/rig/config.toml` file:
+
+```toml
+[settings]
+durable_global_event_queue = true
+```
+
+The queue is disabled by default and cannot be enabled by a repository's
+`rig.toml`. Changes made through `/configure` apply to the running daemon, and
+disabling the queue leaves already queued events intact.
+
+Authenticated daemon clients can inspect this setting with `GET /config` and
+change it immediately with `PATCH /config` using
+`{ "settings": { "durableGlobalEventQueue": true } }`. They can read event
+batches from `GET /events`, follow live updates from `GET /events/stream`, and
+acknowledge synced entries with `POST /events/trim` and a JSON body such as
+`{ "through": 42 }`. Batch entries contain a global numeric `cursor` and the
+original session `event`; the SSE stream uses the same cursor as its event ID.
+`after` resumes either endpoint, and `limit` controls batch size. Events remain
+queued until trimmed, and trimming the global queue does not remove per-session
+history.
+
 ### Long-running commands
 
 Codex `exec_command` now yields a live session when a command outlasts its wait

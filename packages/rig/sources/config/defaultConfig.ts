@@ -10,6 +10,7 @@ export const DEFAULT_RIG_CONFIG: RigConfig = {
     },
     mcpServers: {},
     settings: {
+        durableGlobalEventQueue: false,
         showReasoning: false,
         showUsage: false,
     },

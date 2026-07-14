@@ -29,6 +29,8 @@ import {
 } from "./InMemorySession.js";
 import { AgentSessionManager } from "./AgentSessionManager.js";
 import { createModelCatalog } from "./createModelCatalog.js";
+import type { GlobalEventQueue } from "./GlobalEventQueue.js";
+import { PersistentGlobalEventQueue } from "./PersistentGlobalEventQueue.js";
 import type { SessionStore } from "./SessionStore.js";
 import type { McpToolProvider } from "../mcp/index.js";
 import type { DockerExecutionConfig } from "../execution/index.js";
@@ -36,6 +38,7 @@ import { summarizeDockerExecution } from "../execution/index.js";
 
 export interface PersistentSessionStoreOptions {
     databasePath: string;
+    durableGlobalEventQueue?: boolean;
     mcpToolProvider?: McpToolProvider;
     modelCatalog?: ModelCatalog;
     now?: () => number;
@@ -48,6 +51,7 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
     #modelCatalog: ModelCatalog;
     #mcpToolProvider: McpToolProvider | undefined;
     #now: () => number;
+    #persistentGlobalEventQueue: PersistentGlobalEventQueue | undefined;
     #sessions = new Map<string, InMemorySession>();
 
     constructor(options: PersistentSessionStoreOptions) {
@@ -62,6 +66,9 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
             timeout: 5_000,
         });
         this.#initialize();
+        if (options.durableGlobalEventQueue === true) {
+            this.#persistentGlobalEventQueue = new PersistentGlobalEventQueue(this.#database);
+        }
         this.#agentManager = new AgentSessionManager({
             repository: {
                 createSubagent: (request, metadata) => this.#createSession(request, metadata),
@@ -180,6 +187,20 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
             this.#sessions.set(sessionId, session);
         }
         return session;
+    }
+
+    get globalEventQueue(): GlobalEventQueue | undefined {
+        return this.#persistentGlobalEventQueue;
+    }
+
+    setDurableGlobalEventQueue(enabled: boolean): GlobalEventQueue | undefined {
+        if (enabled) {
+            this.#persistentGlobalEventQueue ??= new PersistentGlobalEventQueue(this.#database);
+        } else {
+            this.#persistentGlobalEventQueue?.deactivate();
+            this.#persistentGlobalEventQueue = undefined;
+        }
+        return this.#persistentGlobalEventQueue;
     }
 
     insertQueuedRun(sessionId: string, run: PersistedQueuedRun): void {
@@ -524,7 +545,7 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
     }
 
     #appendEvent(event: SessionEvent): void {
-        this.#transaction(() => {
+        const globalEntry = this.#transaction(() => {
             this.#database
                 .prepare(
                     `
@@ -545,6 +566,7 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
                     event.createdAt,
                     JSON.stringify(event.data),
                 );
+            const queued = this.#persistentGlobalEventQueue?.persist(event);
             this.#database
                 .prepare(
                     `
@@ -554,7 +576,9 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
                     `,
                 )
                 .run(event.id, this.#now(), event.sessionId);
+            return queued;
         });
+        if (globalEntry !== undefined) this.#persistentGlobalEventQueue?.publish(globalEntry);
     }
 
     #initialize(): void {

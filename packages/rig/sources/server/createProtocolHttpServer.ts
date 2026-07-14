@@ -12,6 +12,8 @@ import type {
     CreateSessionRequest,
     CreateSessionResponse,
     ForkSessionResponse,
+    GetDaemonConfigResponse,
+    ListGlobalEventsResponse,
     HealthResponse,
     GoalSessionResponse,
     ListModelsResponse,
@@ -28,12 +30,22 @@ import type {
     StopWorkflowResponse,
     SubmitMessageRequest,
     SubmitMessageResponse,
+    TrimGlobalEventsRequest,
+    TrimGlobalEventsResponse,
+    UpdateDaemonConfigRequest,
+    UpdateDaemonConfigResponse,
 } from "../protocol/index.js";
 import { InMemorySessionStore } from "./InMemorySessionStore.js";
 import { createModelCatalog } from "./createModelCatalog.js";
 import { FileSearchService, type FileSearchServiceContract } from "./FileSearchService.js";
 import type { SessionEventLog } from "./SessionEventLog.js";
+import type { GlobalEventQueue } from "./GlobalEventQueue.js";
 import type { SessionStore } from "./SessionStore.js";
+import { isGlobalEventRoute } from "./isGlobalEventRoute.js";
+import { parseGlobalEventCursor } from "./parseGlobalEventCursor.js";
+import { parseGlobalEventLimit } from "./parseGlobalEventLimit.js";
+import { sendJson } from "./sendJson.js";
+import { streamGlobalEvents } from "./streamGlobalEvents.js";
 import { isPermissionMode } from "../permissions/index.js";
 import { isGoalStatus } from "../goals/index.js";
 import { resolveDockerExecutionConfig, validateDockerExecutionConfig } from "../execution/index.js";
@@ -44,6 +56,10 @@ export interface ProtocolHttpServerOptions {
     initialization?: Promise<ModelCatalog>;
     modelCatalog?: ModelCatalog;
     fileSearchService?: FileSearchServiceContract;
+    globalEventQueue?: GlobalEventQueue;
+    onDurableGlobalEventQueueChange?: (
+        enabled: boolean,
+    ) => GlobalEventQueue | undefined | Promise<GlobalEventQueue | undefined>;
     onShutdown?: () => void;
     store?: SessionStore;
     token: string;
@@ -58,6 +74,10 @@ export function createProtocolHttpServer(options: ProtocolHttpServerOptions): Se
         });
     const state = createInitializationState({ ...options, modelCatalog });
     const fileSearchService = options.fileSearchService ?? new FileSearchService();
+    const runtimeConfig: ProtocolServerRuntimeConfig = {
+        globalEventQueue: options.globalEventQueue,
+        onDurableGlobalEventQueueChange: options.onDurableGlobalEventQueueChange,
+    };
 
     const server = createServer((request, response) => {
         void handleRequest(
@@ -66,6 +86,7 @@ export function createProtocolHttpServer(options: ProtocolHttpServerOptions): Se
             store,
             state,
             fileSearchService,
+            runtimeConfig,
             options.token,
             options.onShutdown,
             options.defaultDocker,
@@ -85,12 +106,22 @@ interface InitializationState {
     ready: boolean;
 }
 
+interface ProtocolServerRuntimeConfig {
+    globalEventQueue: GlobalEventQueue | undefined;
+    onDurableGlobalEventQueueChange:
+        | ((
+              enabled: boolean,
+          ) => GlobalEventQueue | undefined | Promise<GlobalEventQueue | undefined>)
+        | undefined;
+}
+
 async function handleRequest(
     request: IncomingMessage,
     response: ServerResponse,
     store: SessionStore,
     initialization: InitializationState,
     fileSearchService: FileSearchServiceContract,
+    runtimeConfig: ProtocolServerRuntimeConfig,
     token: string,
     onShutdown: (() => void) | undefined,
     defaultDocker: DockerExecutionConfig | undefined,
@@ -108,7 +139,11 @@ async function handleRequest(
     }
 
     if (request.method === "GET" && route.name === "health") {
-        sendJson<HealthResponse>(response, 200, healthResponse(initialization));
+        sendJson<HealthResponse>(
+            response,
+            200,
+            healthResponse(initialization, runtimeConfig.globalEventQueue !== undefined),
+        );
         return;
     }
 
@@ -119,12 +154,107 @@ async function handleRequest(
     }
 
     if (!initialization.ready || initialization.catalog === undefined) {
-        sendJson(response, 503, healthResponse(initialization));
+        sendJson(
+            response,
+            503,
+            healthResponse(initialization, runtimeConfig.globalEventQueue !== undefined),
+        );
         return;
     }
 
     if (request.method === "GET" && route.name === "models") {
         sendJson<ListModelsResponse>(response, 200, { catalog: initialization.catalog });
+        return;
+    }
+
+    if (request.method === "GET" && route.name === "config") {
+        sendJson<GetDaemonConfigResponse>(response, 200, {
+            config: {
+                settings: {
+                    durableGlobalEventQueue: runtimeConfig.globalEventQueue !== undefined,
+                },
+            },
+        });
+        return;
+    }
+
+    if (request.method === "PATCH" && route.name === "config") {
+        const body = await readJson<UpdateDaemonConfigRequest>(request);
+        const enabled = body.settings?.durableGlobalEventQueue;
+        if (typeof enabled !== "boolean") {
+            sendJson(response, 400, {
+                error: "Durable global event queue must be enabled or disabled.",
+            });
+            return;
+        }
+        if (runtimeConfig.onDurableGlobalEventQueueChange === undefined) {
+            sendJson(response, 409, {
+                error: "This daemon cannot change the durable global event queue at runtime.",
+            });
+            return;
+        }
+        const queue = await runtimeConfig.onDurableGlobalEventQueueChange(enabled);
+        if ((queue !== undefined) !== enabled) {
+            throw new Error("The daemon could not apply the durable global event queue setting.");
+        }
+        runtimeConfig.globalEventQueue = queue;
+        sendJson<UpdateDaemonConfigResponse>(response, 200, {
+            config: { settings: { durableGlobalEventQueue: enabled } },
+        });
+        return;
+    }
+
+    if (isGlobalEventRoute(route.name)) {
+        const globalEventQueue = runtimeConfig.globalEventQueue;
+        if (globalEventQueue === undefined) {
+            sendJson(response, 404, { error: "The durable global event queue is disabled." });
+            return;
+        }
+
+        if (request.method === "GET" && route.name === "global-events") {
+            const after = parseGlobalEventCursor(url.searchParams.get("after"));
+            if (url.searchParams.has("after") && after === undefined) {
+                sendJson(response, 400, { error: "The event cursor must be a whole number." });
+                return;
+            }
+            const limit = parseGlobalEventLimit(url.searchParams.get("limit"));
+            if (url.searchParams.has("limit") && limit === undefined) {
+                sendJson(response, 400, { error: "The event limit must be a positive number." });
+                return;
+            }
+            const events = globalEventQueue.list({
+                ...(after === undefined ? {} : { after }),
+                limit: limit ?? 100,
+            });
+            if (events === undefined) {
+                sendJson(response, 409, { error: "The global event cursor is not available." });
+                return;
+            }
+            sendJson<ListGlobalEventsResponse>(response, 200, { events });
+            return;
+        }
+
+        if (request.method === "GET" && route.name === "global-events-stream") {
+            streamGlobalEvents(request, response, globalEventQueue, url.searchParams.get("after"));
+            return;
+        }
+
+        if (request.method === "POST" && route.name === "global-events-trim") {
+            const body = await readJson<TrimGlobalEventsRequest>(request);
+            if (!Number.isSafeInteger(body.through) || body.through < 0) {
+                sendJson(response, 400, { error: "The trim cursor must be a whole number." });
+                return;
+            }
+            const result = globalEventQueue.trim(body.through);
+            if (result === undefined) {
+                sendJson(response, 409, { error: "The global event cursor is not available." });
+                return;
+            }
+            sendJson<TrimGlobalEventsResponse>(response, 200, result);
+            return;
+        }
+
+        sendJson(response, 405, { error: "Method not allowed" });
         return;
     }
 
@@ -426,10 +556,14 @@ function createInitializationState(options: ProtocolHttpServerOptions): Initiali
     return state;
 }
 
-function healthResponse(initialization: InitializationState): HealthResponse {
+function healthResponse(
+    initialization: InitializationState,
+    durableGlobalEventQueue: boolean,
+): HealthResponse {
     if (initialization.ready && initialization.catalog !== undefined) {
         return {
             catalog: initialization.catalog,
+            durableGlobalEventQueue,
             healthy: true,
             ready: true,
             status: "ready",
@@ -437,6 +571,7 @@ function healthResponse(initialization: InitializationState): HealthResponse {
     }
     if (initialization.errorMessage !== undefined) {
         return {
+            durableGlobalEventQueue,
             errorMessage: initialization.errorMessage,
             healthy: false,
             ready: false,
@@ -445,6 +580,7 @@ function healthResponse(initialization: InitializationState): HealthResponse {
     }
 
     return {
+        durableGlobalEventQueue,
         healthy: true,
         ready: false,
         status: "starting",
@@ -487,7 +623,18 @@ function isAuthorized(request: IncomingMessage, token: string): boolean {
 }
 
 function matchRoute(pathname: string):
-    | { name: "health" | "models" | "sessions" | "shutdown"; sessionId?: undefined }
+    | {
+          name:
+              | "global-events"
+              | "global-events-stream"
+              | "global-events-trim"
+              | "config"
+              | "health"
+              | "models"
+              | "sessions"
+              | "shutdown";
+          sessionId?: undefined;
+      }
     | {
           name:
               | "abort"
@@ -512,6 +659,10 @@ function matchRoute(pathname: string):
     | { name: "workflow-stop"; sessionId: string; workflowRunId: string }
     | undefined {
     if (pathname === "/health") return { name: "health" };
+    if (pathname === "/config") return { name: "config" };
+    if (pathname === "/events") return { name: "global-events" };
+    if (pathname === "/events/stream") return { name: "global-events-stream" };
+    if (pathname === "/events/trim") return { name: "global-events-trim" };
     if (pathname === "/models") return { name: "models" };
     if (pathname === "/sessions") return { name: "sessions" };
     if (pathname === "/shutdown") return { name: "shutdown" };
@@ -583,20 +734,6 @@ async function readJson<T>(request: IncomingMessage): Promise<T> {
 
     const body = Buffer.concat(chunks).toString("utf8");
     return (body.length === 0 ? {} : JSON.parse(body)) as T;
-}
-
-function sendJson<T>(response: ServerResponse, statusCode: number, payload: T): void {
-    if (response.headersSent) {
-        return;
-    }
-
-    const body = JSON.stringify(payload);
-    response.writeHead(statusCode, {
-        "cache-control": "no-store",
-        "content-length": Buffer.byteLength(body),
-        "content-type": "application/json; charset=utf-8",
-    });
-    response.end(body);
 }
 
 function streamEvents(

@@ -3556,7 +3556,11 @@ describe("CodingAssistantApp", () => {
             effort: "high",
             printToConsole: false,
         });
-        const settingsChanges: Array<{ showReasoning: boolean; showUsage: boolean }> = [];
+        const settingsChanges: Array<{
+            durableGlobalEventQueue: boolean;
+            showReasoning: boolean;
+            showUsage: boolean;
+        }> = [];
         const app = new CodingAssistantApp({
             agent,
             cwd: harness.context.fs.cwd,
@@ -3579,14 +3583,29 @@ describe("CodingAssistantApp", () => {
         expect(menu).toContain("Configure");
         expect(menu).toContain("Show reasoning");
         expect(menu).toContain("Show token status");
+        expect(menu).toContain("Enable durable event queue");
 
         app.handleInput("\r");
 
         const rendered = stripAnsi(app.render(100).join("\n"));
-        expect(settingsChanges).toEqual([{ showReasoning: true, showUsage: false }]);
+        expect(settingsChanges).toEqual([
+            { durableGlobalEventQueue: false, showReasoning: true, showUsage: false },
+        ]);
         expect(rendered).toContain("This reasoning text can be hidden.");
         expect(rendered).toContain("Final answer stays visible.");
         expect(rendered).toContain("Reasoning display enabled.");
+
+        submit(app, "/configure");
+        app.handleInput("\x1b[B");
+        app.handleInput("\x1b[B");
+        app.handleInput("\r");
+
+        expect(settingsChanges.at(-1)).toEqual({
+            durableGlobalEventQueue: true,
+            showReasoning: true,
+            showUsage: false,
+        });
+        expect(stripAnsi(app.render(100).join("\n"))).toContain("Durable event queue enabled.");
     });
 
     it("changes the session permission mode from the permissions menu", () => {

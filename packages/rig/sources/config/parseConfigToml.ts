@@ -45,6 +45,10 @@ export function parseConfigToml(source: string): PartialRigConfig {
 
     const settingsTable = table.settings;
     if (isTomlTable(settingsTable)) {
+        const durableGlobalEventQueue = readBoolean(settingsTable, "durable_global_event_queue");
+        if (durableGlobalEventQueue !== undefined) {
+            settings.durableGlobalEventQueue = durableGlobalEventQueue;
+        }
         const showReasoning = readBoolean(settingsTable, "show_reasoning");
         if (showReasoning !== undefined) {
             settings.showReasoning = showReasoning;

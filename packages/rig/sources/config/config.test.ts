@@ -9,6 +9,7 @@ import { loadConfig } from "./loadConfig.js";
 import { parseConfigToml } from "./parseConfigToml.js";
 import { writeRuntimeConfig } from "./writeRuntimeConfig.js";
 import { writeRuntimeConfigDefaults } from "./writeRuntimeConfigDefaults.js";
+import { writeDaemonSettings } from "./writeDaemonSettings.js";
 
 describe("config", () => {
     it("parses supported defaults with a TOML parser", () => {
@@ -23,6 +24,7 @@ instructions = "Be direct."
 permission_mode = "auto"
 
 [settings]
+durable_global_event_queue = true
 show_reasoning = false
 
 [features]
@@ -57,6 +59,7 @@ mounts = [
                 permissionMode: "auto",
             },
             settings: {
+                durableGlobalEventQueue: true,
                 showReasoning: false,
             },
             features: {
@@ -83,6 +86,7 @@ model = "openai/gpt-5.4"
 effort = "low"
 permission_mode = "read_only"
 [settings]
+durable_global_event_queue = false
 show_reasoning = false
 [features]
 workflows = false
@@ -102,6 +106,7 @@ effort = "high"
 instructions = "Hide project tool activity."
 permission_mode = "full_access"
 [settings]
+durable_global_event_queue = true
 show_reasoning = true
 show_usage = true
 [features]
@@ -134,6 +139,7 @@ effort = "minimal"
                 providerId: "bedrock",
             });
             expect(loaded.config.settings).toEqual({
+                durableGlobalEventQueue: false,
                 showReasoning: true,
                 showUsage: true,
             });
@@ -153,6 +159,7 @@ effort = "minimal"
                 env: { XDG_CONFIG_HOME: join(root, "empty-config-home") } as NodeJS.ProcessEnv,
             });
             expect(defaultLoaded.config.settings).toEqual({
+                durableGlobalEventQueue: false,
                 showReasoning: false,
                 showUsage: false,
             });
@@ -180,6 +187,7 @@ effort = "minimal"
                     permissionMode: "workspace_write",
                 },
                 settings: {
+                    durableGlobalEventQueue: true,
                     showReasoning: true,
                     showUsage: true,
                 },
@@ -214,6 +222,7 @@ effort = "minimal"
                     'effort = "low"',
                     "",
                     "[settings]",
+                    "durable_global_event_queue = true",
                     "show_reasoning = true",
                     "show_usage = true",
                     "",
@@ -236,6 +245,47 @@ effort = "minimal"
                     "",
                 ].join("\n"),
             );
+        } finally {
+            await rm(root, { recursive: true, force: true });
+        }
+    });
+
+    it("updates daemon settings without discarding other runtime preferences", async () => {
+        const root = await mkdtemp(join(tmpdir(), "rig-config-"));
+        try {
+            const configHome = join(root, "config-home");
+            const cwd = join(root, "repo");
+            const runtimePath = join(configHome, "rig", "runtime.toml");
+            await mkdir(join(configHome, "rig"), { recursive: true });
+            await mkdir(cwd, { recursive: true });
+            await writeFile(
+                runtimePath,
+                [
+                    "[defaults]",
+                    'model = "openai/gpt-5.5"',
+                    "",
+                    "[settings]",
+                    "show_usage = true",
+                    "",
+                ].join("\n"),
+                "utf8",
+            );
+
+            await writeDaemonSettings(
+                { durableGlobalEventQueue: true },
+                {
+                    cwd,
+                    env: { XDG_CONFIG_HOME: configHome } as NodeJS.ProcessEnv,
+                },
+            );
+
+            expect(parseConfigToml(await readFile(runtimePath, "utf8"))).toEqual({
+                defaults: { modelId: "openai/gpt-5.5" },
+                settings: {
+                    durableGlobalEventQueue: true,
+                    showUsage: true,
+                },
+            });
         } finally {
             await rm(root, { recursive: true, force: true });
         }

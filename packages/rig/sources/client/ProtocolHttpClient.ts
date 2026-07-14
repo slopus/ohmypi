@@ -12,8 +12,11 @@ import type {
     CreateSessionResponse,
     EventId,
     ForkSessionResponse,
+    GetDaemonConfigResponse,
+    GlobalEventQueueEntry,
     HealthResponse,
     GoalSessionResponse,
+    ListGlobalEventsResponse,
     ListModelsResponse,
     ListSessionsResponse,
     ListSubagentsResponse,
@@ -28,7 +31,12 @@ import type {
     StopWorkflowResponse,
     SubmitMessageRequest,
     SubmitMessageResponse,
+    TrimGlobalEventsResponse,
+    UpdateDaemonConfigRequest,
+    UpdateDaemonConfigResponse,
 } from "../protocol/index.js";
+import { parseGlobalSseEvent } from "./parseGlobalSseEvent.js";
+import { EventStreamHttpError } from "./EventStreamHttpError.js";
 
 export interface ProtocolHttpClientOptions {
     socketPath: string;
@@ -40,6 +48,12 @@ export interface WatchSessionEventsOptions {
     signal?: AbortSignal;
     sessionId: string;
     onEvent: (event: SessionEvent) => void | Promise<void>;
+}
+
+export interface WatchGlobalEventsOptions {
+    after?: number;
+    signal?: AbortSignal;
+    onEvent: (entry: GlobalEventQueueEntry) => void | Promise<void>;
 }
 
 export class ProtocolHttpClient {
@@ -184,6 +198,16 @@ export class ProtocolHttpClient {
         return this.#requestJson("GET", path);
     }
 
+    getDaemonConfig(): Promise<GetDaemonConfigResponse> {
+        return this.#requestJson("GET", "/config");
+    }
+
+    getGlobalEvents(after?: number, limit = 100): Promise<ListGlobalEventsResponse> {
+        const parameters = new URLSearchParams({ limit: String(limit) });
+        if (after !== undefined) parameters.set("after", String(after));
+        return this.#requestJson("GET", `/events?${parameters.toString()}`);
+    }
+
     reset(sessionId: string): Promise<{ session: ProtocolSession }> {
         return this.#requestJson("POST", `/sessions/${encodeURIComponent(sessionId)}/reset`);
     }
@@ -214,6 +238,33 @@ export class ProtocolHttpClient {
             "POST",
             `/sessions/${encodeURIComponent(sessionId)}/workflows/${encodeURIComponent(runId)}/stop`,
         );
+    }
+
+    trimGlobalEvents(through: number): Promise<TrimGlobalEventsResponse> {
+        return this.#requestJson("POST", "/events/trim", { through });
+    }
+
+    updateDaemonConfig(request: UpdateDaemonConfigRequest): Promise<UpdateDaemonConfigResponse> {
+        return this.#requestJson("PATCH", "/config", request);
+    }
+
+    async watchGlobalEvents(options: WatchGlobalEventsOptions): Promise<void> {
+        let after = options.after;
+        while (options.signal?.aborted !== true) {
+            try {
+                after = await this.#watchGlobalEventsOnce(after, options);
+            } catch (error) {
+                if (options.signal?.aborted) return;
+                if (
+                    error instanceof EventStreamHttpError &&
+                    error.statusCode >= 400 &&
+                    error.statusCode < 500
+                ) {
+                    throw error;
+                }
+                await delay(50, options.signal);
+            }
+        }
     }
 
     async watchSessionEvents(options: WatchSessionEventsOptions): Promise<void> {
@@ -296,7 +347,7 @@ export class ProtocolHttpClient {
                 },
                 (response) => {
                     if ((response.statusCode ?? 500) >= 400) {
-                        reject(new Error(`SSE failed with HTTP ${response.statusCode}`));
+                        reject(new EventStreamHttpError(response.statusCode ?? 500));
                         response.resume();
                         return;
                     }
@@ -319,6 +370,60 @@ export class ProtocolHttpClient {
                             }
                             cursor = event.id;
                             Promise.resolve(options.onEvent(event)).catch(reject);
+                        }
+                    });
+                    response.on("end", () => resolve(cursor));
+                    response.on("error", reject);
+                },
+            );
+            const abort = () => {
+                request.destroy();
+                resolve(after);
+            };
+            options.signal?.addEventListener("abort", abort, { once: true });
+            request.on("error", reject);
+            request.end();
+        });
+    }
+
+    #watchGlobalEventsOnce(
+        after: number | undefined,
+        options: WatchGlobalEventsOptions,
+    ): Promise<number | undefined> {
+        return new Promise<number | undefined>((resolve, reject) => {
+            const requestPath =
+                after === undefined ? "/events/stream" : `/events/stream?after=${after}`;
+            const request = httpRequest(
+                {
+                    headers: {
+                        accept: "text/event-stream",
+                        authorization: `Bearer ${this.token}`,
+                    },
+                    method: "GET",
+                    path: requestPath,
+                    socketPath: this.socketPath,
+                },
+                (response) => {
+                    if ((response.statusCode ?? 500) >= 400) {
+                        reject(new EventStreamHttpError(response.statusCode ?? 500));
+                        response.resume();
+                        return;
+                    }
+
+                    let cursor = after;
+                    let buffer = "";
+                    response.setEncoding("utf8");
+                    response.on("data", (chunk: string) => {
+                        buffer += chunk;
+                        for (;;) {
+                            const boundary = buffer.indexOf("\n\n");
+                            if (boundary < 0) break;
+                            const rawEvent = buffer.slice(0, boundary);
+                            buffer = buffer.slice(boundary + 2);
+                            const entry = parseGlobalSseEvent(rawEvent);
+                            if (entry === undefined) continue;
+                            cursor = entry.cursor;
+                            Promise.resolve(options.onEvent(entry)).catch(reject);
                         }
                     });
                     response.on("end", () => resolve(cursor));

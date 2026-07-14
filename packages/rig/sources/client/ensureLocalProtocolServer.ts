@@ -10,6 +10,7 @@ import {
     type LocalServerPaths,
 } from "../server/index.js";
 import { ProtocolHttpClient } from "./ProtocolHttpClient.js";
+import { loadDaemonSettings } from "../config/index.js";
 
 export interface LocalProtocolServerConnection {
     client: ProtocolHttpClient;
@@ -25,6 +26,7 @@ export async function ensureLocalProtocolServer(
     options: EnsureLocalProtocolServerOptions = {},
 ): Promise<LocalProtocolServerConnection> {
     const paths = getEnvironmentLocalServerPaths();
+    const daemonSettings = await loadDaemonSettings();
     await prepareLocalServerDirectory(paths.directory);
     const existingToken = await readTokenIfPresent(paths.tokenPath);
     if (existingToken !== undefined) {
@@ -34,8 +36,25 @@ export async function ensureLocalProtocolServer(
         });
         const health = await readHealth(client);
         if (health?.ready === true) {
-            await waitForReady(client, options);
-            return { client, paths, token: existingToken };
+            if (health.durableGlobalEventQueue === daemonSettings.durableGlobalEventQueue) {
+                await waitForReady(client, options);
+                return { client, paths, token: existingToken };
+            }
+            try {
+                const updated = await client.updateDaemonConfig({
+                    settings: {
+                        durableGlobalEventQueue: daemonSettings.durableGlobalEventQueue,
+                    },
+                });
+                if (
+                    updated.config.settings.durableGlobalEventQueue ===
+                    daemonSettings.durableGlobalEventQueue
+                ) {
+                    return { client, paths, token: existingToken };
+                }
+            } catch {
+                // Older daemons are restarted below when they cannot apply the setting live.
+            }
         }
         if (health?.healthy === true) {
             options.onStatus?.("Restarting local daemon.");

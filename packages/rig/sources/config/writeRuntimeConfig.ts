@@ -16,6 +16,7 @@ export async function writeRuntimeConfig(path: string, config: PartialRigConfig)
             permission_mode?: string;
         };
         settings?: {
+            durable_global_event_queue?: boolean;
             show_reasoning?: boolean;
             show_usage?: boolean;
         };
@@ -42,6 +43,9 @@ export async function writeRuntimeConfig(path: string, config: PartialRigConfig)
 
     if (settings !== undefined) {
         document.settings = {};
+        if (settings.durableGlobalEventQueue !== undefined) {
+            document.settings.durable_global_event_queue = settings.durableGlobalEventQueue;
+        }
         if (settings.showReasoning !== undefined) {
             document.settings.show_reasoning = settings.showReasoning;
         }

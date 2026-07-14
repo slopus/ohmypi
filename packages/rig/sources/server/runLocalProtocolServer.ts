@@ -8,7 +8,7 @@ import { PersistentSessionStore } from "./PersistentSessionStore.js";
 import { readLocalServerToken } from "./readLocalServerToken.js";
 import { removeStaleSocket } from "./removeStaleSocket.js";
 import { McpClientManager } from "../mcp/index.js";
-import { loadConfig } from "../config/index.js";
+import { loadConfig, writeDaemonSettings } from "../config/index.js";
 
 export interface RunLocalProtocolServerOptions {
     socketPath?: string;
@@ -30,6 +30,7 @@ export async function runLocalProtocolServer(
     const mcpToolProvider = new McpClientManager();
     const store = new PersistentSessionStore({
         databasePath: paths.databasePath,
+        durableGlobalEventQueue: loadedConfig.config.settings.durableGlobalEventQueue,
         mcpToolProvider,
         modelCatalog,
     });
@@ -38,7 +39,14 @@ export async function runLocalProtocolServer(
         ...(loadedConfig.config.docker === undefined
             ? {}
             : { defaultDocker: loadedConfig.config.docker }),
+        ...(store.globalEventQueue === undefined
+            ? {}
+            : { globalEventQueue: store.globalEventQueue }),
         modelCatalog,
+        onDurableGlobalEventQueueChange: async (enabled) => {
+            await writeDaemonSettings({ durableGlobalEventQueue: enabled });
+            return store.setDurableGlobalEventQueue(enabled);
+        },
         onShutdown: () => stopServer?.(),
         store,
         token,

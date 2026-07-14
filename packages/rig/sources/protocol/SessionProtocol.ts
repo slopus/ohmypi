@@ -65,6 +65,7 @@ export type ServerInitializationStatus = "starting" | "ready" | "error";
 
 export interface HealthResponse {
     catalog?: ModelCatalog;
+    durableGlobalEventQueue: boolean;
     errorMessage?: string;
     healthy: boolean;
     ready: boolean;
@@ -74,6 +75,24 @@ export interface HealthResponse {
 export interface ListModelsResponse {
     catalog: ModelCatalog;
 }
+
+export interface DaemonConfig {
+    settings: {
+        durableGlobalEventQueue: boolean;
+    };
+}
+
+export interface GetDaemonConfigResponse {
+    config: DaemonConfig;
+}
+
+export interface UpdateDaemonConfigRequest {
+    settings: {
+        durableGlobalEventQueue: boolean;
+    };
+}
+
+export type UpdateDaemonConfigResponse = GetDaemonConfigResponse;
 
 export interface ProtocolSession {
     id: string;
@@ -208,6 +227,24 @@ export interface SearchFilesResponse {
 
 export interface ShutdownServerResponse {
     shuttingDown: boolean;
+}
+
+export interface GlobalEventQueueEntry {
+    cursor: number;
+    event: SessionEvent;
+}
+
+export interface ListGlobalEventsResponse {
+    events: readonly GlobalEventQueueEntry[];
+}
+
+export interface TrimGlobalEventsRequest {
+    through: number;
+}
+
+export interface TrimGlobalEventsResponse {
+    trimmed: number;
+    through: number;
 }
 
 export interface SubmitMessageRequest {

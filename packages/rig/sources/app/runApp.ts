@@ -77,6 +77,7 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
     if (options.modelId !== undefined) agentOptions.modelId = options.modelId;
     if (options.providerId !== undefined) agentOptions.providerId = options.providerId;
     if (options.permissionMode !== undefined) agentOptions.permissionMode = options.permissionMode;
+    let durableGlobalEventQueue = loadedConfig.config.settings.durableGlobalEventQueue;
     let showReasoning = options.showReasoning ?? loadedConfig.config.settings.showReasoning;
     let showUsage = options.showUsage ?? loadedConfig.config.settings.showUsage;
 
@@ -195,14 +196,16 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
                     permissionMode: agent.permissionMode,
                 },
                 settings: {
+                    durableGlobalEventQueue,
                     showReasoning,
                     showUsage,
                 },
             }),
-        onSettingsChange: (settings) => {
+        onSettingsChange: async (settings) => {
+            durableGlobalEventQueue = settings.durableGlobalEventQueue;
             showReasoning = settings.showReasoning;
             showUsage = settings.showUsage;
-            return writeRuntimeConfig(loadedConfig.paths.runtime, {
+            await writeRuntimeConfig(loadedConfig.paths.runtime, {
                 defaults: {
                     modelId: agent.model.id,
                     providerId: agent.provider.id,
@@ -210,6 +213,9 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
                     permissionMode: agent.permissionMode,
                 },
                 settings,
+            });
+            await localServer.client.updateDaemonConfig({
+                settings: { durableGlobalEventQueue },
             });
         },
         onStopWorkflow: (runId) =>
@@ -224,6 +230,7 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
                 .searchFiles(session.session.id, query)
                 .then((response) => response.files),
         sessionBacked: true,
+        durableGlobalEventQueue,
         showReasoning,
         showUsage,
         tui,

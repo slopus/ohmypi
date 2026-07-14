@@ -19,11 +19,13 @@ export interface PartialConfigDefaults {
 }
 
 export interface ConfigSettings {
+    durableGlobalEventQueue: boolean;
     showReasoning: boolean;
     showUsage: boolean;
 }
 
 export interface PartialConfigSettings {
+    durableGlobalEventQueue?: boolean;
     showReasoning?: boolean;
     showUsage?: boolean;
 }
@@ -78,4 +80,8 @@ export interface LoadConfigOptions {
     cwd?: string;
     env?: NodeJS.ProcessEnv;
     homeDirectory?: string;
+}
+
+export interface DaemonSettings {
+    durableGlobalEventQueue: boolean;
 }

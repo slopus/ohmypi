@@ -26,6 +26,7 @@ export async function createConfigFile(
                     : {}),
             },
             settings: {
+                durable_global_event_queue: config.settings.durableGlobalEventQueue,
                 show_reasoning: config.settings.showReasoning,
                 show_usage: config.settings.showUsage,
             },

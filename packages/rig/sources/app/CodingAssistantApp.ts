@@ -154,6 +154,7 @@ export interface CodingAssistantAppOptions {
         options?: ReadClipboardImageOptions,
     ) => Promise<ClipboardImage | undefined>;
     searchFiles?: (query: string) => Promise<readonly FileSearchResult[]>;
+    durableGlobalEventQueue?: boolean;
     showReasoning?: boolean;
     showUsage?: boolean;
     version?: string;
@@ -200,6 +201,7 @@ export interface DefaultModelPreference {
 }
 
 export interface AppSettings {
+    durableGlobalEventQueue: boolean;
     showReasoning: boolean;
     showUsage: boolean;
 }
@@ -289,6 +291,7 @@ export class CodingAssistantApp implements Component, Focusable {
     #activeSubmission: Promise<void> | undefined;
     #bracketedPasteBuffer: string | undefined;
     #backgroundProcesses: readonly BashSessionActivity[] = [];
+    #durableGlobalEventQueue: boolean;
     #showReasoning: boolean;
     #showUsage: boolean;
     #sessionBacked: boolean;
@@ -337,6 +340,7 @@ export class CodingAssistantApp implements Component, Focusable {
         this.#processManager = options.processManager;
         this.#readClipboardImage = options.readClipboardImage ?? readClipboardImage;
         this.#sessionBacked = options.sessionBacked ?? false;
+        this.#durableGlobalEventQueue = options.durableGlobalEventQueue ?? false;
         this.#showReasoning = options.showReasoning ?? false;
         this.#showUsage = options.showUsage ?? false;
         this.#modelLocked = options.modelLocked ?? !options.agent.canChangeModel;
@@ -2448,19 +2452,34 @@ export class CodingAssistantApp implements Component, Focusable {
                     label: this.#showUsage ? "Hide token status" : "Show token status",
                     description: "Toggle context usage below the input.",
                 },
+                {
+                    value: "durable-events",
+                    label: this.#durableGlobalEventQueue
+                        ? "Disable durable event queue"
+                        : "Enable durable event queue",
+                    description: "Persist every daemon event for external synchronization.",
+                },
             ],
             onSelect: (item) => {
                 if (item.value === "reasoning") this.#showReasoning = !this.#showReasoning;
                 if (item.value === "usage") this.#showUsage = !this.#showUsage;
+                if (item.value === "durable-events") {
+                    this.#durableGlobalEventQueue = !this.#durableGlobalEventQueue;
+                }
                 this.#persistSettings();
                 this.#closeSelectionPanel();
+                let text: string;
+                if (item.value === "reasoning") {
+                    text = `Reasoning display ${this.#showReasoning ? "enabled" : "disabled"}.`;
+                } else if (item.value === "usage") {
+                    text = `Token status ${this.#showUsage ? "enabled" : "disabled"}.`;
+                } else {
+                    text = `Durable event queue ${this.#durableGlobalEventQueue ? "enabled" : "disabled"}.`;
+                }
                 this.#appendEntry({
                     role: "event",
                     title: "settings",
-                    text:
-                        item.value === "reasoning"
-                            ? `Reasoning display ${this.#showReasoning ? "enabled" : "disabled"}.`
-                            : `Token status ${this.#showUsage ? "enabled" : "disabled"}.`,
+                    text,
                 });
                 this.#requestRender();
             },
@@ -3234,6 +3253,7 @@ export class CodingAssistantApp implements Component, Focusable {
 
         void Promise.resolve(
             this.#onSettingsChange({
+                durableGlobalEventQueue: this.#durableGlobalEventQueue,
                 showReasoning: this.#showReasoning,
                 showUsage: this.#showUsage,
             }),
