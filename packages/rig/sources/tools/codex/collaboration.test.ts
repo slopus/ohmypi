@@ -6,6 +6,7 @@ import { createJustBashToolHarness } from "../testing/createJustBashToolHarness.
 import { codexFollowupTaskTool } from "./followup_task.js";
 import { codexInterruptAgentTool } from "./interrupt_agent.js";
 import { codexListAgentsTool } from "./list_agents.js";
+import { codexResumeAgentTool } from "./resume_agent.js";
 import { codexSpawnAgentTool } from "./spawn_agent.js";
 import { codexWaitAgentTool } from "./wait_agent.js";
 
@@ -29,6 +30,7 @@ describe("Codex collaboration tools", () => {
         const followUp = vi.fn(() => agent);
         const interrupt = vi.fn(() => agent);
         const list = vi.fn(() => [agent]);
+        const resume = vi.fn(() => agent);
         const wait = vi.fn(async () => ({ agents: [agent], timedOut: false }));
         harness.context.subagents = {
             canSpawn: true,
@@ -37,6 +39,7 @@ describe("Codex collaboration tools", () => {
             interrupt,
             list,
             maxDepth: 3,
+            resume,
             spawn,
             wait,
         };
@@ -87,6 +90,10 @@ describe("Codex collaboration tools", () => {
         expect(codexInterruptAgentTool.execute({ target: "agent-1" }, harness.context, {})).toEqual(
             agent,
         );
+        expect(codexResumeAgentTool.execute({ target: "agent-1" }, harness.context, {})).toEqual(
+            agent,
+        );
+        expect(resume).toHaveBeenCalledWith("agent-1");
         await expect(
             codexWaitAgentTool.execute({ timeout_ms: 1 }, harness.context, {}),
         ).resolves.toEqual({ agents: [agent], timed_out: false });

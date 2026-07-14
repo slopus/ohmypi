@@ -15,7 +15,14 @@ import type { ChangeGoalStatusRequest, CreateGoalRequest, SessionGoal } from "..
 import type { EventId } from "./EventId.js";
 import type { DockerExecutionConfig } from "../execution/index.js";
 
-export type SessionStatus = "idle" | "queued" | "running" | "completed" | "aborted" | "error";
+export type SessionStatus =
+    | "idle"
+    | "queued"
+    | "running"
+    | "completed"
+    | "aborted"
+    | "suspended"
+    | "error";
 
 export type SessionTitleStatus = "idle" | "generating" | "ready" | "error";
 
@@ -315,6 +322,7 @@ export type SessionEvent =
     | TasksChangedEvent
     | GoalChangedEvent
     | SubagentChangedEvent
+    | SubagentsSuspendedEvent
     | WorkflowChangedEvent;
 
 export interface BaseSessionEvent<TType extends string, TData> {
@@ -333,6 +341,7 @@ export type MessageSubmittedEvent = BaseSessionEvent<
         displayText: string;
         message: UserMessage;
         runId: string;
+        source?: "notification";
     }
 >;
 
@@ -377,6 +386,13 @@ export type AbortRequestedEvent = BaseSessionEvent<
     "abort_requested",
     {
         runId?: string;
+    }
+>;
+
+export type SubagentsSuspendedEvent = BaseSessionEvent<
+    "subagents_suspended",
+    {
+        displayText: string;
     }
 >;
 

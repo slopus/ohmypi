@@ -13,6 +13,7 @@ describe("humanizeToolName", () => {
     it("keeps curated and MCP labels descriptive", () => {
         expect(humanizeToolName("request_user_input")).toBe("Question");
         expect(humanizeToolName("spawn_agent")).toBe("Start subagent");
+        expect(humanizeToolName("resume_agent")).toBe("Resume subagent");
         expect(humanizeToolName("mcp__issue_tracker__create_ticket")).toBe(
             "Issue Tracker · Create Ticket",
         );

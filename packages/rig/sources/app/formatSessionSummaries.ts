@@ -51,6 +51,7 @@ function humanizeStatus(status: SessionStatus): string {
     if (status === "running") return "Running";
     if (status === "completed") return "Completed";
     if (status === "aborted") return "Aborted";
+    if (status === "suspended") return "Suspended";
     return "Error";
 }
 

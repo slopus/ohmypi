@@ -1,4 +1,4 @@
-export type SubagentRunStatus = "aborted" | "completed" | "error" | "running";
+export type SubagentRunStatus = "aborted" | "completed" | "error" | "running" | "suspended";
 
 export interface ManagedSubagent {
     description: string;
@@ -38,6 +38,7 @@ export interface SubagentContext {
     interrupt(target: string): ManagedSubagent;
     list(pathPrefix?: string): readonly ManagedSubagent[];
     maxDepth: number;
+    resume(target: string): ManagedSubagent;
     spawn(request: SpawnSubagentRequest, signal?: AbortSignal): Promise<SpawnSubagentResult>;
     wait(timeoutMs?: number, signal?: AbortSignal): Promise<WaitForSubagentResult>;
 }

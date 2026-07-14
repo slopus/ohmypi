@@ -411,6 +411,7 @@ class WorkflowMonitor implements Component {
 
 function humanizeSubagentStatus(status: SubagentSummary["status"]): string {
     if (status === "aborted") return "Stopped";
+    if (status === "suspended") return "Suspended";
     if (status === "completed") return "Completed";
     if (status === "error") return "Failed";
     if (status === "idle") return "Idle";

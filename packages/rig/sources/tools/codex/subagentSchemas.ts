@@ -9,6 +9,7 @@ export const managedSubagentSchema = Type.Object({
         Type.Literal("completed"),
         Type.Literal("error"),
         Type.Literal("running"),
+        Type.Literal("suspended"),
     ]),
     taskName: Type.String(),
 });

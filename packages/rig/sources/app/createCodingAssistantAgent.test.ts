@@ -101,6 +101,9 @@ describe("createCodingAssistantAgent", () => {
             },
             list: () => [],
             maxDepth: 3,
+            resume: () => {
+                throw new Error("not used");
+            },
             spawn,
             wait: async () => ({ agents: [], timedOut: false }),
         };
@@ -138,6 +141,7 @@ describe("createCodingAssistantAgent", () => {
             "wait_agent",
             "list_agents",
             "interrupt_agent",
+            "resume_agent",
         ]);
         expect(deepest.agent.tools.map((tool) => tool.name)).not.toContain("spawn_agent");
         expect(deepest.agent.tools.map((tool) => tool.name)).not.toContain("workflow");
@@ -169,6 +173,9 @@ describe("createCodingAssistantAgent", () => {
                 },
                 list: () => [],
                 maxDepth: 3,
+                resume: () => {
+                    throw new Error("not used");
+                },
                 spawn: async () => {
                     throw new Error("not used");
                 },

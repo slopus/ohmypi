@@ -2,7 +2,7 @@ import { access, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { Agent, createNodeAgentContext } from "../agent/index.js";
 import type { CreateCodingAssistantAgentOptions } from "../app/createCodingAssistantAgent.js";
@@ -16,8 +16,26 @@ import {
     type InferenceStream,
 } from "../providers/types.js";
 import { InMemorySession } from "./InMemorySession.js";
+import type { AgentSessionManager } from "./AgentSessionManager.js";
 
 describe("InMemorySession abort", () => {
+    it("pauses active descendants even when the parent has no active run", async () => {
+        const pauseDescendants = vi.fn(async () => 2);
+        const session = new InMemorySession({
+            agentManager: { pauseDescendants } as unknown as AgentSessionManager,
+            createEventId: createEventIdFactory(),
+            modelCatalog: testCatalog(),
+            request: {
+                cwd: "/tmp/rig-parent-abort-test",
+                modelId: "test/parent-abort",
+                providerId: "test",
+            },
+        });
+
+        await expect(session.abort()).resolves.toEqual({ aborted: true });
+        expect(pauseDescendants).toHaveBeenCalledWith(session.id);
+    });
+
     it("stops tracked processes even after the agent run is already idle", async () => {
         const cwd = await mkdtemp(join(tmpdir(), "rig-idle-abort-"));
         try {
@@ -78,6 +96,21 @@ describe("InMemorySession abort", () => {
         }
     });
 });
+
+function testCatalog(): ModelCatalog {
+    const model = defineModel({
+        defaultThinkingLevel: "off",
+        id: "test/parent-abort",
+        name: "Parent abort",
+        thinkingLevels: ["off"],
+    });
+    return {
+        defaultModelId: model.id,
+        defaultProviderId: "test",
+        models: [model],
+        providers: [{ models: [model], providerId: "test" }],
+    };
+}
 
 function createRuntime(
     options: CreateCodingAssistantAgentOptions,

@@ -406,6 +406,119 @@ describe("AgentSessionManager", () => {
         expect(recordSubagentChanged).toHaveBeenCalledTimes(2);
     });
 
+    it("suspends active descendants until each retained session is explicitly resumed", async () => {
+        const statuses = new Map<string, "aborted" | "completed" | "running" | "suspended">([
+            ["child-1", "running"],
+            ["grandchild-1", "running"],
+            ["child-2", "completed"],
+        ]);
+        const sessions = new Map<string, InMemorySession>();
+        const makeChild = (
+            id: string,
+            parentSessionId: string,
+            depth: number,
+            taskName: string,
+        ) => {
+            const abort = vi.fn(() => {
+                statuses.set(id, "aborted");
+                return { aborted: true };
+            });
+            const suspendByParent = vi.fn(() => {
+                statuses.set(id, "suspended");
+            });
+            const submit = vi.fn(() => {
+                statuses.set(id, "running");
+                return { eventId: `${id}-event`, runId: `${id}-run`, sessionId: id };
+            });
+            const resumeSuspended = vi.fn(() => {
+                statuses.set(id, "running");
+                return { eventId: `${id}-resume-event`, runId: `${id}-resume-run`, sessionId: id };
+            });
+            const session = {
+                abort,
+                agentMetadata: () => ({
+                    depth,
+                    description: taskName,
+                    parentSessionId,
+                    rootSessionId: "root-1",
+                    taskName,
+                    type: "subagent" as const,
+                }),
+                id,
+                isSubagent: () => true,
+                clearSuspension: vi.fn(() => {
+                    if (statuses.get(id) === "suspended") statuses.set(id, "aborted");
+                }),
+                recordSubagentChanged: vi.fn(),
+                resumeSuspended,
+                snapshot: () => ({ snapshot: { messages: [] } }),
+                subagentSummary: () => ({
+                    agentId: `${id}-agent`,
+                    createdAt: depth,
+                    depth,
+                    description: taskName,
+                    id,
+                    modelId: "openai/gpt-5.5",
+                    parentSessionId,
+                    status: statuses.get(id),
+                    taskName,
+                    updatedAt: depth,
+                }),
+                submit,
+                suspendByParent,
+                waitForRun: () => new Promise(() => undefined),
+            } as unknown as InMemorySession;
+            sessions.set(id, session);
+            return { abort, resumeSuspended, session, submit, suspendByParent };
+        };
+        const root = {
+            agentMetadata: () => ({ depth: 0, rootSessionId: "root-1", type: "primary" }),
+            id: "root-1",
+            isSubagent: () => false,
+            recordSubagentChanged: vi.fn(),
+            recordSubagentsSuspended: vi.fn(),
+        } as unknown as InMemorySession;
+        sessions.set(root.id, root);
+        const child = makeChild("child-1", root.id, 1, "audit_code");
+        const grandchild = makeChild("grandchild-1", child.session.id, 2, "inspect_tests");
+        const completed = makeChild("child-2", root.id, 1, "finished_task");
+        const manager = new AgentSessionManager({
+            repository: {
+                createSubagent: vi.fn(),
+                get: (sessionId) => sessions.get(sessionId),
+                listByRoot: () => [child.session, grandchild.session, completed.session],
+            },
+        });
+
+        await expect(manager.pauseDescendants(root.id)).resolves.toBe(2);
+
+        expect(child.suspendByParent).toHaveBeenCalledOnce();
+        expect(grandchild.suspendByParent).toHaveBeenCalledOnce();
+        expect(completed.abort).not.toHaveBeenCalled();
+        expect(manager.list(root.id)).toEqual([
+            expect.objectContaining({ sessionId: child.session.id, status: "suspended" }),
+            expect.objectContaining({ sessionId: grandchild.session.id, status: "suspended" }),
+            expect.objectContaining({ sessionId: completed.session.id, status: "completed" }),
+        ]);
+        expect(root.recordSubagentsSuspended).toHaveBeenCalledWith([
+            expect.objectContaining({ sessionId: child.session.id, status: "suspended" }),
+            expect.objectContaining({ sessionId: grandchild.session.id, status: "suspended" }),
+        ]);
+
+        expect(manager.resume(root.id, "audit_code")).toEqual(
+            expect.objectContaining({ sessionId: child.session.id, status: "running" }),
+        );
+
+        expect(child.resumeSuspended).toHaveBeenCalledOnce();
+        expect(grandchild.resumeSuspended).not.toHaveBeenCalled();
+        expect(completed.submit).not.toHaveBeenCalled();
+        expect(manager.list(root.id)).toEqual([
+            expect.objectContaining({ sessionId: child.session.id, status: "running" }),
+            expect.objectContaining({ sessionId: grandchild.session.id, status: "suspended" }),
+            expect.objectContaining({ sessionId: completed.session.id, status: "completed" }),
+        ]);
+    });
+
     it("waits for active work instead of returning an older completed agent", async () => {
         let activeStatus: "completed" | "running" = "running";
         const makeChild = (id: string, taskName: string, status: () => "completed" | "running") =>

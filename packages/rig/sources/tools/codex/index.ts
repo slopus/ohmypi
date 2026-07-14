@@ -7,6 +7,7 @@ export { codexRequestUserInputTool } from "./request_user_input.js";
 export { codexSpawnAgentTool } from "./spawn_agent.js";
 export { codexFollowupTaskTool } from "./followup_task.js";
 export { codexInterruptAgentTool } from "./interrupt_agent.js";
+export { codexResumeAgentTool } from "./resume_agent.js";
 export { codexListAgentsTool } from "./list_agents.js";
 export { codexWaitAgentTool } from "./wait_agent.js";
 export { unifiedExecOutputSchema } from "./unifiedExecOutput.js";
@@ -20,6 +21,7 @@ import { codexRequestUserInputTool } from "./request_user_input.js";
 import { codexSpawnAgentTool } from "./spawn_agent.js";
 import { codexFollowupTaskTool } from "./followup_task.js";
 import { codexInterruptAgentTool } from "./interrupt_agent.js";
+import { codexResumeAgentTool } from "./resume_agent.js";
 import { codexListAgentsTool } from "./list_agents.js";
 import { codexWaitAgentTool } from "./wait_agent.js";
 import {
@@ -48,4 +50,5 @@ export const codexCollaborationTools = [
     codexWaitAgentTool,
     codexListAgentsTool,
     codexInterruptAgentTool,
+    codexResumeAgentTool,
 ] as const;

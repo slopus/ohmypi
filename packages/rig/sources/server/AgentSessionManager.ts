@@ -32,6 +32,7 @@ export class AgentSessionManager {
 
     readonly #repository: AgentSessionRepository;
     readonly #slotReservations = new Map<string, number>();
+    readonly #stoppedExplicitly = new Set<string>();
 
     constructor(options: AgentSessionManagerOptions) {
         this.#repository = options.repository;
@@ -61,6 +62,8 @@ export class AgentSessionManager {
 
     followUp(parentSessionId: string, target: string, message: string): ManagedSubagent {
         const child = this.#resolveTarget(parentSessionId, target);
+        if (child.subagentSummary().status === "suspended") child.clearSuspension();
+        this.#stoppedExplicitly.delete(child.id);
         const submitted = child.submit({ text: message });
         const parent = this.#parentFor(child);
         parent?.recordSubagentChanged(child.subagentSummary());
@@ -71,9 +74,51 @@ export class AgentSessionManager {
     interrupt(parentSessionId: string, target: string): ManagedSubagent {
         const child = this.#resolveTarget(parentSessionId, target);
         const previous = this.#managedSubagent(child);
-        void Promise.resolve(child.abort()).catch(() => undefined);
+        void this.stopDescendants(child.id);
+        if (child.subagentSummary().status === "suspended") child.clearSuspension();
+        void Promise.resolve(child.abort({ pauseDescendants: false })).catch(() => undefined);
         this.#parentFor(child)?.recordSubagentChanged(child.subagentSummary());
         return previous;
+    }
+
+    async pauseDescendants(parentSessionId: string): Promise<number> {
+        const parent = this.#repository.get(parentSessionId);
+        if (parent === undefined) return 0;
+        const active = this.#activeDescendantsOf(parentSessionId);
+        await Promise.all(
+            active.map(async (child) => {
+                await child.suspendByParent();
+                this.#parentFor(child)?.recordSubagentChanged(child.subagentSummary());
+            }),
+        );
+        parent.recordSubagentsSuspended(active.map((child) => this.#managedSubagent(child)));
+        return active.length;
+    }
+
+    resume(parentSessionId: string, target: string): ManagedSubagent {
+        const child = this.#resolveTarget(parentSessionId, target);
+        const submitted = child.resumeSuspended();
+        const parent = this.#parentFor(child);
+        parent?.recordSubagentChanged(child.subagentSummary());
+        void this.#monitorBackground(parent, child, submitted.runId);
+        return this.#managedSubagent(child);
+    }
+
+    async stopDescendants(parentSessionId: string): Promise<number> {
+        const active = this.#activeDescendantsOf(parentSessionId);
+        for (const child of this.#descendantsOf(parentSessionId)) {
+            if (child.subagentSummary().status !== "suspended") continue;
+            child.clearSuspension();
+            this.#parentFor(child)?.recordSubagentChanged(child.subagentSummary());
+        }
+        for (const child of active) this.#stoppedExplicitly.add(child.id);
+        await Promise.all(
+            active.map(async (child) => {
+                await child.abort({ pauseDescendants: false });
+                this.#parentFor(child)?.recordSubagentChanged(child.subagentSummary());
+            }),
+        );
+        return active.length;
     }
 
     list(parentSessionId: string, pathPrefix?: string): readonly ManagedSubagent[] {
@@ -211,6 +256,13 @@ export class AgentSessionManager {
         }
     }
 
+    #activeDescendantsOf(parentSessionId: string): readonly InMemorySession[] {
+        return this.#descendantsOf(parentSessionId).filter((session) => {
+            const status = session.subagentSummary().status;
+            return status === "queued" || status === "running";
+        });
+    }
+
     async wait(
         parentSessionId: string,
         timeoutMs = 30_000,
@@ -272,6 +324,9 @@ export class AgentSessionManager {
         try {
             const completion = await child.waitForRun(runId);
             parent?.recordSubagentChanged(child.subagentSummary());
+            if (completion.status === "aborted" && child.consumeSuspendedRun(runId)) return;
+            if (child.subagentSummary().status === "suspended") return;
+            if (this.#stoppedExplicitly.delete(child.id)) return;
             if (parent === undefined) return;
             const output = this.#completionOutput(
                 child,
@@ -304,6 +359,25 @@ export class AgentSessionManager {
     #parentFor(child: InMemorySession): InMemorySession | undefined {
         const parentSessionId = child.agentMetadata().parentSessionId;
         return parentSessionId === undefined ? undefined : this.#repository.get(parentSessionId);
+    }
+
+    #descendantsOf(parentSessionId: string): readonly InMemorySession[] {
+        const parent = this.#repository.get(parentSessionId);
+        if (parent === undefined) return [];
+        return this.#repository
+            .listByRoot(parent.agentMetadata().rootSessionId)
+            .filter((session) => this.#isDescendantOf(session, parentSessionId));
+    }
+
+    #isDescendantOf(session: InMemorySession, parentSessionId: string): boolean {
+        let currentParentId = session.agentMetadata().parentSessionId;
+        while (currentParentId !== undefined) {
+            if (currentParentId === parentSessionId) return true;
+            currentParentId = this.#repository
+                .get(currentParentId)
+                ?.agentMetadata().parentSessionId;
+        }
+        return false;
     }
 
     #pathFor(child: InMemorySession): string {
@@ -347,7 +421,14 @@ export class AgentSessionManager {
     #runStatus(
         status: ReturnType<InMemorySession["subagentSummary"]>["status"],
     ): SubagentRunStatus {
-        if (status === "aborted" || status === "error" || status === "completed") return status;
+        if (
+            status === "aborted" ||
+            status === "error" ||
+            status === "completed" ||
+            status === "suspended"
+        ) {
+            return status;
+        }
         return "running";
     }
 

@@ -244,6 +244,8 @@ export class InMemorySession {
     #restoredActiveRunId: string | undefined;
     #runtime: CodingAssistantRuntime | undefined;
     #status: SessionStatus = "idle";
+    #suspendedRunIds = new Set<string>();
+    #suspendOnAbort = false;
     #tasks: SessionTask[] = [];
     #title: string | undefined;
     #titleError: string | undefined;
@@ -395,16 +397,28 @@ export class InMemorySession {
         }
     }
 
-    async abort(): Promise<{ aborted: boolean; eventId?: EventId; stoppedProcesses?: number }> {
+    async abort(
+        options: { pauseDescendants?: boolean } = {},
+    ): Promise<{ aborted: boolean; eventId?: EventId; stoppedProcesses?: number }> {
+        const pauseDescendants =
+            options.pauseDescendants === false
+                ? Promise.resolve(0)
+                : (this.#agentManager?.pauseDescendants(this.id) ?? Promise.resolve(0));
         const runId = this.#activeRun?.runId;
         const runningProcesses = this.#activeProcessCount();
         if (this.#activeRun === undefined && this.#queue.length === 0 && runningProcesses === 0) {
-            return { aborted: false };
+            return { aborted: (await pauseDescendants) > 0 };
         }
 
         if (this.#activeRun === undefined && this.#queue.length === 0) {
-            await this.#killRuntimeProcesses();
-            return { aborted: false, stoppedProcesses: runningProcesses };
+            const [, pausedDescendants] = await Promise.all([
+                this.#killRuntimeProcesses(),
+                pauseDescendants,
+            ]);
+            return {
+                aborted: pausedDescendants > 0,
+                stoppedProcesses: runningProcesses,
+            };
         }
 
         const queuedRunIds = this.#queue.map((queued) => queued.runId);
@@ -415,7 +429,7 @@ export class InMemorySession {
         this.#pauseActiveGoal();
         this.#activeRun?.controller.abort();
         this.#restoredActiveRunId = undefined;
-        await this.#killRuntimeProcesses();
+        await Promise.all([this.#killRuntimeProcesses(), pauseDescendants]);
         const event = this.#append("abort_requested", runId !== undefined ? { runId } : {});
         for (const queuedRunId of queuedRunIds) {
             this.#append("run_error", {
@@ -429,6 +443,72 @@ export class InMemorySession {
             eventId: event.id,
             ...(runningProcesses > 0 ? { stoppedProcesses: runningProcesses } : {}),
         };
+    }
+
+    async stopBackgroundProcesses(): Promise<number> {
+        const runtime = this.#runtime;
+        if (runtime === undefined) return 0;
+        const runningProcesses = runtime.context.bash.activeSessionCount?.() ?? 0;
+        await runtime.context.bash.killAllSessions?.();
+        return runningProcesses;
+    }
+
+    async suspendByParent(): Promise<void> {
+        if (!this.isSubagent()) return;
+        if (this.#activeRun !== undefined) this.#suspendedRunIds.add(this.#activeRun.runId);
+        this.#suspendOnAbort = true;
+        await this.abort({ pauseDescendants: false });
+        this.#status = "suspended";
+        if (this.#activeRun === undefined) this.#suspendOnAbort = false;
+        this.#saveSession();
+    }
+
+    resumeSuspended(): SubmitMessageResponse {
+        if (!this.isSubagent() || this.#status !== "suspended") {
+            throw new Error("Only a suspended subagent can be resumed.");
+        }
+        this.#suspendOnAbort = false;
+        return this.submit({
+            displayText: "Resuming delegated work",
+            text: "Continue the delegated task from where you stopped. Re-check any interrupted tool calls before proceeding.",
+        });
+    }
+
+    clearSuspension(): void {
+        this.#suspendOnAbort = false;
+        if (this.#status !== "suspended") return;
+        this.#status = "aborted";
+        this.#saveSession();
+    }
+
+    consumeSuspendedRun(runId: string): boolean {
+        return this.#suspendedRunIds.delete(runId);
+    }
+
+    recordSubagentsSuspended(subagents: readonly { description: string; path: string }[]): void {
+        if (subagents.length === 0) return;
+        const count = subagents.length;
+        const names = subagents.map((subagent) => subagent.description).join(", ");
+        const displayText = `${count} ${count === 1 ? "subagent was" : "subagents were"} suspended: ${names}. They will remain suspended until explicitly resumed or redirected.`;
+        this.#ensureRuntime().agent.enqueueMessage({
+            blocks: [
+                {
+                    type: "text",
+                    text: [
+                        "<subagent-suspension>",
+                        "The parent turn was interrupted. These delegated agents were suspended:",
+                        ...subagents.map(
+                            (subagent) => `- ${subagent.path}: ${subagent.description}`,
+                        ),
+                        "They will not resume automatically. Use resume_agent to continue retained work, followup_task to resume with revised instructions, or interrupt_agent to leave work stopped.",
+                        "</subagent-suspension>",
+                    ].join("\n"),
+                },
+            ],
+            id: createId(),
+            role: "user",
+        });
+        this.#append("subagents_suspended", { displayText });
     }
 
     agentMetadata(): SessionAgentMetadata {
@@ -653,6 +733,7 @@ export class InMemorySession {
         if (request.status === "active") {
             this.#continueGoalIfIdle();
         } else if (options.stopActiveGoalRun !== false) {
+            void this.#agentManager?.pauseDescendants(this.id);
             this.#discardQueuedGoalRuns();
             if (this.#activeRun?.kind === "goal") {
                 this.#activeRun.controller.abort();
@@ -669,6 +750,7 @@ export class InMemorySession {
         if (this.#goal === undefined) return false;
 
         this.#goal = undefined;
+        void this.#agentManager?.stopDescendants(this.id);
         this.#discardQueuedGoalRuns();
         if (this.#activeRun?.kind === "goal") {
             this.#activeRun.controller.abort();
@@ -1063,6 +1145,7 @@ export class InMemorySession {
         this.#activeRun = undefined;
         this.#restoredActiveRunId = undefined;
         this.#activePartial = undefined;
+        this.#suspendedRunIds.clear();
         this.#pauseActiveGoal();
         const interruptedRunIds = [
             ...(interruption.runId !== undefined ? [interruption.runId] : []),
@@ -1088,7 +1171,8 @@ export class InMemorySession {
     }
 
     reset(): ProtocolSession {
-        void this.abort().catch(() => undefined);
+        void this.#agentManager?.stopDescendants(this.id);
+        void this.abort({ pauseDescendants: false }).catch(() => undefined);
         for (const run of this.#workflowRuns.values()) {
             if (run.state.status === "running") run.controller.abort();
         }
@@ -1102,6 +1186,7 @@ export class InMemorySession {
         this.#contextMessages = undefined;
         this.#partialPositions.clear();
         this.#activePartial = undefined;
+        this.#suspendedRunIds.clear();
         const hadTasks = this.#tasks.length > 0;
         const hadGoal = this.#goal !== undefined;
         this.#goal = undefined;
@@ -1310,7 +1395,10 @@ export class InMemorySession {
         return state;
     }
 
-    submit(request: SubmitMessageRequest): SubmitMessageResponse {
+    submit(
+        request: SubmitMessageRequest,
+        options: { source?: "notification" } = {},
+    ): SubmitMessageResponse {
         const runId = createId();
         const displayText = request.displayText ?? request.text;
         const blocks: readonly ContentBlock[] = request.content ?? [
@@ -1350,6 +1438,7 @@ export class InMemorySession {
             displayText,
             message: visibleMessage,
             runId,
+            ...(options.source === undefined ? {} : { source: options.source }),
         });
         this.#startTitleGeneration(request.text);
         this.#startDrainQueue();
@@ -1397,7 +1486,7 @@ export class InMemorySession {
         request: SubmitMessageRequest,
     ): SubmitMessageResponse | SteerMessageResponse {
         if (this.#activeRun === undefined) {
-            return this.submit(request);
+            return this.submit(request, { source: "notification" });
         }
 
         const activeRun = this.#activeRun;
@@ -1422,6 +1511,7 @@ export class InMemorySession {
             displayText,
             message: visibleMessage,
             runId: activeRun.runId,
+            source: "notification",
         });
         return {
             eventId: event.id,
@@ -1703,7 +1793,13 @@ export class InMemorySession {
 
     #appendRunFinished(runId: string, result: AgentRunResult): void {
         const stopReason: StopReason = result.stopReason;
-        this.#status = stopReason === "aborted" ? "aborted" : "completed";
+        this.#status =
+            stopReason === "aborted"
+                ? this.#suspendOnAbort
+                    ? "suspended"
+                    : "aborted"
+                : "completed";
+        this.#suspendOnAbort = false;
         this.#activePartial = undefined;
         if (this.#activeRun?.runId === runId) {
             this.#activeRun = undefined;
@@ -1792,6 +1888,7 @@ export class InMemorySession {
                 interrupt: (target) => agentManager.interrupt(this.id, target),
                 list: (pathPrefix) => agentManager.list(this.id, pathPrefix),
                 maxDepth: agentManager.maxDepth,
+                resume: (target) => agentManager.resume(this.id, target),
                 spawn: (request, signal) => agentManager.spawn(this.id, request, signal),
                 wait: (timeoutMs, signal) => agentManager.wait(this.id, timeoutMs, signal),
             };
@@ -1989,7 +2086,9 @@ export class InMemorySession {
             if (this.#activeRun?.runId !== queued.runId) {
                 return;
             }
-            this.#status = "error";
+            this.#status =
+                controller.signal.aborted && this.#suspendOnAbort ? "suspended" : "error";
+            this.#suspendOnAbort = false;
             this.#activePartial = undefined;
             this.#pauseActiveGoal();
             if (this.#activeRun?.runId === queued.runId) {

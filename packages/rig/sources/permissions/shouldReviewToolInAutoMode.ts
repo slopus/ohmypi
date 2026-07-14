@@ -18,6 +18,7 @@ const INTERNAL_TOOLS = new Set([
     "TodoWrite",
     "followup_task",
     "interrupt_agent",
+    "resume_agent",
     "list_agents",
     "request_user_input",
     "spawn_agent",

@@ -38,6 +38,9 @@ describe("InMemorySession", () => {
         expect(
             session.events.since(undefined)?.filter((event) => event.type === "run_started"),
         ).toHaveLength(1);
+        expect(
+            session.events.since(undefined)?.find((event) => event.type === "message_submitted"),
+        ).toMatchObject({ data: { source: "notification" } });
         expect(delivered.runId).toBe(
             session.events.since(undefined)?.find((event) => event.type === "run_started")?.data
                 .runId,
