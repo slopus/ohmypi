@@ -3,20 +3,18 @@ import { describe, expect, it } from "vitest";
 import { renderBackgroundTerminalInteraction } from "./renderBackgroundTerminalInteraction.js";
 
 describe("renderBackgroundTerminalInteraction", () => {
-    it("renders one compact wait line", () => {
+    it("does not render empty background terminal polls", () => {
         expect(
-            stripAnsi(
-                renderBackgroundTerminalInteraction(
-                    {
-                        command: "sleep 5",
-                        input: "",
-                        sessionId: 1,
-                        type: "background_terminal_interaction",
-                    },
-                    80,
-                ).join("\n"),
+            renderBackgroundTerminalInteraction(
+                {
+                    command: "sleep 5",
+                    input: "",
+                    sessionId: 1,
+                    type: "background_terminal_interaction",
+                },
+                80,
             ),
-        ).toBe("• Waited for background terminal · sleep 5");
+        ).toEqual([]);
     });
 
     it("renders actual input without terminal controls", () => {

@@ -77,6 +77,7 @@ describe("background shell activity stays visible until it really finishes", () 
                     "1 background terminal running · /ps to view · /stop to close",
                 ) &&
                 snapshot.text.includes("Ask Rig to do anything") &&
+                snapshot.text.includes("gym off · /workspace") &&
                 snapshot.scroll.atBottom,
             "an idle composer that still discloses the background process",
             30_000,
@@ -108,6 +109,7 @@ describe("background shell activity stays visible until it really finishes", () 
                 snapshot.text.includes("Background terminals") &&
                 snapshot.text.includes("printf 'BACKGROUND_PROCESS_STARTED") &&
                 snapshot.text.includes("1 background terminal running") &&
+                snapshot.text.includes("gym off · /workspace") &&
                 snapshot.scroll.atBottom,
             "/ps to list the running background terminal",
             30_000,
@@ -121,6 +123,7 @@ describe("background shell activity stays visible until it really finishes", () 
                 snapshot.text.includes("Stopping all background terminals.") &&
                 !snapshot.text.includes("1 background terminal running") &&
                 snapshot.text.includes("Ask Rig to do anything") &&
+                snapshot.text.includes("gym off · /workspace") &&
                 snapshot.scroll.atBottom,
             "/stop to close the running background terminal",
             30_000,
@@ -142,6 +145,7 @@ describe("background shell activity stays visible until it really finishes", () 
             (snapshot) =>
                 snapshot.text.includes("The terminal is ready for more work.") &&
                 snapshot.text.includes("Ask Rig to do anything") &&
+                snapshot.text.includes("gym off · /workspace") &&
                 snapshot.scroll.atBottom,
             "a healthy turn after the background process completed",
             30_000,

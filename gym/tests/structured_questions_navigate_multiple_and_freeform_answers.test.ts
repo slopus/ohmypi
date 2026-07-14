@@ -84,7 +84,8 @@ describe("structured questions navigate multiple and free-form answers", () => {
             (snapshot) =>
                 snapshot.text.includes("Which data store? · 1 of 2") &&
                 snapshot.text.includes("PostgreSQL") &&
-                snapshot.text.includes("SQLite"),
+                snapshot.text.includes("SQLite") &&
+                snapshot.text.includes("gym off · /workspace"),
             "the first structured question and its choices",
             30_000,
         );
@@ -96,7 +97,8 @@ describe("structured questions navigate multiple and free-form answers", () => {
         const secondQuestion = await gym.terminal.waitUntil(
             (snapshot) =>
                 snapshot.text.includes("Which deployment region? · 2 of 2") &&
-                snapshot.text.includes("Type another answer"),
+                snapshot.text.includes("Type another answer") &&
+                snapshot.text.includes("gym off · /workspace"),
             "the second structured question and free-form choice",
             30_000,
         );
@@ -109,7 +111,8 @@ describe("structured questions navigate multiple and free-form answers", () => {
         const freeform = await gym.terminal.waitUntil(
             (snapshot) =>
                 snapshot.text.includes("Type another answer") &&
-                !snapshot.text.includes("Which deployment region? · 2 of 2"),
+                !snapshot.text.includes("Which deployment region? · 2 of 2") &&
+                snapshot.text.includes("gym off · /workspace"),
             "the free-form answer composer",
             30_000,
         );
@@ -118,7 +121,13 @@ describe("structured questions navigate multiple and free-form answers", () => {
         gym.terminal.type("Europe West");
         gym.terminal.press("enter");
 
-        const completed = await gym.terminal.waitForText("Recorded SQLite in Europe West.", 30_000);
+        const completed = await gym.terminal.waitUntil(
+            (snapshot) =>
+                snapshot.text.includes("Recorded SQLite in Europe West.") &&
+                snapshot.text.includes("gym off · /workspace"),
+            "the recorded structured answers and complete footer",
+            30_000,
+        );
         assertHealthySmallTerminal(completed, baseline);
         expect(completed.text).toContain("Ask Rig to do anything");
 

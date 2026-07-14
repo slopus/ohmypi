@@ -69,16 +69,22 @@ describe("update_plan transitions render human-readable progress", () => {
 
         submit(gym, "Track a three-step implementation plan through completion.");
 
-        const started = await gym.terminal.waitForText(
-            "Plan updated: 0 completed, 1 in progress, 2 pending",
+        const started = await gym.terminal.waitUntil(
+            (snapshot) =>
+                snapshot.text.includes("Plan updated: 0 completed, 1 in progress, 2 pending") &&
+                snapshot.text.includes("gym off · /workspace"),
+            "the started plan and complete footer",
             30_000,
         );
         assertHealthyTerminal(started, baseline);
         expect(started.text).toContain("Used Update plan");
         expect(started.text).not.toContain("update_plan");
 
-        const verifying = await gym.terminal.waitForText(
-            "Plan updated: 2 completed, 1 in progress, 0 pending",
+        const verifying = await gym.terminal.waitUntil(
+            (snapshot) =>
+                snapshot.text.includes("Plan updated: 2 completed, 1 in progress, 0 pending") &&
+                snapshot.text.includes("gym off · /workspace"),
+            "the verifying plan and complete footer",
             30_000,
         );
         assertHealthyTerminal(verifying, baseline);
@@ -87,7 +93,8 @@ describe("update_plan transitions render human-readable progress", () => {
             (snapshot) =>
                 snapshot.text.includes("Plan updated: 3 completed, 0 in progress, 0 pending") &&
                 snapshot.text.includes("PLAN_TRANSITIONS_COMPLETE") &&
-                snapshot.text.includes("Ask Rig to do anything"),
+                snapshot.text.includes("Ask Rig to do anything") &&
+                snapshot.text.includes("gym off · /workspace"),
             "the completed plan and idle composer",
             30_000,
         );
@@ -96,7 +103,13 @@ describe("update_plan transitions render human-readable progress", () => {
         expect(completed.text).not.toContain("update_plan");
 
         submit(gym, "Confirm the plan workflow still accepts input.");
-        const followUp = await gym.terminal.waitForText("PLAN_FOLLOW_UP_ACCEPTED", 30_000);
+        const followUp = await gym.terminal.waitUntil(
+            (snapshot) =>
+                snapshot.text.includes("PLAN_FOLLOW_UP_ACCEPTED") &&
+                snapshot.text.includes("gym off · /workspace"),
+            "the plan follow-up and complete footer",
+            30_000,
+        );
         assertHealthyTerminal(followUp, baseline);
         expect(followUp.text).toContain("Ask Rig to do anything");
 

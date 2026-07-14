@@ -286,7 +286,6 @@ export class CodingAssistantApp implements Component, Focusable {
     #activeSubmission: Promise<void> | undefined;
     #bracketedPasteBuffer: string | undefined;
     #backgroundProcesses: readonly BashSessionActivity[] = [];
-    #backgroundTerminalEntryIdsBySession = new Map<number, string>();
     #observedShellProcesses: readonly BashSessionActivity[] = [];
     #yieldedBackgroundTerminals = new Map<number, string>();
     #durableGlobalEventQueue: boolean;
@@ -636,7 +635,6 @@ export class CodingAssistantApp implements Component, Focusable {
             this.#lastUserInputAtMs = undefined;
             this.#workflows = [];
             this.#backgroundProcesses = [];
-            this.#backgroundTerminalEntryIdsBySession.clear();
             this.#observedShellProcesses = [];
             this.#yieldedBackgroundTerminals.clear();
             this.#renderedCompletionNotices.clear();
@@ -1995,7 +1993,6 @@ export class CodingAssistantApp implements Component, Focusable {
         } else if (event.type === "tool_execution_start") {
             this.#activeToolCallIds.add(event.toolCall.id);
             this.#runningToolCallIds.add(event.toolCall.id);
-            this.#toolStatusByCallId.delete(event.toolCall.id);
             this.#refreshToolActivityStatus();
         } else if (event.type === "tool_execution_end") {
             this.#finishToolResult(event.result);
@@ -2264,28 +2261,16 @@ export class CodingAssistantApp implements Component, Focusable {
                 ? undefined
                 : this.#entries.find((entry) => entry.id === existingId);
 
-        const reusableBackgroundWait = this.#reusableBackgroundTerminalWait(
+        const backgroundInteraction = this.#backgroundTerminalInteraction(
             toolCall.name,
             toolCall.arguments,
         );
-        if (existing !== undefined && reusableBackgroundWait !== undefined) {
-            const sessionId = this.#backgroundTerminalSessionId(toolCall.arguments);
-            if (sessionId === undefined) return;
-            const previousId = reusableBackgroundWait.id;
-            this.#activeToolCallIds.delete(previousId);
-            this.#awaitingApprovalToolCallIds.delete(previousId);
-            this.#runningToolCallIds.delete(previousId);
-            this.#toolStatusByCallId.delete(previousId);
+        if (backgroundInteraction !== undefined) {
+            this.#toolStatusByCallId.set(toolCall.id, backgroundInteraction.label);
+        }
+        if (existing !== undefined && backgroundInteraction?.input === "") {
             this.#removeUnrenderedToolEntry(existing);
-            reusableBackgroundWait.id = toolCall.id;
-            reusableBackgroundWait.role = "tool";
-            reusableBackgroundWait.title = this.#toolDisplayName(toolCall.name);
-            reusableBackgroundWait.text = this.#formatToolCall(toolCall.name, toolCall.arguments);
-            delete reusableBackgroundWait.backgroundTerminalInteraction;
-            delete reusableBackgroundWait.detail;
-            this.#backgroundTerminalEntryIdsBySession.set(sessionId, toolCall.id);
             this.#toolCallEntryIdsByContentIndex.delete(contentIndex);
-            this.#requestRender();
             return;
         }
 
@@ -2312,30 +2297,19 @@ export class CodingAssistantApp implements Component, Focusable {
         });
     }
 
-    #backgroundTerminalSessionId(args: unknown): number | undefined {
-        if (!this.#isRecord(args) || typeof args.session_id !== "number") return undefined;
-        return args.session_id;
-    }
-
-    #reusableBackgroundTerminalWait(
+    #backgroundTerminalInteraction(
         toolName: string,
         args: unknown,
-    ): AppTranscriptEntry | undefined {
+    ): { input: string; label: string } | undefined {
         if (toolName.toLowerCase() !== "write_stdin" || !this.#isRecord(args)) return undefined;
-        if (typeof args.chars === "string" && args.chars.length > 0) return undefined;
-        const sessionId = this.#backgroundTerminalSessionId(args);
-        if (sessionId === undefined) return undefined;
-        const entryId = this.#backgroundTerminalEntryIdsBySession.get(sessionId);
-        if (entryId === undefined) return undefined;
-        const entry = this.#entries.find((candidate) => candidate.id === entryId);
-        if (
-            entry?.backgroundTerminalInteraction?.input === "" &&
-            entry.backgroundTerminalInteraction.sessionId === sessionId
-        ) {
-            return entry;
-        }
-        this.#backgroundTerminalEntryIdsBySession.delete(sessionId);
-        return undefined;
+        const input = typeof args.chars === "string" ? args.chars : "";
+        return {
+            input,
+            label:
+                input.length === 0
+                    ? "Waiting for background terminal"
+                    : "Interacting with background terminal",
+        };
     }
 
     #removeUnrenderedToolEntry(entry: AppTranscriptEntry): void {
@@ -2481,7 +2455,6 @@ export class CodingAssistantApp implements Component, Focusable {
         this.#transcriptStartIndex = 0;
         this.#streamedToolCallEntries.clear();
         this.#stoppedToolCallIds.clear();
-        this.#backgroundTerminalEntryIdsBySession.clear();
         this.#observedShellProcesses = [];
         this.#yieldedBackgroundTerminals.clear();
         this.#deferredTurnSeparator = false;
@@ -3286,6 +3259,13 @@ export class CodingAssistantApp implements Component, Focusable {
             this.#stoppedToolCallIds.delete(block.toolCallId);
         }
         const existing = this.#entries.find((entry) => entry.id === block.toolCallId);
+        if (
+            block.presentation?.type === "background_terminal_interaction" &&
+            block.presentation.input === ""
+        ) {
+            if (existing !== undefined) this.#removeUnrenderedToolEntry(existing);
+            return;
+        }
         const detail = this.#formatToolResult(block);
         if (existing !== undefined) {
             existing.role = block.isError ? "error" : "tool";
@@ -3308,12 +3288,6 @@ export class CodingAssistantApp implements Component, Focusable {
                 delete existing.detail;
                 delete existing.fileDiffs;
                 delete existing.omittedFileDiffs;
-                if (block.presentation.input === "") {
-                    this.#backgroundTerminalEntryIdsBySession.set(
-                        block.presentation.sessionId,
-                        existing.id,
-                    );
-                }
                 return;
             } else if (
                 block.presentation?.type === "file_diff" &&
@@ -3366,12 +3340,6 @@ export class CodingAssistantApp implements Component, Focusable {
                 ? { omittedFileDiffs: block.presentation.omittedFiles }
                 : {}),
         });
-        if (appended.backgroundTerminalInteraction?.input === "") {
-            this.#backgroundTerminalEntryIdsBySession.set(
-                appended.backgroundTerminalInteraction.sessionId,
-                appended.id,
-            );
-        }
         if (appended.execCommand !== undefined) {
             this.#trackYieldedBackgroundTerminal(appended.execCommand);
         }
@@ -3609,9 +3577,7 @@ export class CodingAssistantApp implements Component, Focusable {
                   : this.#theme.success;
         const callText = this.#singleLine(entry.text);
         const displayText = callText.length > 0 && callText !== toolName ? callText : toolName;
-        if (toolName === "Write stdin" && active) {
-            return [this.#fitLine(`${DIM}• ${displayText}${RESET}`, width)];
-        }
+        if (toolName === "Write stdin" && active) return [];
         const title = `${dot}•${RESET} ${this.#theme.brand}${BOLD}${verb}${NOT_BOLD_OR_DIM}${this.#theme.primary} ${displayText}${RESET}`;
         const lines = [this.#fitLine(title, width)];
         if (entry.permissionReview !== undefined && width >= 5) {
@@ -3842,7 +3808,11 @@ export class CodingAssistantApp implements Component, Focusable {
         const entry = this.#entries.find((candidate) => candidate.id === result.toolCallId);
         const normalized = result.toolName.toLowerCase();
         const concreteTool =
-            result.presentation !== undefined ||
+            (result.presentation !== undefined &&
+                !(
+                    result.presentation.type === "background_terminal_interaction" &&
+                    result.presentation.input === ""
+                )) ||
             entry?.mcpToolCall !== undefined ||
             normalized === "bash" ||
             normalized === "web_search" ||
@@ -3862,7 +3832,6 @@ export class CodingAssistantApp implements Component, Focusable {
 
         for (const [sessionId, command] of closed) {
             this.#yieldedBackgroundTerminals.delete(sessionId);
-            this.#backgroundTerminalEntryIdsBySession.delete(sessionId);
             this.#appendEntry({
                 backgroundTerminalCompletion: command,
                 role: "event",

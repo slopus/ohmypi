@@ -15,7 +15,7 @@ afterEach(async () => {
 });
 
 describe("repeated background terminal polling", () => {
-    it("updates one persistent timeline row while polling", async () => {
+    it("uses only the live activity tail while polling", async () => {
         const command = "sleep 3; printf 'POLLING_COMPLETE\\n'";
         const secondPollReady = deferred<void>();
         const startSecondPoll = deferred<void>();
@@ -67,16 +67,19 @@ describe("repeated background terminal polling", () => {
         gym.terminal.press("enter");
 
         await secondPollReady.promise;
-        const firstWait = await gym.terminal.waitUntil(
+        const firstPollSettled = await gym.terminal.waitUntil(
             (snapshot) =>
-                snapshot.text.includes(`Waited for background terminal · ${command}`) &&
+                snapshot.text.includes("1 background terminal running") &&
+                countWaitRows(snapshot.rows) === 0 &&
                 snapshot.text.includes("Ask Rig to do anything"),
             "first background terminal wait settled",
             30_000,
         );
-        const waitRow = rowContaining(firstWait.rows, "Waited for background terminal");
-        const composerRow = rowContaining(firstWait.rows, "Ask Rig to do anything");
-        expect(countWaitRows(firstWait.rows)).toBe(1);
+        const userRow = rowContaining(
+            firstPollSettled.rows,
+            "Wait for the background terminal to finish.",
+        );
+        const composerRow = rowContaining(firstPollSettled.rows, "Ask Rig to do anything");
 
         startSecondPoll.resolve();
         const secondWait = await gym.terminal.waitUntil(
@@ -87,27 +90,35 @@ describe("repeated background terminal polling", () => {
             30_000,
         );
         expect(countWaitRows(secondWait.rows)).toBe(1);
-        expect(rowContaining(secondWait.rows, "Waiting for background terminal")).toBe(waitRow);
+        expect(secondWait.text).not.toContain("Waited for background terminal");
+        expect(rowContaining(secondWait.rows, "Wait for the background terminal to finish.")).toBe(
+            userRow,
+        );
         expect(rowContaining(secondWait.rows, "Ask Rig to do anything")).toBe(composerRow);
 
         await finalPollReady.promise;
         const secondWaitSettled = await gym.terminal.waitUntil(
-            (snapshot) => snapshot.text.includes(`Waited for background terminal · ${command}`),
+            (snapshot) =>
+                countWaitRows(snapshot.rows) === 0 &&
+                snapshot.text.includes("Ask Rig to do anything"),
             "second background terminal wait settled",
             30_000,
         );
-        expect(countWaitRows(secondWaitSettled.rows)).toBe(1);
-        expect(rowContaining(secondWaitSettled.rows, "Waited for background terminal")).toBe(
-            waitRow,
-        );
+        expect(
+            rowContaining(secondWaitSettled.rows, "Wait for the background terminal to finish."),
+        ).toBe(userRow);
         expect(rowContaining(secondWaitSettled.rows, "Ask Rig to do anything")).toBe(composerRow);
 
         startFinalPoll.resolve();
-        const completed = await gym.terminal.waitForText("BACKGROUND_POLLING_DONE", 30_000);
-        expect(
-            completed.rows.filter((row) => row.includes("Waited for background terminal")),
-        ).toHaveLength(1);
-        expect(completed.text).toContain(`Waited for background terminal · ${command}`);
+        const completed = await gym.terminal.waitUntil(
+            (snapshot) =>
+                snapshot.text.includes("BACKGROUND_POLLING_DONE") &&
+                snapshot.text.includes("Background terminal completed") &&
+                snapshot.text.includes("gym off · /workspace"),
+            "background terminal polling completed",
+            30_000,
+        );
+        expect(countWaitRows(completed.rows)).toBe(0);
         expect(completed.text).not.toContain("Edited Write stdin");
         expect(completed.text).not.toContain("Checked the running shell command");
         expect(completed.text).not.toContain("The shell command has finished");
@@ -118,15 +129,15 @@ describe("repeated background terminal polling", () => {
                 (row, index) => /^─+$/u.test(row) && /^─+$/u.test(completed.rows[index + 2] ?? ""),
             ),
         ).toBe(false);
-        const completedWaitRow = completed.rows.findIndex((row) =>
-            row.includes("Waited for background terminal"),
+        const completionRow = completed.rows.findIndex((row) =>
+            row.includes("Background terminal completed"),
         );
         expect({
-            rows: completed.rows.slice(completedWaitRow),
-            waitCells: completed.cells.filter(
-                (cell) => cell.y === completedWaitRow && cell.text !== " ",
+            rows: completed.rows.slice(completionRow),
+            completionCells: completed.cells.filter(
+                (cell) => cell.y === completionRow && cell.text !== " ",
             ),
-        }).toMatchSnapshot("coalesced background terminal polling");
+        }).toMatchSnapshot("tail-only background terminal polling");
         const screenshotDirectory = process.env.RIG_GYM_SCREENSHOT_DIR;
         if (screenshotDirectory !== undefined) {
             await renderTerminalSnapshotPng(

@@ -63,6 +63,7 @@ describe("Auto reviewer allows authorized host commands without extra prompts", 
             (snapshot) =>
                 snapshot.text.includes("AUTO_HOST_COMMAND_COMPLETE") &&
                 snapshot.text.includes("Ask Rig to do anything") &&
+                footer(snapshot).includes("auto") &&
                 snapshot.scroll.atBottom,
             "reviewer-approved host command",
             30_000,

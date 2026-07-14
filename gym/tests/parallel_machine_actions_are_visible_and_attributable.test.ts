@@ -70,6 +70,7 @@ describe("parallel machine actions are visible and attributable", () => {
             (snapshot) =>
                 snapshot.text.includes("Running 3 tools") &&
                 commands.every((command) => snapshot.text.includes(command)) &&
+                snapshot.text.includes("gym off · /workspace") &&
                 snapshot.scroll.atBottom,
             "three visible commands and processes running together",
             30_000,
@@ -91,6 +92,7 @@ describe("parallel machine actions are visible and attributable", () => {
                 snapshot.text.includes("ALL_PARALLEL_ACTIONS_COMPLETE") &&
                 snapshot.text.includes("Ask Rig to do anything") &&
                 commands.every((command) => snapshot.text.includes(`Ran ${command}`)) &&
+                snapshot.text.includes("gym off · /workspace") &&
                 snapshot.scroll.atBottom,
             "three completed commands and idle composer",
             30_000,
@@ -121,6 +123,7 @@ describe("parallel machine actions are visible and attributable", () => {
             (snapshot) =>
                 snapshot.text.includes("PARALLEL_ACTIONS_FOLLOW_UP_OK") &&
                 snapshot.text.includes("Ask Rig to do anything") &&
+                snapshot.text.includes("gym off · /workspace") &&
                 snapshot.scroll.atBottom,
             "follow-up after all parallel work completed",
             30_000,

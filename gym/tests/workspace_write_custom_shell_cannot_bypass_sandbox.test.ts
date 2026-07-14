@@ -126,6 +126,7 @@ describe("Workspace write custom shells cannot bypass the sandbox", () => {
             (snapshot) =>
                 snapshot.text.includes("CUSTOM_SHELL_REJECTION_CONFIRMED") &&
                 snapshot.text.includes("Ask Rig to do anything") &&
+                footerRow(snapshot).includes("workspace write") &&
                 snapshot.scroll.atBottom,
             "completed custom shell attempt",
             30_000,
@@ -155,6 +156,7 @@ describe("Workspace write custom shells cannot bypass the sandbox", () => {
                 (snapshot.text.includes("CUSTOM_SHELL_WAS_CONTAINED") ||
                     snapshot.text.includes("CUSTOM_SHELL_ESCAPED_THE_SANDBOX")) &&
                 snapshot.text.includes("Ask Rig to do anything") &&
+                footerRow(snapshot).includes("full access") &&
                 snapshot.scroll.atBottom,
             "independent custom shell confinement audit",
             30_000,
@@ -173,6 +175,7 @@ describe("Workspace write custom shells cannot bypass the sandbox", () => {
             (snapshot) =>
                 snapshot.text.includes("CUSTOM_SHELL_FOLLOW_UP_COMPLETE") &&
                 snapshot.text.includes("Ask Rig to do anything") &&
+                footerRow(snapshot).includes("full access") &&
                 snapshot.scroll.atBottom,
             "follow-up after custom shell confinement",
             30_000,
