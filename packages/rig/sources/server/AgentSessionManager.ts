@@ -84,7 +84,9 @@ export class AgentSessionManager {
     async pauseDescendants(parentSessionId: string): Promise<number> {
         const parent = this.#repository.get(parentSessionId);
         if (parent === undefined) return 0;
-        const active = this.#activeDescendantsOf(parentSessionId);
+        const active = this.#activeDescendantsOf(parentSessionId).filter(
+            (child) => !this.#belongsToRunningWorkflow(child, parent),
+        );
         await Promise.all(
             active.map(async (child) => {
                 await child.suspendByParent();
@@ -261,6 +263,25 @@ export class AgentSessionManager {
             const status = session.subagentSummary().status;
             return status === "queued" || status === "running";
         });
+    }
+
+    #belongsToRunningWorkflow(child: InMemorySession, parent: InMemorySession): boolean {
+        let current: InMemorySession | undefined = child;
+        while (current !== undefined && current.id !== parent.id) {
+            const taskName = current.agentMetadata().taskName;
+            const workflowRunId =
+                taskName === undefined ? undefined : /^workflow_(.+)_\d+$/u.exec(taskName)?.[1];
+            if (
+                workflowRunId !== undefined &&
+                parent.getWorkflow(workflowRunId)?.status === "running"
+            ) {
+                return true;
+            }
+            const parentSessionId: string | undefined = current.agentMetadata().parentSessionId;
+            current =
+                parentSessionId === undefined ? undefined : this.#repository.get(parentSessionId);
+        }
+        return false;
     }
 
     async wait(

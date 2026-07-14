@@ -519,6 +519,47 @@ describe("AgentSessionManager", () => {
         ]);
     });
 
+    it("does not suspend children owned by a workflow that is still running", async () => {
+        const suspendByParent = vi.fn();
+        const workflowChild = {
+            agentMetadata: () => ({
+                depth: 1,
+                description: "Workflow child",
+                parentSessionId: "root-1",
+                rootSessionId: "root-1",
+                taskName: "workflow_run-1_1",
+                type: "subagent" as const,
+            }),
+            id: "workflow-child-1",
+            isSubagent: () => true,
+            subagentSummary: () => ({ status: "running" }),
+            suspendByParent,
+        } as unknown as InMemorySession;
+        const root = {
+            agentMetadata: () => ({ depth: 0, rootSessionId: "root-1", type: "primary" }),
+            getWorkflow: (runId: string) =>
+                runId === "run-1" ? ({ status: "running" } as const) : undefined,
+            id: "root-1",
+            recordSubagentsSuspended: vi.fn(),
+        } as unknown as InMemorySession;
+        const manager = new AgentSessionManager({
+            repository: {
+                createSubagent: vi.fn(),
+                get: (sessionId) =>
+                    sessionId === root.id
+                        ? root
+                        : sessionId === workflowChild.id
+                          ? workflowChild
+                          : undefined,
+                listByRoot: () => [workflowChild],
+            },
+        });
+
+        await expect(manager.pauseDescendants(root.id)).resolves.toBe(0);
+        expect(suspendByParent).not.toHaveBeenCalled();
+        expect(root.recordSubagentsSuspended).toHaveBeenCalledWith([]);
+    });
+
     it("waits for active work instead of returning an older completed agent", async () => {
         let activeStatus: "completed" | "running" = "running";
         const makeChild = (id: string, taskName: string, status: () => "completed" | "running") =>
