@@ -281,20 +281,253 @@ describe("Agent", () => {
         expect(agent.snapshot().contextMessages).toHaveLength(3);
     });
 
-    it("manually compacts completed history without removing transcript messages", async () => {
+    it.each([
+        ["reported provider usage", "tool result", 90],
+        ["the local tool-result estimate", "X".repeat(300), 0],
+    ])(
+        "automatically compacts between tool iterations based on %s",
+        async (_trigger, toolResult, reportedTokens) => {
+            const model = defineModel({
+                id: "openai/gpt-test",
+                name: "GPT Test",
+                thinkingLevels: ["off"],
+                defaultThinkingLevel: "off",
+                contextWindow: 100,
+            });
+            const contexts: Context[] = [];
+            const echoTool = defineTool({
+                name: "echo",
+                label: "Echo",
+                description: "Returns the supplied value.",
+                arguments: Type.Object({ value: Type.String() }),
+                returnType: Type.Object({ value: Type.String() }),
+                execute: (args: { value: string }) => args,
+                toLLM: (result: { value: string }) => [{ type: "text", text: result.value }],
+                toUI: (result: { value: string }) => result.value,
+                locks: [],
+            });
+            const provider = defineProvider({
+                id: "codex",
+                models: [model],
+                stream(_model, context) {
+                    contexts.push(context);
+                    const isCompaction = context.systemPrompt?.startsWith(
+                        "Create a detailed continuation brief",
+                    );
+                    if (contexts.length === 1) {
+                        return streamFor({
+                            role: "assistant",
+                            content: [
+                                {
+                                    type: "toolCall",
+                                    id: "call-echo",
+                                    name: "echo",
+                                    arguments: { value: toolResult },
+                                },
+                            ],
+                            api: "test",
+                            provider: "codex",
+                            model: model.id,
+                            usage: usageWithTotalTokens(reportedTokens),
+                            stopReason: "toolUse",
+                            timestamp: 1,
+                        });
+                    }
+                    return streamFor({
+                        role: "assistant",
+                        content: [
+                            {
+                                type: "text",
+                                text: isCompaction ? "Earlier work was summarized." : "continued",
+                            },
+                        ],
+                        api: "test",
+                        provider: "codex",
+                        model: model.id,
+                        usage: zeroUsage(),
+                        stopReason: "stop",
+                        timestamp: 2,
+                    });
+                },
+            });
+            const messages: Message[] = [
+                {
+                    role: "user",
+                    id: "user-old",
+                    blocks: [{ type: "text", text: "Earlier request." }],
+                },
+                {
+                    role: "agent",
+                    id: "agent-old",
+                    blocks: [{ type: "text", text: "Earlier response." }],
+                },
+            ];
+            const harness = createJustBashToolHarness();
+            const agent = new Agent({
+                provider,
+                modelId: model.id,
+                context: harness.context,
+                messages,
+                tools: [echoTool],
+                idFactory: createDeterministicIds(),
+                printToConsole: false,
+            });
+
+            const result = await agent.send("Continue with the tool.");
+
+            expect(result.stopReason).toBe("stop");
+            expect(contexts).toHaveLength(3);
+            expect(contexts[1]?.systemPrompt).toMatch(/^Create a detailed continuation brief/u);
+            expect(contexts[1]?.tools).toEqual([]);
+            expect(contexts[2]?.messages).toMatchObject([
+                {
+                    role: "user",
+                    content: [
+                        {
+                            type: "text",
+                            text: expect.stringContaining("Earlier work was summarized."),
+                        },
+                    ],
+                },
+                {
+                    role: "user",
+                    content: [{ type: "text", text: "Continue with the tool." }],
+                },
+                {
+                    role: "assistant",
+                    content: [{ type: "toolCall", id: "call-echo", name: "echo" }],
+                },
+                {
+                    role: "toolResult",
+                    toolCallId: "call-echo",
+                    content: [{ type: "text", text: toolResult }],
+                },
+            ]);
+            expect(agent.snapshot().messages.slice(0, 2)).toEqual(messages);
+            expect(agent.snapshot().contextMessages).toHaveLength(5);
+        },
+    );
+
+    it("compacts and retries when the provider rejects an overlong context", async () => {
         const model = defineModel({
             id: "openai/gpt-test",
             name: "GPT Test",
             thinkingLevels: ["off"],
             defaultThinkingLevel: "off",
+            contextWindow: 100,
         });
+        const contexts: Context[] = [];
+        const observedEventTypes: string[] = [];
         const provider = defineProvider({
             id: "codex",
             models: [model],
             stream(_model, context) {
+                contexts.push(context);
                 const isCompaction = context.systemPrompt?.startsWith(
                     "Create a detailed continuation brief",
                 );
+                if (contexts.length === 1) {
+                    return streamFor({
+                        role: "assistant",
+                        content: [],
+                        api: "test",
+                        provider: "codex",
+                        model: model.id,
+                        usage: zeroUsage(),
+                        stopReason: "error",
+                        errorMessage:
+                            "Codex error: Your input exceeds the context window of this model. Please adjust your input and try again.",
+                        timestamp: 1,
+                    });
+                }
+                return streamFor({
+                    role: "assistant",
+                    content: [
+                        {
+                            type: "text",
+                            text: isCompaction ? "Earlier work was summarized." : "recovered",
+                        },
+                    ],
+                    api: "test",
+                    provider: "codex",
+                    model: model.id,
+                    usage: zeroUsage(),
+                    stopReason: "stop",
+                    timestamp: 2,
+                });
+            },
+        });
+        const messages: Message[] = [
+            {
+                role: "user",
+                id: "user-old",
+                blocks: [{ type: "text", text: "A".repeat(40) }],
+            },
+            {
+                role: "agent",
+                id: "agent-old",
+                blocks: [{ type: "text", text: "B".repeat(40) }],
+            },
+        ];
+        const harness = createJustBashToolHarness();
+        const agent = new Agent({
+            provider,
+            modelId: model.id,
+            context: harness.context,
+            messages,
+            idFactory: createDeterministicIds(),
+            printToConsole: false,
+            onEvent: (event) => {
+                observedEventTypes.push(event.type);
+            },
+        });
+
+        const result = await agent.send("Continue after compacting.");
+
+        expect(result.stopReason).toBe("stop");
+        expect(contexts).toHaveLength(3);
+        expect(contexts[1]?.systemPrompt).toMatch(/^Create a detailed continuation brief/u);
+        expect(contexts[2]?.messages).toMatchObject([
+            {
+                role: "user",
+                content: [
+                    {
+                        type: "text",
+                        text: expect.stringContaining("Earlier work was summarized."),
+                    },
+                ],
+            },
+            {
+                role: "user",
+                content: [{ type: "text", text: "Continue after compacting." }],
+            },
+        ]);
+        expect(observedEventTypes).not.toContain("error");
+        expect(result.messages).not.toContainEqual(
+            expect.objectContaining({ role: "agent", blocks: [] }),
+        );
+        expect(result.messages.at(-1)).toMatchObject({
+            role: "agent",
+            blocks: [{ type: "text", text: "recovered" }],
+        });
+    });
+
+    it("manually compacts completed history without removing transcript messages", async () => {
+        const model = defineModel({
+            id: "openai/gpt-test",
+            name: "GPT Test",
+            thinkingLevels: ["off", "low", "high"],
+            defaultThinkingLevel: "high",
+        });
+        const compactionThinking: (string | undefined)[] = [];
+        const provider = defineProvider({
+            id: "codex",
+            models: [model],
+            stream(_model, context, options) {
+                const isCompaction = context.systemPrompt?.startsWith(
+                    "Create a detailed continuation brief",
+                );
+                if (isCompaction) compactionThinking.push(options?.thinking);
                 return streamFor({
                     role: "assistant",
                     content: [{ type: "text", text: isCompaction ? "Brief." : "done" }],
@@ -331,6 +564,7 @@ describe("Agent", () => {
                 blocks: [{ type: "text", text: expect.stringContaining("Brief.") }],
             },
         ]);
+        expect(compactionThinking).toEqual(["low"]);
     });
 
     it("resets transcript and queued messages", async () => {
@@ -738,5 +972,13 @@ function zeroUsage(): Usage {
             cacheWrite: 0,
             total: 0,
         },
+    };
+}
+
+function usageWithTotalTokens(totalTokens: number): Usage {
+    return {
+        ...zeroUsage(),
+        input: totalTokens,
+        totalTokens,
     };
 }

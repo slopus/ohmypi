@@ -22,14 +22,15 @@ export async function compactConversation(options: {
     messages: readonly Message[];
     idFactory: () => string;
     now: () => number;
-    effort?: string;
+    reportedTokens?: number;
     force: boolean;
     preserveLatestUserMessage: boolean;
     signal?: AbortSignal;
 }): Promise<CompactConversationResult> {
     const estimatedTokensBefore = estimateMessagesTokens(options.messages);
     const contextWindow = options.model.contextWindow ?? DEFAULT_CONTEXT_WINDOW;
-    if (!options.force && estimatedTokensBefore < contextWindow * AUTO_COMPACT_FRACTION) {
+    const tokensBefore = Math.max(estimatedTokensBefore, options.reportedTokens ?? 0);
+    if (!options.force && tokensBefore < contextWindow * AUTO_COMPACT_FRACTION) {
         return unchanged(options.messages, estimatedTokensBefore);
     }
 
@@ -53,7 +54,6 @@ export async function compactConversation(options: {
         model: options.model,
         messages: messagesToCompact,
         now: options.now,
-        ...(options.effort !== undefined ? { effort: options.effort } : {}),
         ...(options.signal !== undefined ? { signal: options.signal } : {}),
     });
     const summaryMessage: UserMessage = {

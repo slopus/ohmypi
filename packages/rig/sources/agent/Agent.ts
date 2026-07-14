@@ -1,6 +1,9 @@
 import { createId } from "@paralleldrive/cuid2";
 
-import { compactConversation } from "./compaction/compactConversation.js";
+import {
+    compactConversation,
+    type CompactConversationResult,
+} from "./compaction/compactConversation.js";
 import type { AgentContext } from "./context/AgentContext.js";
 import { runAgentLoop, type AgentLoopEvent, type AgentLoopResult } from "./loop.js";
 import { printAgentMessageToConsole, type AgentConsole } from "./printAgentMessageToConsole.js";
@@ -306,6 +309,7 @@ export class Agent {
                 }
             }
 
+            let contextCompactedDuringRun = false;
             const loopOptions: Parameters<typeof runAgentLoop>[0] = {
                 provider: this.provider,
                 modelId: this.#model.id,
@@ -318,6 +322,29 @@ export class Agent {
                 onEvent: async (event) => this.#handleEvent(event, options),
                 onMessage: async (message) => this.#handleMessage(message, options),
                 takeSteering: () => this.#takeSteering(),
+                compactContext: async (messages, compaction) => {
+                    try {
+                        const result = await this.#compactMessages({
+                            messages,
+                            force: compaction.force,
+                            preserveLatestUserMessage: true,
+                            ...(compaction.reportedTokens === undefined
+                                ? {}
+                                : { reportedTokens: compaction.reportedTokens }),
+                            ...(options.signal === undefined ? {} : { signal: options.signal }),
+                        });
+                        contextCompactedDuringRun ||= result.compacted;
+                        return result;
+                    } catch (error) {
+                        if (!options.signal?.aborted) {
+                            this.#console.error?.(
+                                `[agent:${this.id}] automatic compaction failed`,
+                                error,
+                            );
+                        }
+                        return undefined;
+                    }
+                },
             };
             if (this.#contextMessages !== undefined) {
                 loopOptions.contextMessages = this.#contextMessages;
@@ -334,7 +361,7 @@ export class Agent {
             this.#steeringQueue = [];
             if (this.#resetVersion === resetVersion) {
                 this.#messages = [...result.messages];
-                if (this.#contextMessages !== undefined) {
+                if (this.#contextMessages !== undefined || contextCompactedDuringRun) {
                     this.#contextMessages = [...result.contextMessages];
                 }
                 this.#status = result.stopReason === "aborted" ? "aborted" : "idle";
@@ -404,15 +431,10 @@ export class Agent {
         preserveLatestUserMessage: boolean;
         signal?: AbortSignal;
     }): Promise<AgentCompactionResult> {
-        const result = await compactConversation({
-            provider: this.provider,
-            model: this.#model,
+        const result = await this.#compactMessages({
             messages: this.#contextMessages ?? this.#messages,
-            idFactory: this.#idFactory,
-            now: this.#now,
             force: options.force,
             preserveLatestUserMessage: options.preserveLatestUserMessage,
-            ...(this.#effort !== undefined ? { effort: this.#effort } : {}),
             ...(options.signal !== undefined ? { signal: options.signal } : {}),
         });
         if (result.compacted) {
@@ -425,6 +447,28 @@ export class Agent {
             estimatedTokensBefore: result.estimatedTokensBefore,
             retainedMessageCount: result.retainedMessageCount,
         };
+    }
+
+    async #compactMessages(options: {
+        messages: readonly Message[];
+        force: boolean;
+        preserveLatestUserMessage: boolean;
+        reportedTokens?: number;
+        signal?: AbortSignal;
+    }): Promise<CompactConversationResult> {
+        return compactConversation({
+            provider: this.provider,
+            model: this.#model,
+            messages: options.messages,
+            idFactory: this.#idFactory,
+            now: this.#now,
+            force: options.force,
+            preserveLatestUserMessage: options.preserveLatestUserMessage,
+            ...(options.reportedTokens === undefined
+                ? {}
+                : { reportedTokens: options.reportedTokens }),
+            ...(options.signal !== undefined ? { signal: options.signal } : {}),
+        });
     }
 
     #printMessage(message: Message): void {

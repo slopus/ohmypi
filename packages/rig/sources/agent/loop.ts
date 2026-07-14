@@ -5,6 +5,7 @@ import { assistantMessageToAgentMessage } from "./assistantMessageToAgentMessage
 import { createAmbiguousToolCallRejection } from "./createAmbiguousToolCallRejection.js";
 import type { AgentContext } from "./context/AgentContext.js";
 import type { BashSessionActivity } from "./context/BashContext.js";
+import { isContextWindowExceededError } from "./isContextWindowExceededError.js";
 import { isInvalidImageRequestError } from "./isInvalidImageRequestError.js";
 import { prepareProviderMessageImages } from "./prepareProviderMessageImages.js";
 import { replaceLastTurnToolResultImages } from "./replaceLastTurnToolResultImages.js";
@@ -52,6 +53,16 @@ export interface RunAgentLoopOptions {
     messages: readonly Message[];
     /** Model-facing history, when the visible transcript has been compacted. */
     contextMessages?: readonly Message[];
+    compactContext?: (
+        messages: readonly Message[],
+        options: { force: boolean; reportedTokens?: number },
+    ) => Promise<
+        | {
+              compacted: boolean;
+              contextMessages: readonly Message[];
+          }
+        | undefined
+    >;
     signal?: AbortSignal;
     sessionId?: string;
     idFactory?: () => string;
@@ -138,6 +149,7 @@ export async function runAgentLoop(options: RunAgentLoopOptions): Promise<AgentL
     const toolContext = options.context;
 
     let iteration = 0;
+    let contextOverflowRecoveryAttempted = false;
     for (;;) {
         if (options.signal?.aborted) {
             return {
@@ -213,6 +225,22 @@ export async function runAgentLoop(options: RunAgentLoopOptions): Promise<AgentL
                 }
             }
 
+            if (!contextOverflowRecoveryAttempted && isContextWindowExceededError(error)) {
+                contextOverflowRecoveryAttempted = true;
+                if (
+                    await compactLoopContext(
+                        options,
+                        contextTranscript,
+                        providerMessages,
+                        model,
+                        now,
+                        { force: true },
+                    )
+                ) {
+                    continue;
+                }
+            }
+
             throw error;
         }
 
@@ -232,6 +260,21 @@ export async function runAgentLoop(options: RunAgentLoopOptions): Promise<AgentL
                 for (const replacement of replacements) {
                     await options.onMessage?.(replacement);
                 }
+                continue;
+            }
+        }
+
+        if (
+            assistantMessage.stopReason === "error" &&
+            !contextOverflowRecoveryAttempted &&
+            isContextWindowExceededError(assistantMessage)
+        ) {
+            contextOverflowRecoveryAttempted = true;
+            if (
+                await compactLoopContext(options, contextTranscript, providerMessages, model, now, {
+                    force: true,
+                })
+            ) {
                 continue;
             }
         }
@@ -390,8 +433,36 @@ export async function runAgentLoop(options: RunAgentLoopOptions): Promise<AgentL
         transcript.push(toolResultMessage);
         contextTranscript.push(toolResultMessage);
         await options.onMessage?.(toolResultMessage);
+        await compactLoopContext(options, contextTranscript, providerMessages, model, now, {
+            force: false,
+            reportedTokens: assistantMessage.usage.totalTokens,
+        });
         appendSteering(options, transcript, contextTranscript, providerMessages, now);
     }
+}
+
+async function compactLoopContext(
+    options: RunAgentLoopOptions,
+    contextTranscript: Message[],
+    providerMessages: ProviderMessage[],
+    model: Model,
+    now: () => number,
+    compaction: { force: boolean; reportedTokens?: number },
+): Promise<boolean> {
+    const result = await options.compactContext?.(contextTranscript, compaction);
+    if (result?.compacted !== true) return false;
+
+    contextTranscript.splice(0, contextTranscript.length, ...result.contextMessages);
+    providerMessages.splice(
+        0,
+        providerMessages.length,
+        ...toProviderMessages(contextTranscript, {
+            model,
+            now,
+            providerId: options.provider.id,
+        }),
+    );
+    return true;
 }
 
 function collectToolCallIds(messages: readonly Message[]): ReadonlySet<string> {

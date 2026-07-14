@@ -14,7 +14,7 @@ export function estimateMessagesTokens(messages: readonly Message[]): number {
             } else if (block.type === "text") {
                 characters += block.text.length;
             } else if (block.type === "thinking") {
-                characters += block.thinking.length;
+                characters += block.thinking.length + (block.encrypted?.length ?? 0);
             } else if (block.type === "tool_call") {
                 characters += block.name.length + safeJson(block.arguments).length;
             } else {

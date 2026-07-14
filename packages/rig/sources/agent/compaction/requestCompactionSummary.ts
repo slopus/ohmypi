@@ -1,4 +1,5 @@
 import { formatMessagesForCompaction } from "./formatMessagesForCompaction.js";
+import { resolveCompactionThinking } from "./resolveCompactionThinking.js";
 import type { Message } from "../types.js";
 import type { Model, Provider, StreamOptions } from "../../providers/types.js";
 
@@ -10,12 +11,12 @@ export async function requestCompactionSummary(options: {
     provider: Provider;
     model: Model;
     messages: readonly Message[];
-    effort?: string;
     signal?: AbortSignal;
     now: () => number;
 }): Promise<string> {
-    const streamOptions: StreamOptions = {};
-    if (options.effort !== undefined) streamOptions.thinking = options.effort;
+    const streamOptions: StreamOptions = {
+        thinking: resolveCompactionThinking(options.model),
+    };
     if (options.signal !== undefined) streamOptions.signal = options.signal;
 
     const stream = options.provider.stream(
