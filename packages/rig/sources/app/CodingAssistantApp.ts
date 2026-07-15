@@ -68,6 +68,7 @@ import { humanizeReasoningLevel } from "./humanizeReasoningLevel.js";
 import { humanizePermissionMode } from "./humanizePermissionMode.js";
 import { humanizeGoalStatus } from "./humanizeGoalStatus.js";
 import { humanizeToolName } from "./humanizeToolName.js";
+import { humanizeMcpServerName } from "./humanizeMcpServerName.js";
 import { parseCodexMcpToolInvocation } from "./parseCodexMcpToolInvocation.js";
 import {
     readClipboardImage,
@@ -81,6 +82,7 @@ import { renderBackgroundTerminalInteraction } from "./renderBackgroundTerminalI
 import { renderBackgroundTerminalSummary } from "./renderBackgroundTerminalSummary.js";
 import { renderCodexFileDiff } from "./renderCodexFileDiff.js";
 import { renderCodexMcpToolCall } from "./renderCodexMcpToolCall.js";
+import { renderNoticeWithChildren } from "./renderNoticeWithChildren.js";
 import { renderExecCommand } from "./renderExecCommand.js";
 import { renderPendingSteeringMessages } from "./renderPendingSteeringMessages.js";
 import { renderRigBanner } from "./renderRigBanner.js";
@@ -554,12 +556,13 @@ export class CodingAssistantApp implements Component, Focusable {
                     role: "event",
                     title:
                         blockedServers.length === 1 ? "MCP server blocked" : "MCP servers blocked",
-                    text: blockedServers
-                        .map(
-                            (server) =>
-                                `${server.name}: ${server.errorMessage ?? "This server is blocked by the current security boundary."}`,
-                        )
-                        .join("\n"),
+                    text: "",
+                    noticeChildren: blockedServers.map((server) => ({
+                        label: humanizeMcpServerName(server.name),
+                        reason:
+                            server.errorMessage ??
+                            "This server is blocked by the current security boundary.",
+                    })),
                 });
             }
             this.#requestRender();
@@ -2445,6 +2448,9 @@ export class CodingAssistantApp implements Component, Focusable {
         if (entry.mcpToolCall !== undefined) {
             completeEntry.mcpToolCall = entry.mcpToolCall;
         }
+        if (entry.noticeChildren !== undefined) {
+            completeEntry.noticeChildren = entry.noticeChildren;
+        }
         if (entry.permissionReview !== undefined) {
             completeEntry.permissionReview = entry.permissionReview;
         }
@@ -2615,6 +2621,14 @@ export class CodingAssistantApp implements Component, Focusable {
                 : this.#renderToolEntry(entry, width, true);
         }
         if (entry.role === "event") {
+            if (entry.noticeChildren !== undefined) {
+                return renderNoticeWithChildren({
+                    children: entry.noticeChildren,
+                    color: this.#theme.warning,
+                    title: entry.title ?? "event",
+                    width,
+                });
+            }
             return this.#renderNoticeEntry(
                 entry.title ?? "event",
                 entry.text,

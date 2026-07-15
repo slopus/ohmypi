@@ -1478,8 +1478,15 @@ describe("CodingAssistantApp", () => {
             data: {
                 servers: [
                     {
+                        errorMessage:
+                            "MCP servers are available in Auto or Full access because they can act outside Rig's sandbox.",
+                        name: "openai_developer_docs",
+                        status: "blocked",
+                        toolCount: 0,
+                    },
+                    {
                         errorMessage: "This MCP server is not trusted on this machine.",
-                        name: "Project Helper",
+                        name: "posthog",
                         status: "blocked",
                         toolCount: 0,
                     },
@@ -1489,11 +1496,29 @@ describe("CodingAssistantApp", () => {
             sessionId: "session-1",
             type: "mcp_servers_changed",
         });
-        const blocked = stripAnsi(app.render(100).join("\n")).replace(/\s+/gu, " ");
-        expect(blocked).toContain("MCP server blocked");
-        expect(blocked).toContain(
-            "Project Helper: This MCP server is not trusted on this machine.",
-        );
+        const wideRows = stripAnsi(app.render(160).join("\n"))
+            .split("\n")
+            .map((row) => row.trimEnd());
+        const wideParent = wideRows.findIndex((row) => row === "• MCP servers blocked");
+        expect(wideRows.slice(wideParent, wideParent + 3)).toEqual([
+            "• MCP servers blocked",
+            "  OpenAI Developer Docs — MCP servers are available in Auto or Full access because they can act outside Rig's sandbox.",
+            "  PostHog — This MCP server is not trusted on this machine.",
+        ]);
+
+        const narrowRows = stripAnsi(app.render(52).join("\n"))
+            .split("\n")
+            .map((row) => row.trimEnd());
+        const narrowParent = narrowRows.findIndex((row) => row === "• MCP servers blocked");
+        expect(narrowRows.slice(narrowParent, narrowParent + 6)).toEqual([
+            "• MCP servers blocked",
+            "  OpenAI Developer Docs — MCP servers are available",
+            "  in Auto or Full access because they can act",
+            "  outside Rig's sandbox.",
+            "  PostHog — This MCP server is not trusted on this",
+            "  machine.",
+        ]);
+        expect(narrowRows.every((row) => visibleWidth(row) <= 52)).toBe(true);
 
         app.applySessionEvent({
             createdAt: 2,
@@ -1513,8 +1538,10 @@ describe("CodingAssistantApp", () => {
             type: "mcp_servers_changed",
         });
         const permissionBlocked = stripAnsi(app.render(100).join("\n")).replace(/\s+/gu, " ");
+        expect(permissionBlocked).toContain("OpenAI Developer Docs");
+        expect(permissionBlocked).toContain("PostHog");
         expect(permissionBlocked).toContain(
-            "Trusted Helper: MCP servers are available in Auto or Full access because they can act outside Rig's sandbox.",
+            "Trusted Helper — MCP servers are available in Auto or Full access because they can act outside Rig's sandbox.",
         );
     });
 

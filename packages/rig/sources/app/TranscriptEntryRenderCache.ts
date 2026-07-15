@@ -9,6 +9,7 @@ interface CachedEntryRender {
     readonly fileDiffs: AppTranscriptEntry["fileDiffs"];
     readonly lines: readonly string[];
     readonly mcpToolCall: AppTranscriptEntry["mcpToolCall"];
+    readonly noticeChildren: AppTranscriptEntry["noticeChildren"];
     readonly omittedFileDiffs: number | undefined;
     readonly permissionReview: string | undefined;
     readonly role: AppTranscriptEntry["role"];
@@ -40,6 +41,7 @@ export class TranscriptEntryRenderCache {
             fileDiffs: entry.fileDiffs,
             lines,
             mcpToolCall: entry.mcpToolCall,
+            noticeChildren: entry.noticeChildren,
             omittedFileDiffs: entry.omittedFileDiffs,
             permissionReview: entry.permissionReview,
             role: entry.role,
@@ -70,6 +72,7 @@ function matches(
         cached.execCommand === entry.execCommand &&
         cached.fileDiffs === entry.fileDiffs &&
         cached.mcpToolCall === entry.mcpToolCall &&
+        cached.noticeChildren === entry.noticeChildren &&
         cached.omittedFileDiffs === entry.omittedFileDiffs &&
         cached.permissionReview === entry.permissionReview &&
         cached.role === entry.role &&
