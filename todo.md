@@ -17,8 +17,15 @@ This file tracks known defects, verified coverage gaps, and concrete follow-up w
 
 - [ ] Fix forced scroll-to-bottom without a terminal resize.
     - Reproduce while the user is reading upper or middle scrollback and ordinary live state changes occur.
+    - Confirmed triggers include copying selected historical text with Cmd-C and receiving streamed assistant output while the user remains scrolled up.
+    - Gym must hold a middle historical viewport across streaming chunks, live status changes, background completion, and copy-key input, asserting both exact visible rows and scroll offset remain unchanged.
     - Identify the exact output/render sequence that changes the terminal viewport; preserve the visible anchor until the user explicitly returns to live output.
     - Keep resize-induced scrollback inflation as a related but distinct defect.
+
+- [ ] Prevent interrupted assistant text from being duplicated in the transcript.
+    - Pressing Escape during a streaming assistant message can append the already visible partial text again after the durable `Session interrupted` row.
+    - Preserve the append-only ordering while ensuring every streamed assistant fragment appears exactly once before interruption history settles.
+    - Add a real Gym regression that interrupts after observable partial output and checks exact text counts and row ordering.
 
 - [ ] Render messages submitted during active inference as queued, not as durable history.
     - Match Codex ordering above the composer: live activity, active agents/workflows/background terminals, messages pending submission, composer.
@@ -93,3 +100,28 @@ This file tracks known defects, verified coverage gaps, and concrete follow-up w
 
 - [ ] Add real-container coverage for Docker filesystem rollback and metadata restoration.
 - [ ] Exercise MCP multi-block application errors across live stdio and HTTP transports with both providers.
+
+---
+
+## Backlog captured at the July 14 pause
+
+- [ ] React to system light/dark appearance changes during an active session.
+    - Detect when the terminal's effective foreground/background palette changes without requiring Rig to restart.
+    - Re-resolve the active theme and repaint the full interface, including the composer, so foreground and background colors remain readable.
+    - Reproduce the live light-mode transition shown in `CleanShot 2026-07-14 at 20.36.19@2x.png` and cover both light-to-dark and dark-to-light changes through a real PTY boundary.
+
+- [ ] Plan and scope Podman support.
+    - Identify the Docker-specific assumptions in Gym and normal Rig workflows, then define the smallest useful compatibility target before implementation.
+
+- [ ] Give background terminals human-readable names.
+    - Audit the current naming behavior first; decide whether names should be inferred from commands, supplied by the agent, or both.
+
+- [ ] Consolidate long-running background-terminal status.
+    - Avoid showing multiple simultaneous shimmering/waiting indicators for one period of background work.
+    - Keep the live status compact while preserving durable start and completion history.
+
+- [ ] Add an optional terminal-completion chime.
+    - Define when it should sound, how users control it, and how to avoid noise from short or numerous background jobs.
+
+- [ ] Explore cmux integration.
+    - Identify the high-value session, pane, and background-terminal workflows before choosing an integration surface.
