@@ -4,6 +4,20 @@ import type { InMemorySession } from "./InMemorySession.js";
 import { AgentSessionManager } from "./AgentSessionManager.js";
 
 describe("AgentSessionManager", () => {
+    it("allows eight active subagents by default", () => {
+        const manager = new AgentSessionManager({
+            repository: {
+                createSubagent: () => {
+                    throw new Error("Not used by this test.");
+                },
+                get: () => undefined,
+                listByRoot: () => [],
+            },
+        });
+
+        expect(manager.maxActive).toBe(8);
+    });
+
     it("uses a requested model for a workflow child while inheriting the remaining session settings", async () => {
         const child = {
             agentMetadata: () => ({
@@ -654,7 +668,7 @@ describe("AgentSessionManager", () => {
             agentMetadata: () => ({ depth: 0, rootSessionId: "root-1", type: "primary" }),
             id: "root-1",
         } as unknown as InMemorySession;
-        const active = Array.from({ length: 4 }, (_, index) => {
+        const active = Array.from({ length: 8 }, (_, index) => {
             const id = `child-${index + 1}`;
             return {
                 subagentSummary: () => ({
@@ -684,7 +698,7 @@ describe("AgentSessionManager", () => {
                 description: "One task too many",
                 prompt: "Do more work.",
             }),
-        ).rejects.toThrow("No more than 4 subagents can run at once");
+        ).rejects.toThrow("No more than 8 subagents can run at once");
         expect(createSubagent).not.toHaveBeenCalled();
     });
 

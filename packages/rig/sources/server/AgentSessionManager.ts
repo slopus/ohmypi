@@ -13,7 +13,7 @@ import type { PermissionMode } from "../permissions/index.js";
 import type { InMemorySession } from "./InMemorySession.js";
 
 export const DEFAULT_MAX_SUBAGENT_DEPTH = 3;
-export const DEFAULT_MAX_ACTIVE_SUBAGENTS = 4;
+export const DEFAULT_MAX_ACTIVE_SUBAGENTS = 8;
 
 export interface AgentSessionRepository {
     createSubagent(

@@ -93,6 +93,11 @@ This file tracks known defects, verified coverage gaps, and concrete follow-up w
     - Add negative coverage proving disconnects after text, tool calls, or session mutations never replay inference.
     - The observed zero-content `WebSocket error` after a completed tool now retries only the inference continuation; Gym verifies the tool runs once.
 
+- [ ] Deduplicate visible provider error rows.
+    - A terminal inference failure such as HTTP 503 currently renders the same durable `Error` row twice.
+    - Reconcile provider-error and run-error events so one failure produces one append-only transcript row without hiding distinct nested causes.
+    - Add a real Gym regression with an exact error-row count.
+
 - [ ] Add retry handling or an explicit exception for standalone compaction summary requests.
     - `requestCompactionSummary()` currently throws directly and does not use the main inference-loop retry mechanism.
 
@@ -146,6 +151,17 @@ This file tracks known defects, verified coverage gaps, and concrete follow-up w
 ---
 
 ## Backlog captured at the July 14 pause
+
+- [ ] Expand `/usage` into a session and plan-usage dashboard.
+    - Keep current provider token totals, then add session cost, API and wall duration, lines added/removed, current context usage, and provider-reported reset windows where available.
+    - Show current-session, weekly all-model, and model-specific progress bars with local timezone reset labels; mark unavailable provider data clearly instead of estimating it as fact.
+    - Add an explicitly approximate local contribution section based only on persisted sessions on this machine, including high-context usage guidance without claiming it covers other devices or provider web clients.
+    - Preserve a compact narrow-terminal layout and add provider-available/provider-unavailable screenshots plus deterministic rendering tests.
+
+- [ ] Wrap long lines in edit previews.
+    - Inspect the pinned Codex implementation first, then make Rig edit/apply-patch previews wrap to the available terminal width instead of clipping or overflowing.
+    - Preserve diff markers, indentation, syntax coloring, and readable continuation alignment at narrow widths.
+    - Add exact narrow-width rendering coverage and a real Gym screenshot before implementation is considered complete.
 
 - [x] React to system light/dark appearance changes during an active session.
     - Terminal palette notifications now re-query the effective background, re-resolve the configured theme, and force a settled full repaint including the composer.
