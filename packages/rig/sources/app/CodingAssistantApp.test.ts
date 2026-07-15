@@ -531,6 +531,28 @@ describe("CodingAssistantApp", () => {
         expect(stripAnsi(app.render(100).join("\n"))).toContain(
             "gpt-test off · /workspace · Audit startup state [subagent] · full access",
         );
+
+        const constrained = new CodingAssistantApp({
+            activeAgentLabel: `${"Very long delegated identity ".repeat(20)}\n\x1b[31munsafe`,
+            agent: new Agent({
+                context: harness.context,
+                modelId: model.id,
+                printToConsole: false,
+                provider,
+            }),
+            cwd: harness.context.fs.cwd,
+            processManager: new NativeProxessManager(),
+            tui: fakeTui(),
+        });
+        const constrainedFooter =
+            constrained
+                .render(60)
+                .map(stripAnsi)
+                .find((line) => line.includes("full access")) ?? "";
+        expect(constrainedFooter).toContain("full access");
+        expect(constrainedFooter).not.toContain("\n");
+        expect(constrainedFooter).not.toContain("unsafe");
+        expect(visibleWidth(constrainedFooter)).toBeLessThanOrEqual(60);
     });
 
     it("uses the model id without vendor as the displayed model name", () => {

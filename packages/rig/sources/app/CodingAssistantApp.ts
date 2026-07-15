@@ -362,7 +362,10 @@ export class CodingAssistantApp implements Component, Focusable {
     #replayingInitialSessionEvents = false;
 
     constructor(options: CodingAssistantAppOptions) {
-        this.#activeAgentLabel = options.activeAgentLabel;
+        this.#activeAgentLabel =
+            options.activeAgentLabel === undefined
+                ? undefined
+                : this.#singleLine(options.activeAgentLabel);
         this.#agent = options.agent;
         this.#cwd = options.cwd;
         this.#idFactory = options.idFactory ?? createId;
@@ -2845,8 +2848,22 @@ export class CodingAssistantApp implements Component, Focusable {
         );
         if (this.#showUsage) parts.push(`${this.#theme.secondary}${this.#usageFooter()}${RESET}`);
 
-        const line = `${" ".repeat(visibleWidth(INPUT_PROMPT))}${parts.join(`${DIM} · ${RESET}`)}`;
-        return [this.#fitLine(line, width)];
+        const indent = " ".repeat(visibleWidth(INPUT_PROMPT));
+        const separator = `${DIM} · ${RESET}`;
+        const line = `${indent}${parts.join(separator)}`;
+        if (visibleWidth(line) <= width || this.#activeAgentLabel === undefined) {
+            return [this.#fitLine(line, width)];
+        }
+
+        const access = parts.at(this.#showUsage ? -2 : -1);
+        if (access === undefined) return [this.#fitLine(line, width)];
+        const prefixParts = parts.filter((part) => part !== access);
+        const suffix = `${separator}${access}`;
+        const prefixWidth = Math.max(0, width - visibleWidth(suffix));
+        if (prefixWidth === 0) return [this.#fitLine(`${indent}${access}`, width)];
+        return [
+            `${truncateToWidth(`${indent}${prefixParts.join(separator)}`, prefixWidth)}${suffix}`,
+        ];
     }
 
     #activeSubagentCount(): number {
