@@ -1,5 +1,6 @@
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 
+import { formatStartupStatusUsageRows } from "./formatStartupStatusUsageRows.js";
 import type { StartupStatusCardModel } from "./StartupStatusCardModel.js";
 import type { TerminalTheme } from "./TerminalTheme.js";
 import { truncatePathToWidth } from "./truncatePathToWidth.js";
@@ -39,10 +40,7 @@ export function renderStartupStatusCard(options: {
             model.provider,
             ...(model.fast ? ["Fast"] : []),
         ];
-        const usage =
-            model.usage === undefined
-                ? []
-                : [`${model.usage.percentLeft}% left · resets in ${model.usage.resetsIn}`];
+        const usage = formatStartupStatusUsageRows(model.usage, width);
         if (width >= 48) {
             const workspaceWidth = Math.max(
                 1,

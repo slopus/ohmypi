@@ -7,12 +7,15 @@ import type { StartupStatusCardModel } from "./StartupStatusCardModel.js";
 import { stripAnsi } from "./testing/stripAnsi.js";
 
 describe("renderStartupStatusCard", () => {
-    it("renders operational fields and optional quota at wide widths", () => {
+    it("renders both quota windows and readable reset countdowns at wide widths", () => {
         const rendered = stripAnsi(
             renderStartupStatusCard({
                 model: status({
                     fast: true,
-                    usage: { percentLeft: 68, resetsIn: "2h 14m" },
+                    usage: {
+                        fiveHour: { percentLeft: 68, resetsIn: "2h 14m" },
+                        weekly: { percentLeft: 84, resetsIn: "4d 6h" },
+                    },
                 }),
                 theme: DEFAULT_TERMINAL_THEME,
                 width: 96,
@@ -23,12 +26,64 @@ describe("renderStartupStatusCard", () => {
         expect(rendered).toContain("Model: GPT Test · Reasoning: High · Provider: Codex · Fast");
         expect(rendered).toContain("Workspace: /workspace · Environment: Local");
         expect(rendered).toContain("Access: Full access");
-        expect(rendered).toContain("68% left · resets in 2h 14m");
+        expect(rendered).toContain("usage: 5h 68% left · week 84% left");
+        expect(rendered).toContain("resets: 5h in 2h 14m · week in 4d 6h");
+    });
+
+    it("renders partial data and omits unavailable usage", () => {
+        const partial = stripAnsi(
+            renderStartupStatusCard({
+                model: status({
+                    usage: { weekly: { percentLeft: 84, resetsIn: "4d 6h" } },
+                }),
+                theme: DEFAULT_TERMINAL_THEME,
+                width: 96,
+            }).join("\n"),
+        );
+        expect(partial).toContain("usage: week 84% left");
+        expect(partial).toContain("resets: week in 4d 6h");
+        expect(partial).not.toContain("5h");
+
+        const unavailable = stripAnsi(
+            renderStartupStatusCard({
+                model: status({ usage: {} }),
+                theme: DEFAULT_TERMINAL_THEME,
+                width: 96,
+            }).join("\n"),
+        );
+        expect(unavailable).not.toContain("usage:");
+        expect(unavailable).not.toContain("resets:");
+    });
+
+    it("keeps both percentages but drops reset countdowns at intermediate widths", () => {
+        const rendered = stripAnsi(
+            renderStartupStatusCard({
+                model: status({
+                    usage: {
+                        fiveHour: { percentLeft: 68, resetsIn: "2h 14m" },
+                        weekly: { percentLeft: 84, resetsIn: "4d 6h" },
+                    },
+                }),
+                theme: DEFAULT_TERMINAL_THEME,
+                width: 60,
+            }).join("\n"),
+        );
+
+        expect(rendered).toContain("usage: 5h 68% left · week 84% left");
+        expect(rendered).not.toContain("resets:");
+        expect(rendered).not.toContain("2h 14m");
+        expect(rendered).not.toContain("4d 6h");
     });
 
     it("preserves useful fields and graphemes at nineteen columns", () => {
         const lines = renderStartupStatusCard({
-            model: status({ workspace: "/very/long/👩🏽‍💻-project" }),
+            model: status({
+                usage: {
+                    fiveHour: { percentLeft: 68, resetsIn: "2h 14m" },
+                    weekly: { percentLeft: 84, resetsIn: "4d 6h" },
+                },
+                workspace: "/very/long/👩🏽‍💻-project",
+            }),
             theme: DEFAULT_TERMINAL_THEME,
             width: 19,
         });
@@ -41,6 +96,10 @@ describe("renderStartupStatusCard", () => {
         expect(rendered).toContain("👩🏽‍💻-project");
         expect(rendered).toContain("Local");
         expect(rendered).toContain("Full access");
+        expect(rendered).toContain("5h 68% left");
+        expect(rendered).toContain("week 84% left");
+        expect(rendered).not.toContain("resets:");
+        expect(rendered).not.toContain("2h 14m");
         expect(rendered).not.toContain("Fast");
         expect(rendered).not.toContain("�");
         expect(lines.every((line) => visibleWidth(line) <= 19)).toBe(true);
@@ -57,7 +116,12 @@ describe("renderStartupStatusCard", () => {
         for (let width = 4; width <= 18; width += 1) {
             expect(
                 renderStartupStatusCard({
-                    model: status(),
+                    model: status({
+                        usage: {
+                            fiveHour: { percentLeft: 68, resetsIn: "2h 14m" },
+                            weekly: { percentLeft: 84, resetsIn: "4d 6h" },
+                        },
+                    }),
                     theme: DEFAULT_TERMINAL_THEME,
                     width,
                 }).every((line) => visibleWidth(line) <= width),

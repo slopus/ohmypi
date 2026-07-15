@@ -1,6 +1,11 @@
-export interface StartupStatusCardUsage {
+export interface StartupStatusCardUsageWindow {
     percentLeft: number;
-    resetsIn: string;
+    resetsIn?: string;
+}
+
+export interface StartupStatusCardUsage {
+    fiveHour?: StartupStatusCardUsageWindow;
+    weekly?: StartupStatusCardUsageWindow;
 }
 
 export interface StartupStatusCardModel {

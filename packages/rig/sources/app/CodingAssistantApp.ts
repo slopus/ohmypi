@@ -407,7 +407,18 @@ export class CodingAssistantApp implements Component, Focusable {
         };
         this.#startupStatus = {
             ...startupStatus,
-            ...(startupStatus.usage === undefined ? {} : { usage: { ...startupStatus.usage } }),
+            ...(startupStatus.usage === undefined
+                ? {}
+                : {
+                      usage: {
+                          ...(startupStatus.usage.fiveHour === undefined
+                              ? {}
+                              : { fiveHour: { ...startupStatus.usage.fiveHour } }),
+                          ...(startupStatus.usage.weekly === undefined
+                              ? {}
+                              : { weekly: { ...startupStatus.usage.weekly } }),
+                      },
+                  }),
         };
         this.#editor = new Editor(this.#tui, createEditorTheme(this.#theme), { paddingX: 0 });
         this.#fileMentionAutocomplete =
