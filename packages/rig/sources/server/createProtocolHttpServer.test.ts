@@ -745,13 +745,18 @@ describe("createProtocolHttpServer", () => {
             const transient: SessionEvent = {
                 createdAt: 1_700_000_000_001,
                 data: {
-                    event: { iteration: 0, type: "inference_iteration_start" },
+                    event: {
+                        contentIndex: 0,
+                        delta: "live",
+                        partial: {},
+                        type: "text_delta",
+                    },
                     runId: "run-1",
                 },
                 id: createEventId(),
                 sessionId: created.session.id,
                 type: "agent_event",
-            };
+            } as SessionEvent;
             const compaction: SessionEvent = {
                 createdAt: 1_700_000_000_002,
                 data: {
@@ -768,10 +773,21 @@ describe("createProtocolHttpServer", () => {
                 sessionId: created.session.id,
                 type: "agent_event",
             };
+            const backgroundProcesses: SessionEvent = {
+                createdAt: 1_700_000_000_003,
+                data: {
+                    event: { running: 1, type: "background_processes_changed" },
+                    runId: "run-1",
+                },
+                id: createEventId(),
+                sessionId: created.session.id,
+                type: "agent_event",
+            };
             const durable = sessionResetEvent(created.session.id, createEventId());
             session?.events.append(cursor);
             session?.events.append(transient);
             session?.events.append(compaction);
+            session?.events.append(backgroundProcesses);
             session?.events.append(durable);
 
             const initial = await client.getEvents(created.session.id);
@@ -779,14 +795,72 @@ describe("createProtocolHttpServer", () => {
 
             expect(initial.events.map((event) => event.id)).not.toContain(transient.id);
             expect(initial.events.map((event) => event.id)).toContain(compaction.id);
+            expect(initial.events.map((event) => event.id)).toContain(backgroundProcesses.id);
             expect(initial.events.map((event) => event.id)).toContain(durable.id);
             expect(catchup.events.map((event) => event.id)).toEqual([
                 transient.id,
                 compaction.id,
+                backgroundProcesses.id,
                 durable.id,
             ]);
         } finally {
             await close();
+        }
+    });
+
+    it("recovers REST and SSE catch-up from a live-only cursor after restart", async () => {
+        const databaseDirectory = await mkdtemp(join(tmpdir(), "rig-protocol-cursor-test-"));
+        const databasePath = join(databaseDirectory, "sessions.sqlite");
+        let originalStore: PersistentSessionStore | undefined;
+        let restoredStore: PersistentSessionStore | undefined;
+        let server: Awaited<ReturnType<typeof startServer>> | undefined;
+        try {
+            originalStore = new PersistentSessionStore({ databasePath });
+            const session = originalStore.create({ cwd: "/tmp/rig-protocol-test" });
+            const createFutureEventId = createEventIdFactory({ now: () => Date.now() + 60_000 });
+            const transient: SessionEvent = {
+                createdAt: Date.now(),
+                data: {
+                    event: { contentIndex: 0, delta: "live", partial: {}, type: "text_delta" },
+                    runId: "run-1",
+                },
+                id: createFutureEventId(),
+                sessionId: session.id,
+                type: "agent_event",
+            } as SessionEvent;
+            session.events.append(transient);
+            originalStore.close();
+            originalStore = undefined;
+
+            restoredStore = new PersistentSessionStore({ databasePath });
+            const restored = restoredStore.get(session.id);
+            await restored?.changePermissionMode({ permissionMode: "read_only" });
+            const durable = restored?.events.since(transient.id) ?? [];
+            expect(durable.map((event) => event.type)).toContain("permission_mode_changed");
+            expect(durable.every((event) => event.id > transient.id)).toBe(true);
+
+            server = await startServer({ store: restoredStore });
+            await expect(server.client.getEvents(session.id, transient.id)).resolves.toEqual({
+                events: durable,
+            });
+
+            const controller = new AbortController();
+            const streamed: SessionEvent[] = [];
+            await server.client.watchSessionEvents({
+                after: transient.id,
+                sessionId: session.id,
+                signal: controller.signal,
+                onEvent(event) {
+                    streamed.push(event);
+                    if (streamed.length === durable.length) controller.abort();
+                },
+            });
+            expect(streamed).toEqual(durable);
+        } finally {
+            await server?.close();
+            restoredStore?.close();
+            originalStore?.close();
+            await rm(databaseDirectory, { recursive: true, force: true });
         }
     });
 

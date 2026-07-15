@@ -312,9 +312,16 @@ export class ProtocolHttpClient {
                         await options.onEvent(event);
                     },
                 });
-            } catch {
+            } catch (error) {
                 if (options.signal?.aborted) {
                     return;
+                }
+                if (
+                    error instanceof EventStreamHttpError &&
+                    error.statusCode >= 400 &&
+                    error.statusCode < 500
+                ) {
+                    throw error;
                 }
                 await delay(50, options.signal);
             }

@@ -169,6 +169,7 @@ export interface InMemorySessionOptions {
     emitCreatedEvent?: boolean;
     events?: readonly SessionEvent[];
     initialContextMessages?: readonly Message[];
+    lastEventId?: EventId;
     now?: () => number;
     modelCatalog: ModelCatalog;
     metadata?: SessionAgentMetadata;
@@ -434,6 +435,7 @@ export class InMemorySession {
         }
         const eventLogOptions: ConstructorParameters<typeof SessionEventLog>[0] = {};
         if (options.events !== undefined) eventLogOptions.events = options.events;
+        if (options.lastEventId !== undefined) eventLogOptions.lastEventId = options.lastEventId;
         if (options.onAppendEvent !== undefined) eventLogOptions.onAppend = options.onAppendEvent;
         this.events = new SessionEventLog(eventLogOptions);
 

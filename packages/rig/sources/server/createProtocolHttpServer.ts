@@ -45,6 +45,7 @@ import { latestObservedProviderQuotas } from "./latestObservedProviderQuotas.js"
 import { createModelCatalog } from "./createModelCatalog.js";
 import { FileSearchService, type FileSearchServiceContract } from "./FileSearchService.js";
 import type { SessionEventLog } from "./SessionEventLog.js";
+import { isTransientInferenceSessionEvent } from "./isTransientInferenceSessionEvent.js";
 import type { GlobalEventQueue } from "./GlobalEventQueue.js";
 import type { SessionStore } from "./SessionStore.js";
 import { isGlobalEventRoute } from "./isGlobalEventRoute.js";
@@ -620,11 +621,7 @@ async function handleRequest(
         sendJson(response, 200, {
             events:
                 after === undefined
-                    ? events.filter(
-                          (event) =>
-                              event.type !== "agent_event" ||
-                              event.data.event.type === "context_compacted",
-                      )
+                    ? events.filter((event) => !isTransientInferenceSessionEvent(event))
                     : events,
         });
         return;

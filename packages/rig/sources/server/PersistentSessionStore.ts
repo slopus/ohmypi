@@ -2,7 +2,7 @@ import { chmodSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
-import { createEventIdFactory } from "../protocol/index.js";
+import { createEventIdFactory, type EventId } from "../protocol/index.js";
 import type {
     ChangeEffortRequest,
     ChangeModelRequest,
@@ -50,7 +50,7 @@ export interface PersistentSessionStoreOptions {
 
 export class PersistentSessionStore implements SessionStore, InMemorySessionPersistence {
     #agentManager: AgentSessionManager;
-    #createEventId = createEventIdFactory();
+    #createEventId: () => EventId;
     #database: DatabaseSync;
     #modelCatalog: ModelCatalog;
     #mcpToolProvider: McpToolProvider | undefined;
@@ -72,6 +72,24 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
             timeout: 5_000,
         });
         this.#initialize();
+        const latestEventRow = this.#database
+            .prepare(
+                `
+                SELECT last_event_id
+                FROM sessions
+                WHERE last_event_id IS NOT NULL
+                ORDER BY last_event_id DESC
+                LIMIT 1
+                `,
+            )
+            .get();
+        const latestEventId =
+            latestEventRow === undefined
+                ? undefined
+                : readOptionalString(latestEventRow, "last_event_id");
+        this.#createEventId = createEventIdFactory(
+            latestEventId === undefined ? {} : { after: latestEventId },
+        );
         if (options.durableGlobalEventQueue === true) {
             this.#persistentGlobalEventQueue = new PersistentGlobalEventQueue(this.#database);
         }
@@ -663,7 +681,18 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
     }
 
     #appendEvent(event: SessionEvent): void {
-        if (isTransientInferenceSessionEvent(event)) return;
+        if (isTransientInferenceSessionEvent(event)) {
+            this.#database
+                .prepare(
+                    `
+                    UPDATE sessions
+                    SET last_event_id = ?, updated_at_ms = ?
+                    WHERE id = ?
+                    `,
+                )
+                .run(event.id, this.#now(), event.sessionId);
+            return;
+        }
         const globalEntry = this.#transaction(() => {
             this.#database
                 .prepare(
@@ -928,6 +957,7 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
         const taskName = readOptionalString(row, "task_name");
         const description = readOptionalString(row, "description");
         const goalJson = readOptionalString(row, "goal_json");
+        const lastEventId = readOptionalString(row, "last_event_id");
         const id = readString(row, "id");
         const agent: SessionAgentMetadata = {
             depth: readNumber(row, "depth"),
@@ -997,6 +1027,7 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
             agentManager: this.#agentManager,
             createEventId: this.#createEventId,
             events: this.#loadEvents(sessionId),
+            ...(lastEventId !== undefined ? { lastEventId } : {}),
             modelCatalog: this.#modelCatalog,
             ...(this.#mcpToolProvider !== undefined
                 ? { mcpToolProvider: this.#mcpToolProvider }

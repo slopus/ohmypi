@@ -5,19 +5,26 @@ export type SessionEventAppendHook = (event: SessionEvent) => void;
 
 export class SessionEventLog {
     #events: SessionEvent[] = [];
+    #lastEventId: EventId | undefined;
     #listeners = new Set<SessionEventListener>();
     #onAppend: SessionEventAppendHook | undefined;
 
     constructor(
-        options: { events?: readonly SessionEvent[]; onAppend?: SessionEventAppendHook } = {},
+        options: {
+            events?: readonly SessionEvent[];
+            lastEventId?: EventId;
+            onAppend?: SessionEventAppendHook;
+        } = {},
     ) {
         this.#events = [...(options.events ?? [])];
+        this.#lastEventId = options.lastEventId ?? this.#events.at(-1)?.id;
         this.#onAppend = options.onAppend;
     }
 
     append(event: SessionEvent): SessionEvent {
         this.#onAppend?.(event);
         this.#events.push(event);
+        this.#lastEventId = event.id;
         for (const listener of this.#listeners) {
             listener(event);
         }
@@ -29,7 +36,7 @@ export class SessionEventLog {
     }
 
     lastEventId(): EventId | undefined {
-        return this.#events.at(-1)?.id;
+        return this.#lastEventId;
     }
 
     lastCreatedAt(): number | undefined {
@@ -42,11 +49,19 @@ export class SessionEventLog {
         }
 
         const index = this.#events.findIndex((event) => event.id === eventId);
-        if (index < 0) {
+        if (index >= 0) return this.#events.slice(index + 1);
+
+        const firstEventId = this.#events.at(0)?.id;
+        if (
+            firstEventId === undefined ||
+            this.#lastEventId === undefined ||
+            !isUuidV7(eventId) ||
+            eventId < firstEventId ||
+            eventId > this.#lastEventId
+        ) {
             return undefined;
         }
-
-        return this.#events.slice(index + 1);
+        return this.#events.filter((event) => event.id > eventId);
     }
 
     subscribe(listener: SessionEventListener): () => void {
@@ -55,4 +70,8 @@ export class SessionEventLog {
             this.#listeners.delete(listener);
         };
     }
+}
+
+function isUuidV7(value: string): boolean {
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(value);
 }

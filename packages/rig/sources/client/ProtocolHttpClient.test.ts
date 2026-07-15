@@ -9,6 +9,34 @@ import type { SessionEvent } from "../protocol/index.js";
 import { ProtocolHttpClient } from "./ProtocolHttpClient.js";
 
 describe("ProtocolHttpClient", () => {
+    it("surfaces a rejected session cursor without retrying forever", async () => {
+        const directory = await mkdtemp(join(tmpdir(), "rig-client-test-"));
+        const socketPath = join(directory, "server.sock");
+        let streamRequests = 0;
+        const server = createServer((_request, response) => {
+            streamRequests += 1;
+            response.writeHead(409, { "content-type": "application/json" });
+            response.end('{"error":"Event cursor not found"}');
+        });
+
+        try {
+            await new Promise<void>((resolve) => server.listen(socketPath, resolve));
+            const client = new ProtocolHttpClient({ socketPath, token: "test-token" });
+
+            await expect(
+                client.watchSessionEvents({
+                    after: "018bcfe5-6800-7001-8000-000000000001",
+                    sessionId: "session-1",
+                    onEvent() {},
+                }),
+            ).rejects.toThrow("409");
+            expect(streamRequests).toBe(1);
+        } finally {
+            await new Promise<void>((resolve) => server.close(() => resolve()));
+            await rm(directory, { recursive: true, force: true });
+        }
+    });
+
     it("reconnects SSE streams from the last received event id", async () => {
         const directory = await mkdtemp(join(tmpdir(), "rig-client-test-"));
         const socketPath = join(directory, "server.sock");

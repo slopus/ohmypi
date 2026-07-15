@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { describe, expect, it } from "vitest";
 
 import type { UserMessage } from "../agent/types.js";
-import type { ModelCatalog, SessionEvent } from "../protocol/index.js";
+import { createEventIdFactory, type ModelCatalog, type SessionEvent } from "../protocol/index.js";
 import type { GymInferenceRequest } from "../providers/gym-types.js";
 import { defineModel } from "../providers/types.js";
 import type { PersistedQueuedRun, PersistedSessionState } from "./InMemorySession.js";
@@ -185,6 +185,39 @@ describe("PersistentSessionStore", () => {
                     "missing-subtype",
                     "unknown-subtype",
                 ]);
+            } finally {
+                restoredStore.close();
+            }
+        } finally {
+            await cleanup();
+        }
+    });
+
+    it("recovers a transient event cursor across restart without replaying durable history", async () => {
+        const { cleanup, databasePath } = await createDatabasePath();
+        try {
+            const store = new PersistentSessionStore({ databasePath });
+            const session = store.create({ cwd: "/tmp/rig-persistent-session-test" });
+            const createFutureEventId = createEventIdFactory({ now: () => Date.now() + 60_000 });
+            const transient = sessionEvent(session.id, createFutureEventId(), "agent_event", {
+                event: { contentIndex: 0, delta: "live", partial: {}, type: "text_delta" },
+                runId: "run-1",
+            });
+            session.events.append(transient);
+            store.close();
+
+            const restoredStore = new PersistentSessionStore({ databasePath });
+            try {
+                const restored = restoredStore.get(session.id);
+                expect(restored?.snapshot().lastEventId).toBe(transient.id);
+                expect(restored?.events.since(transient.id)).toEqual([]);
+
+                await restored?.changePermissionMode({ permissionMode: "read_only" });
+                const catchup = restored?.events.since(transient.id);
+                expect(catchup?.map((event) => event.type)).toContain("permission_mode_changed");
+                expect(catchup?.every((event) => event.id > transient.id)).toBe(true);
+                expect(new Set(catchup?.map((event) => event.id)).size).toBe(catchup?.length);
+                expect(restored?.events.since(transient.id)).toEqual(catchup);
             } finally {
                 restoredStore.close();
             }

@@ -3,13 +3,22 @@ import { randomBytes } from "node:crypto";
 import type { EventId } from "./EventId.js";
 
 export interface EventIdFactoryOptions {
+    after?: EventId;
     now?: () => number;
 }
 
 export function createEventIdFactory(options: EventIdFactoryOptions = {}): () => EventId {
     const now = options.now ?? Date.now;
-    let lastTimeMs = 0;
-    let sequence = randomBytes(2).readUInt16BE(0) & 0x0fff;
+    const previous = options.after?.match(
+        /^([0-9a-f]{8})-([0-9a-f]{4})-7([0-9a-f]{3})-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu,
+    );
+    const hasPrevious = previous !== undefined && previous !== null;
+    let lastTimeMs = hasPrevious
+        ? Number.parseInt(`${previous[1] ?? ""}${previous[2] ?? ""}`, 16)
+        : 0;
+    let sequence = hasPrevious
+        ? Number.parseInt(previous[3] ?? "0", 16)
+        : randomBytes(2).readUInt16BE(0) & 0x0fff;
 
     return () => {
         const observedTimeMs = Math.max(0, Math.floor(now()));

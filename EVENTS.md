@@ -96,6 +96,12 @@ Inference message stream events are not written to `session_events`. Restoring
 an older database also ignores legacy rows for these subtypes. Their canonical
 `agent_message`, transcript message, and run lifecycle records remain durable.
 
+Session event IDs are ordered UUIDv7 cursors. After a restart, a cursor that
+identified a live-only inference stream event resumes at the first later
+durable event. Earlier durable events are not replayed, and later durable events
+are not hidden. Malformed cursors, cursors older than retained history, and
+cursors beyond the session's last issued event remain invalid and return 409.
+
 ### Agent loop, tool, and process updates
 
 | `event.type`                   | Meaning                                                                | Additional fields                                                                        |
