@@ -3,7 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type { SessionEvent } from "../protocol/index.js";
 import { ProtocolHttpClient } from "./ProtocolHttpClient.js";
@@ -130,6 +130,61 @@ describe("ProtocolHttpClient", () => {
             await rm(directory, { recursive: true, force: true });
         }
     });
+
+    it("serializes async event application and reconnects after the last successful apply", async () => {
+        const directory = await mkdtemp(join(tmpdir(), "rig-client-test-"));
+        const socketPath = join(directory, "server.sock");
+        const first = sessionResetEvent("018bcfe5-6800-7001-8000-000000000001");
+        const second = sessionResetEvent("018bcfe5-6800-7002-8000-000000000002");
+        const requestedAfterValues: Array<string | null> = [];
+        let streamRequests = 0;
+        const server = createServer((request, response) => {
+            const url = new URL(request.url ?? "/", "http://unix");
+            requestedAfterValues.push(url.searchParams.get("after"));
+            streamRequests += 1;
+            response.writeHead(200, { "content-type": "text/event-stream; charset=utf-8" });
+            if (streamRequests === 1) {
+                writeSseEvent(response, first);
+                writeSseEvent(response, second);
+                return;
+            }
+            writeSseEvent(response, second);
+        });
+
+        try {
+            await new Promise<void>((resolve) => server.listen(socketPath, resolve));
+            const client = new ProtocolHttpClient({ socketPath, token: "test-token" });
+            const controller = new AbortController();
+            const firstGate = deferred<void>();
+            const applied: string[] = [];
+            let failSecondOnce = true;
+
+            const watching = client.watchSessionEvents({
+                sessionId: "session-1",
+                signal: controller.signal,
+                async onEvent(event) {
+                    if (event.id === first.id) await firstGate.promise;
+                    if (event.id === second.id && failSecondOnce) {
+                        failSecondOnce = false;
+                        throw new Error("simulated apply failure");
+                    }
+                    applied.push(event.id);
+                    if (event.id === second.id) controller.abort();
+                },
+            });
+
+            await vi.waitFor(() => expect(streamRequests).toBe(1));
+            expect(applied).toEqual([]);
+            firstGate.resolve();
+            await watching;
+
+            expect(applied).toEqual([first.id, second.id]);
+            expect(requestedAfterValues).toEqual([null, first.id]);
+        } finally {
+            await new Promise<void>((resolve) => server.close(() => resolve()));
+            await rm(directory, { recursive: true, force: true });
+        }
+    });
 });
 
 function sessionResetEvent(id: string): SessionEvent {
@@ -156,4 +211,15 @@ function writeSseEvent(response: { write(data: string): void }, event: SessionEv
     response.write(`id: ${event.id}\n`);
     response.write(`event: ${event.type}\n`);
     response.write(`data: ${JSON.stringify(event)}\n\n`);
+}
+
+function deferred<T>(): {
+    promise: Promise<T>;
+    resolve: (value: T | PromiseLike<T>) => void;
+} {
+    let resolve = (_value: T | PromiseLike<T>): void => undefined;
+    const promise = new Promise<T>((innerResolve) => {
+        resolve = innerResolve;
+    });
+    return { promise, resolve };
 }

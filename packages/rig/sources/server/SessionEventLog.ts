@@ -7,6 +7,7 @@ export class SessionEventLog {
     #events: SessionEvent[] = [];
     #lastEventId: EventId | undefined;
     #listeners = new Set<SessionEventListener>();
+    #omittedEventIds = new Set<EventId>();
     #onAppend: SessionEventAppendHook | undefined;
 
     constructor(
@@ -18,6 +19,12 @@ export class SessionEventLog {
     ) {
         this.#events = [...(options.events ?? [])];
         this.#lastEventId = options.lastEventId ?? this.#events.at(-1)?.id;
+        if (
+            options.lastEventId !== undefined &&
+            !this.#events.some((event) => event.id === options.lastEventId)
+        ) {
+            this.#omittedEventIds.add(options.lastEventId);
+        }
         this.#onAppend = options.onAppend;
     }
 
@@ -51,16 +58,7 @@ export class SessionEventLog {
         const index = this.#events.findIndex((event) => event.id === eventId);
         if (index >= 0) return this.#events.slice(index + 1);
 
-        const firstEventId = this.#events.at(0)?.id;
-        if (
-            firstEventId === undefined ||
-            this.#lastEventId === undefined ||
-            !isUuidV7(eventId) ||
-            eventId < firstEventId ||
-            eventId > this.#lastEventId
-        ) {
-            return undefined;
-        }
+        if (!this.#omittedEventIds.has(eventId)) return undefined;
         return this.#events.filter((event) => event.id > eventId);
     }
 
@@ -70,8 +68,4 @@ export class SessionEventLog {
             this.#listeners.delete(listener);
         };
     }
-}
-
-function isUuidV7(value: string): boolean {
-    return /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(value);
 }

@@ -12,15 +12,16 @@ const FUTURE = "018bcfe5-6800-7005-8000-000000000005";
 describe("SessionEventLog", () => {
     it("recovers an omitted ordered cursor without replaying its durable predecessor", () => {
         const log = new SessionEventLog({
-            events: [event(FIRST), event(DURABLE)],
-            lastEventId: TRAILING,
+            events: [event(FIRST)],
+            lastEventId: OMITTED,
         });
+        log.append(event(DURABLE));
 
         expect(log.since(OMITTED)?.map((entry) => entry.id)).toEqual([DURABLE]);
-        expect(log.since(TRAILING)).toEqual([]);
+        expect(log.since(DURABLE)).toEqual([]);
     });
 
-    it("rejects malformed, pre-history, and future cursors", () => {
+    it("rejects cursors that were not omitted from this session", () => {
         const log = new SessionEventLog({
             events: [event(FIRST), event(DURABLE)],
             lastEventId: TRAILING,
@@ -28,6 +29,7 @@ describe("SessionEventLog", () => {
 
         expect(log.since("not-an-event-id")).toBeUndefined();
         expect(log.since("018bcfe5-6800-7000-8000-000000000000")).toBeUndefined();
+        expect(log.since(OMITTED)).toBeUndefined();
         expect(log.since(FUTURE)).toBeUndefined();
     });
 

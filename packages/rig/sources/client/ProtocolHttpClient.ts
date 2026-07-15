@@ -316,8 +316,8 @@ export class ProtocolHttpClient {
                 after = await this.#watchSessionEventsOnce(after, {
                     ...options,
                     onEvent: async (event) => {
-                        after = event.id;
                         await options.onEvent(event);
+                        after = event.id;
                     },
                 });
             } catch (error) {
@@ -409,8 +409,17 @@ export class ProtocolHttpClient {
 
                     let cursor = after;
                     let buffer = "";
+                    let application = Promise.resolve();
+                    let settled = false;
+                    const fail = (error: unknown) => {
+                        if (settled) return;
+                        settled = true;
+                        response.destroy();
+                        reject(error);
+                    };
                     response.setEncoding("utf8");
                     response.on("data", (chunk: string) => {
+                        if (settled) return;
                         buffer += chunk;
                         for (;;) {
                             const boundary = buffer.indexOf("\n\n");
@@ -423,12 +432,21 @@ export class ProtocolHttpClient {
                             if (event === undefined) {
                                 continue;
                             }
-                            cursor = event.id;
-                            Promise.resolve(options.onEvent(event)).catch(reject);
+                            application = application.then(async () => {
+                                await options.onEvent(event);
+                                cursor = event.id;
+                            });
+                            void application.catch(fail);
                         }
                     });
-                    response.on("end", () => resolve(cursor));
-                    response.on("error", reject);
+                    response.on("end", () => {
+                        void application.then(() => {
+                            if (settled) return;
+                            settled = true;
+                            resolve(cursor);
+                        }, fail);
+                    });
+                    response.on("error", fail);
                 },
             );
             const abort = () => {

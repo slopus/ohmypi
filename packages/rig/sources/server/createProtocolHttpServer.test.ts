@@ -764,6 +764,29 @@ describe("createProtocolHttpServer", () => {
         }
     });
 
+    it("rejects REST and SSE cursors owned by another session", async () => {
+        const { client, close } = await startServer();
+        try {
+            const first = await client.createSession({ cwd: "/tmp/rig-protocol-first" });
+            const second = await client.createSession({ cwd: "/tmp/rig-protocol-second" });
+            const otherSessionCursor = second.session.lastEventId;
+            if (otherSessionCursor === undefined) throw new Error("Expected a session cursor.");
+
+            await expect(client.getEvents(first.session.id, otherSessionCursor)).rejects.toThrow(
+                "Event cursor not found",
+            );
+            await expect(
+                client.watchSessionEvents({
+                    after: otherSessionCursor,
+                    sessionId: first.session.id,
+                    onEvent() {},
+                }),
+            ).rejects.toThrow("409");
+        } finally {
+            await close();
+        }
+    });
+
     it("omits transient agent deltas from initial history but preserves cursor catch-up", async () => {
         const { client, close, store } = await startServer();
         try {
