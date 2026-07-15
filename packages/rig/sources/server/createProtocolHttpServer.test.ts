@@ -851,7 +851,6 @@ describe("createProtocolHttpServer", () => {
             expect(initial.events.map((event) => event.id)).toContain(backgroundProcesses.id);
             expect(initial.events.map((event) => event.id)).toContain(durable.id);
             expect(catchup.events.map((event) => event.id)).toEqual([
-                transient.id,
                 compaction.id,
                 backgroundProcesses.id,
                 durable.id,

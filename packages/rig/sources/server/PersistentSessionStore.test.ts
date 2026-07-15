@@ -36,6 +36,8 @@ describe("PersistentSessionStore", () => {
                 },
                 runId: "run-1",
             });
+            const delivered: SessionEvent[] = [];
+            session.events.subscribe((event) => delivered.push(event));
 
             session.events.append(transient);
             session.events.append(processChanged);
@@ -43,6 +45,10 @@ describe("PersistentSessionStore", () => {
 
             expect(session.events.since(undefined)?.map((event) => event.id)).toEqual([
                 expect.any(String),
+                processChanged.id,
+                compacted.id,
+            ]);
+            expect(delivered.map((event) => event.id)).toEqual([
                 transient.id,
                 processChanged.id,
                 compacted.id,
@@ -198,7 +204,15 @@ describe("PersistentSessionStore", () => {
         try {
             const store = new PersistentSessionStore({ databasePath });
             const session = store.create({ cwd: "/tmp/rig-persistent-session-test" });
-            const createFutureEventId = createEventIdFactory({ now: () => Date.now() + 60_000 });
+            const otherSession = store.create({ cwd: "/tmp/rig-other-session-test" });
+            const otherSessionCursor = otherSession.snapshot().lastEventId;
+            if (otherSessionCursor === undefined) throw new Error("Expected another cursor.");
+            const currentCursor = session.snapshot().lastEventId;
+            if (currentCursor === undefined) throw new Error("Expected a session cursor.");
+            const createFutureEventId = createEventIdFactory({
+                after: currentCursor,
+                now: () => Date.now() + 60_000,
+            });
             const transient = sessionEvent(session.id, createFutureEventId(), "agent_event", {
                 event: { contentIndex: 0, delta: "live", partial: {}, type: "text_delta" },
                 runId: "run-1",
@@ -211,6 +225,7 @@ describe("PersistentSessionStore", () => {
                 const restored = restoredStore.get(session.id);
                 expect(restored?.snapshot().lastEventId).toBe(transient.id);
                 expect(restored?.events.since(transient.id)).toEqual([]);
+                expect(restored?.events.since(otherSessionCursor)).toBeUndefined();
 
                 await restored?.changePermissionMode({ permissionMode: "read_only" });
                 const catchup = restored?.events.since(transient.id);
@@ -218,6 +233,7 @@ describe("PersistentSessionStore", () => {
                 expect(catchup?.every((event) => event.id > transient.id)).toBe(true);
                 expect(new Set(catchup?.map((event) => event.id)).size).toBe(catchup?.length);
                 expect(restored?.events.since(transient.id)).toEqual(catchup);
+                expect(restored?.events.since(otherSessionCursor)).toBeUndefined();
             } finally {
                 restoredStore.close();
             }

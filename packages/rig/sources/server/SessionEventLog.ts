@@ -1,17 +1,14 @@
-import type { EventId, SessionEvent } from "../protocol/index.js";
+import { eventIdsShareScope, type EventId, type SessionEvent } from "../protocol/index.js";
 import { isTransientInferenceSessionEvent } from "./isTransientInferenceSessionEvent.js";
-
-export const MAX_RETAINED_TRANSIENT_SESSION_EVENTS = 256;
 
 export type SessionEventListener = (event: SessionEvent) => void;
 export type SessionEventAppendHook = (event: SessionEvent) => void;
 
 export class SessionEventLog {
     #events: SessionEvent[] = [];
+    #firstEventId: EventId | undefined;
     #lastEventId: EventId | undefined;
     #listeners = new Set<SessionEventListener>();
-    #omittedEventIds = new Set<EventId>();
-    #retainedTransientEventIds: EventId[] = [];
     #onAppend: SessionEventAppendHook | undefined;
 
     constructor(
@@ -21,31 +18,23 @@ export class SessionEventLog {
             onAppend?: SessionEventAppendHook;
         } = {},
     ) {
-        this.#events = [...(options.events ?? [])];
-        this.#retainedTransientEventIds = this.#events
-            .filter(isTransientInferenceSessionEvent)
-            .map((event) => event.id);
+        this.#events = [...(options.events ?? [])].filter(
+            (event) => !isTransientInferenceSessionEvent(event),
+        );
+        this.#firstEventId = this.#events.at(0)?.id;
         this.#lastEventId = options.lastEventId ?? this.#events.at(-1)?.id;
-        if (
-            options.lastEventId !== undefined &&
-            !this.#events.some((event) => event.id === options.lastEventId)
-        ) {
-            this.#rememberOmittedCursor(options.lastEventId);
-        }
         this.#onAppend = options.onAppend;
-        this.#pruneTransientEvents();
     }
 
     append(event: SessionEvent): SessionEvent {
         this.#onAppend?.(event);
-        this.#events.push(event);
+        if (!isTransientInferenceSessionEvent(event)) {
+            this.#events.push(event);
+            this.#firstEventId ??= event.id;
+        }
         this.#lastEventId = event.id;
         for (const listener of this.#listeners) {
             listener(event);
-        }
-        if (isTransientInferenceSessionEvent(event)) {
-            this.#retainedTransientEventIds.push(event.id);
-            this.#pruneTransientEvents();
         }
         return event;
     }
@@ -70,7 +59,15 @@ export class SessionEventLog {
         const index = this.#events.findIndex((event) => event.id === eventId);
         if (index >= 0) return this.#events.slice(index + 1);
 
-        if (!this.#omittedEventIds.has(eventId)) return undefined;
+        if (
+            this.#firstEventId === undefined ||
+            this.#lastEventId === undefined ||
+            eventId < this.#firstEventId ||
+            eventId > this.#lastEventId ||
+            !eventIdsShareScope(eventId, this.#lastEventId)
+        ) {
+            return undefined;
+        }
         return this.#events.filter((event) => event.id > eventId);
     }
 
@@ -79,24 +76,5 @@ export class SessionEventLog {
         return () => {
             this.#listeners.delete(listener);
         };
-    }
-
-    #pruneTransientEvents(): void {
-        while (this.#retainedTransientEventIds.length > MAX_RETAINED_TRANSIENT_SESSION_EVENTS) {
-            const omittedId = this.#retainedTransientEventIds.shift();
-            if (omittedId === undefined) return;
-            const index = this.#events.findIndex((event) => event.id === omittedId);
-            if (index >= 0) this.#events.splice(index, 1);
-            this.#rememberOmittedCursor(omittedId);
-        }
-    }
-
-    #rememberOmittedCursor(eventId: EventId): void {
-        this.#omittedEventIds.add(eventId);
-        while (this.#omittedEventIds.size > MAX_RETAINED_TRANSIENT_SESSION_EVENTS) {
-            const oldest = this.#omittedEventIds.values().next().value;
-            if (oldest === undefined) return;
-            this.#omittedEventIds.delete(oldest);
-        }
     }
 }

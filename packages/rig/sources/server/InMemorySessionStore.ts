@@ -23,7 +23,6 @@ export interface InMemorySessionStoreOptions {
 
 export class InMemorySessionStore implements SessionStore {
     #agentManager: AgentSessionManager;
-    #createEventId = createEventIdFactory();
     #modelCatalog: ModelCatalog;
     #mcpToolProvider: McpToolProvider | undefined;
     #sessions = new Map<string, InMemorySession>();
@@ -76,7 +75,7 @@ export class InMemorySessionStore implements SessionStore {
         const state = source.createForkState();
         const session = new InMemorySession({
             agentManager: this.#agentManager,
-            createEventId: this.#createEventId,
+            createEventId: createEventIdFactory(),
             modelCatalog: this.#modelCatalog,
             ...(this.#mcpToolProvider !== undefined
                 ? { mcpToolProvider: this.#mcpToolProvider }
@@ -96,7 +95,7 @@ export class InMemorySessionStore implements SessionStore {
     ): InMemorySession {
         const session = new InMemorySession({
             agentManager: this.#agentManager,
-            createEventId: this.#createEventId,
+            createEventId: createEventIdFactory(),
             modelCatalog: this.#modelCatalog,
             ...(this.#mcpToolProvider !== undefined
                 ? { mcpToolProvider: this.#mcpToolProvider }

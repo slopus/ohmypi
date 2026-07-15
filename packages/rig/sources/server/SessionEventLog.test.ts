@@ -1,13 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 
-import type { SessionEvent } from "../protocol/index.js";
-import { MAX_RETAINED_TRANSIENT_SESSION_EVENTS, SessionEventLog } from "./SessionEventLog.js";
+import { createEventIdFactory, type SessionEvent } from "../protocol/index.js";
+import { SessionEventLog } from "./SessionEventLog.js";
 
-const FIRST = "018bcfe5-6800-7001-8000-000000000001";
-const OMITTED = "018bcfe5-6800-7002-8000-000000000002";
-const DURABLE = "018bcfe5-6800-7003-8000-000000000003";
-const TRAILING = "018bcfe5-6800-7004-8000-000000000004";
-const FUTURE = "018bcfe5-6800-7005-8000-000000000005";
+const FIRST = "018bcfe5-6800-7001-8000-00000000aaaa";
+const OMITTED = "018bcfe5-6800-7002-8000-00000000aaaa";
+const DURABLE = "018bcfe5-6800-7003-8000-00000000aaaa";
+const OTHER_SESSION = "018bcfe5-6800-7002-8000-00000000bbbb";
+const FUTURE = "018bcfe5-6800-7005-8000-00000000aaaa";
 
 describe("SessionEventLog", () => {
     it("recovers an omitted ordered cursor without replaying its durable predecessor", () => {
@@ -24,12 +24,12 @@ describe("SessionEventLog", () => {
     it("rejects cursors that were not omitted from this session", () => {
         const log = new SessionEventLog({
             events: [event(FIRST), event(DURABLE)],
-            lastEventId: TRAILING,
+            lastEventId: DURABLE,
         });
 
         expect(log.since("not-an-event-id")).toBeUndefined();
         expect(log.since("018bcfe5-6800-7000-8000-000000000000")).toBeUndefined();
-        expect(log.since(OMITTED)).toBeUndefined();
+        expect(log.since(OTHER_SESSION)).toBeUndefined();
         expect(log.since(FUTURE)).toBeUndefined();
     });
 
@@ -44,30 +44,30 @@ describe("SessionEventLog", () => {
         expect(listener).toHaveBeenCalledExactlyOnceWith(event(DURABLE));
     });
 
-    it("bounds retained transient streams while preserving delivery, final state, and recent cursors", () => {
+    it("drops transient payloads while preserving delivery, final state, and every scoped cursor", () => {
         const listener = vi.fn();
-        const log = new SessionEventLog({ events: [event(FIRST)] });
+        const createId = createEventIdFactory({ now: () => 1_700_000_000_000 });
+        const first = createId();
+        const log = new SessionEventLog({ events: [event(first)] });
         log.subscribe(listener);
         const transientIds: string[] = [];
 
         for (let index = 0; index < 10_000; index += 1) {
-            const id = `018bcfe5-${String(0x6801 + Math.floor(index / 0x1000)).padStart(4, "0")}-7${String(index % 0x1000).padStart(3, "0")}-8000-${String(index).padStart(12, "0")}`;
+            const id = createId();
             transientIds.push(id);
             log.append(transientEvent(id, String(index)));
         }
-        log.append(event(DURABLE));
+        const durable = event(createId());
+        log.append(durable);
 
         const retained = log.since(undefined) ?? [];
         expect(listener).toHaveBeenCalledTimes(10_001);
-        expect(retained.filter((entry) => entry.type === "agent_event")).toHaveLength(
-            MAX_RETAINED_TRANSIENT_SESSION_EVENTS,
-        );
-        expect(retained.at(-1)).toEqual(event(DURABLE));
-        expect(
-            log.since(transientIds.at(-MAX_RETAINED_TRANSIENT_SESSION_EVENTS - 1)),
-        ).toBeDefined();
-        expect(log.since(transientIds.at(-1))?.map((entry) => entry.id)).toEqual([DURABLE]);
-        expect(log.lastEventId()).toBe(DURABLE);
+        expect(retained.filter((entry) => entry.type === "agent_event")).toEqual([]);
+        expect(retained.at(-1)).toEqual(durable);
+        expect(log.since(transientIds.at(0))?.map((entry) => entry.id)).toEqual([durable.id]);
+        expect(log.since(transientIds.at(5_000))?.map((entry) => entry.id)).toEqual([durable.id]);
+        expect(log.since(transientIds.at(-1))?.map((entry) => entry.id)).toEqual([durable.id]);
+        expect(log.lastEventId()).toBe(durable.id);
     });
 });
 

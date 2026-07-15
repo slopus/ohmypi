@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createEventIdFactory } from "./createEventIdFactory.js";
+import { createEventIdFactory, eventIdsShareScope } from "./createEventIdFactory.js";
 
 describe("createEventIdFactory", () => {
     it("creates lexicographically time-ordered ids", () => {
@@ -16,6 +16,9 @@ describe("createEventIdFactory", () => {
         expect(first).toMatch(
             /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u,
         );
+        expect(eventIdsShareScope(first, second)).toBe(true);
+        expect(eventIdsShareScope(second, third)).toBe(true);
+        expect(eventIdsShareScope(first, createEventIdFactory({ now: () => now })())).toBe(false);
     });
 
     it("continues after a persisted cursor when the clock moves backward", () => {
@@ -25,7 +28,9 @@ describe("createEventIdFactory", () => {
             now: () => 1,
         });
 
-        expect(createId() > persisted).toBe(true);
+        const resumed = createId();
+        expect(resumed > persisted).toBe(true);
+        expect(eventIdsShareScope(resumed, persisted)).toBe(true);
     });
 
     it("ignores malformed persisted cursors", () => {

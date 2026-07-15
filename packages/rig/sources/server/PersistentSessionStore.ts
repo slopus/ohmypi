@@ -2,7 +2,7 @@ import { chmodSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
-import { createEventIdFactory, type EventId } from "../protocol/index.js";
+import { createEventIdFactory } from "../protocol/index.js";
 import type {
     ChangeEffortRequest,
     ChangeModelRequest,
@@ -50,7 +50,6 @@ export interface PersistentSessionStoreOptions {
 
 export class PersistentSessionStore implements SessionStore, InMemorySessionPersistence {
     #agentManager: AgentSessionManager;
-    #createEventId: () => EventId;
     #database: DatabaseSync;
     #modelCatalog: ModelCatalog;
     #mcpToolProvider: McpToolProvider | undefined;
@@ -72,24 +71,6 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
             timeout: 5_000,
         });
         this.#initialize();
-        const latestEventRow = this.#database
-            .prepare(
-                `
-                SELECT last_event_id
-                FROM sessions
-                WHERE last_event_id IS NOT NULL
-                ORDER BY last_event_id DESC
-                LIMIT 1
-                `,
-            )
-            .get();
-        const latestEventId =
-            latestEventRow === undefined
-                ? undefined
-                : readOptionalString(latestEventRow, "last_event_id");
-        this.#createEventId = createEventIdFactory(
-            latestEventId === undefined ? {} : { after: latestEventId },
-        );
         if (options.durableGlobalEventQueue === true) {
             this.#persistentGlobalEventQueue = new PersistentGlobalEventQueue(this.#database);
         }
@@ -165,7 +146,7 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
         const state = source.createForkState();
         const session = new InMemorySession({
             agentManager: this.#agentManager,
-            createEventId: this.#createEventId,
+            createEventId: createEventIdFactory(),
             emitCreatedEvent: false,
             modelCatalog: this.#modelCatalog,
             ...(this.#mcpToolProvider !== undefined
@@ -195,7 +176,7 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
         this.#assertAcceptingMutations();
         const session = new InMemorySession({
             agentManager: this.#agentManager,
-            createEventId: this.#createEventId,
+            createEventId: createEventIdFactory(),
             emitCreatedEvent: false,
             modelCatalog: this.#modelCatalog,
             ...(this.#mcpToolProvider !== undefined
@@ -1025,7 +1006,9 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
         };
         return new InMemorySession({
             agentManager: this.#agentManager,
-            createEventId: this.#createEventId,
+            createEventId: createEventIdFactory(
+                lastEventId === undefined ? {} : { after: lastEventId },
+            ),
             events: this.#loadEvents(sessionId),
             ...(lastEventId !== undefined ? { lastEventId } : {}),
             modelCatalog: this.#modelCatalog,

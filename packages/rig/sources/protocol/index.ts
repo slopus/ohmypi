@@ -3,7 +3,11 @@ export type { McpServerSummary } from "../mcp/index.js";
 export type { SessionTask, TaskStatus } from "../tasks/index.js";
 export type { GoalStatus, SessionGoal } from "../goals/index.js";
 export type { WorkflowRun, WorkflowRunStatus, WorkflowRunUpdate } from "../workflows/index.js";
-export { createEventIdFactory, type EventIdFactoryOptions } from "./createEventIdFactory.js";
+export {
+    createEventIdFactory,
+    eventIdsShareScope,
+    type EventIdFactoryOptions,
+} from "./createEventIdFactory.js";
 export type {
     AbortRequestedEvent,
     AnswerUserInputRequest,

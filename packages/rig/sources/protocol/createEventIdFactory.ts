@@ -9,9 +9,7 @@ export interface EventIdFactoryOptions {
 
 export function createEventIdFactory(options: EventIdFactoryOptions = {}): () => EventId {
     const now = options.now ?? Date.now;
-    const previous = options.after?.match(
-        /^([0-9a-f]{8})-([0-9a-f]{4})-7([0-9a-f]{3})-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu,
-    );
+    const previous = options.after?.match(EVENT_ID_PATTERN);
     const hasPrevious = previous !== undefined && previous !== null;
     let lastTimeMs = hasPrevious
         ? Number.parseInt(`${previous[1] ?? ""}${previous[2] ?? ""}`, 16)
@@ -19,6 +17,9 @@ export function createEventIdFactory(options: EventIdFactoryOptions = {}): () =>
     let sequence = hasPrevious
         ? Number.parseInt(previous[3] ?? "0", 16)
         : randomBytes(2).readUInt16BE(0) & 0x0fff;
+    const scope = hasPrevious
+        ? Buffer.from(`${previous[4] ?? ""}${previous[5] ?? ""}`, "hex")
+        : randomBytes(8);
 
     return () => {
         const observedTimeMs = Math.max(0, Math.floor(now()));
@@ -32,9 +33,23 @@ export function createEventIdFactory(options: EventIdFactoryOptions = {}): () =>
             }
         }
 
-        return formatUuidV7(lastTimeMs, sequence, randomBytes(8));
+        return formatUuidV7(lastTimeMs, sequence, scope);
     };
 }
+
+export function eventIdsShareScope(left: string, right: string): boolean {
+    const leftMatch = left.match(EVENT_ID_PATTERN);
+    const rightMatch = right.match(EVENT_ID_PATTERN);
+    return (
+        leftMatch !== null &&
+        rightMatch !== null &&
+        leftMatch[4]?.toLowerCase() === rightMatch[4]?.toLowerCase() &&
+        leftMatch[5]?.toLowerCase() === rightMatch[5]?.toLowerCase()
+    );
+}
+
+const EVENT_ID_PATTERN =
+    /^([0-9a-f]{8})-([0-9a-f]{4})-7([0-9a-f]{3})-([89ab][0-9a-f]{3})-([0-9a-f]{12})$/iu;
 
 function formatUuidV7(timeMs: number, sequence: number, random: Buffer): EventId {
     const bytes = Buffer.alloc(16);
