@@ -1,0 +1,286 @@
+import { afterEach, describe, expect, it } from "vitest";
+
+import { createGym, type Gym } from "../../packages/gym/sources/index.js";
+
+const running = new Set<Gym>();
+
+afterEach(async () => {
+    await Promise.all([...running].map((gym) => gym.dispose()));
+    running.clear();
+});
+
+describe("ordinary streaming text while reading history", () => {
+    it("keeps exact upper-middle rows and offset through repeated turns and live chunks", async () => {
+        const releaseFinalAnswer = deferred<void>();
+        const finalRequestStarted = deferred<void>();
+        const responses = [
+            historicalResponse("FIRST", 0),
+            historicalResponse("SECOND", 45),
+            historicalResponse("THIRD", 90),
+        ];
+        const streamedAnswer = [
+            "ORDINARY_STREAM_BEGIN",
+            "This is ordinary prose arriving a few characters at a time. It contains no table.",
+            "",
+            ...Array.from({ length: 96 }, (_, index) => {
+                const marker = index === 47 ? " ORDINARY_STREAM_MIDDLE" : "";
+                return `- Ordinary bullet ${String(index).padStart(3, "0")} remains plain flowing text.${marker}`;
+            }),
+            "",
+            "The final paragraph closes the ordinary streamed response.",
+            "ORDINARY_STREAM_END",
+        ].join("\n");
+        const gym = await createGym({
+            cols: 68,
+            inference: async (_request, callIndex) => {
+                if (callIndex < responses.length) {
+                    return { content: [{ text: responses[callIndex] ?? "", type: "text" }] };
+                }
+                expect(callIndex).toBe(3);
+                finalRequestStarted.resolve();
+                await releaseFinalAnswer.promise;
+                return {
+                    content: [{ text: streamedAnswer, type: "text" }],
+                    textDeltaChunkSize: 19,
+                    textDeltaDelayMs: 15,
+                };
+            },
+            rows: 16,
+        });
+        running.add(gym);
+
+        submit(gym, "Give me a detailed ordinary-text response.");
+        await waitForIdleText(gym, "FIRST_HISTORY_END");
+        submit(gym, "again");
+        await waitForIdleText(gym, "SECOND_HISTORY_END");
+        submit(gym, "again");
+        await waitForIdleText(gym, "THIRD_HISTORY_END");
+
+        submit(gym, "again");
+        await finalRequestStarted.promise;
+        await gym.terminal.waitUntil(
+            (snapshot) =>
+                snapshot.text.includes("Working") &&
+                snapshot.scroll.atBottom &&
+                snapshot.scroll.totalRows > 150,
+            "live status before the ordinary response starts",
+            30_000,
+        );
+
+        gym.terminal.scrollBy(-70);
+        const anchored = await gym.terminal.snapshot();
+        expect(anchored.scroll.atTop).toBe(false);
+        expect(anchored.scroll.atBottom).toBe(false);
+        expect(anchored.scroll.offset).toBeGreaterThan(0);
+        expect(anchored.scroll.offset + anchored.scroll.visibleRows).toBeLessThan(
+            anchored.scroll.totalRows,
+        );
+        const anchor = historicalAnchor(anchored);
+        await writeProof(gym, "ordinary-01-anchored.png");
+
+        const animated = await gym.terminal.waitUntil(
+            (snapshot) => snapshot.outputRevision > anchored.outputRevision,
+            "an animated live status redraw while reading history",
+            10_000,
+        );
+        assertHistoricalAnchor(animated, anchor);
+
+        const inputRevisionBeforeHostCopy = gym.terminal.inputRevision;
+        const copiedSelection = hostTerminalCopy(anchor.rows.slice(3, 9));
+        expect(copiedSelection).toBe(anchor.rows.slice(3, 9).join("\n"));
+        const afterHostCopy = await gym.terminal.snapshot();
+        expect(gym.terminal.inputRevision).toBe(inputRevisionBeforeHostCopy);
+        assertHistoricalAnchor(afterHostCopy, anchor);
+
+        const middleOutput = waitForTerminalOutput(gym, "ORDINARY_STREAM_MIDDLE", 30_000);
+        const finalOutput = waitForTerminalOutput(gym, "ORDINARY_STREAM_END", 30_000);
+        releaseFinalAnswer.resolve();
+
+        await middleOutput;
+        const duringStream = await gym.terminal.snapshot();
+        expect(duringStream.outputRevision).toBeGreaterThan(animated.outputRevision);
+        expect(duringStream.scroll.totalRows).toBeGreaterThan(anchor.totalRows);
+        assertHistoricalAnchor(duringStream, anchor);
+        await writeProof(gym, "ordinary-02-during-stream.png");
+
+        await finalOutput;
+        const afterStream = await gym.terminal.snapshot();
+        expect(afterStream.scroll.totalRows).toBeGreaterThan(anchor.totalRows + 40);
+        assertHistoricalAnchor(afterStream, anchor);
+        await writeProof(gym, "ordinary-03-after-stream.png");
+
+        gym.terminal.scrollToBottom();
+        const completed = await gym.terminal.waitUntil(
+            (snapshot) =>
+                snapshot.text.includes("ORDINARY_STREAM_END") &&
+                snapshot.text.includes("Ask Rig to do anything") &&
+                snapshot.scroll.atBottom,
+            "the completed ordinary response after returning to the bottom",
+            30_000,
+        );
+        expect(completed.text).not.toContain("Session interrupted");
+        expect(completed.text).not.toContain("�");
+
+        const transcript = await captureScrollback(gym);
+        expect(countOccurrences(transcript, "FIRST_HISTORY_BEGIN")).toBe(1);
+        expect(countOccurrences(transcript, "SECOND_HISTORY_BEGIN")).toBe(1);
+        expect(countOccurrences(transcript, "THIRD_HISTORY_BEGIN")).toBe(1);
+        expect(countOccurrences(transcript, "ORDINARY_STREAM_BEGIN")).toBe(1);
+        expect(countOccurrences(transcript, "ORDINARY_STREAM_END")).toBe(1);
+
+        const agentRequests = gym.inference.requests.filter(
+            (request) => !request.options.sessionId?.endsWith(":title"),
+        );
+        expect(agentRequests).toHaveLength(4);
+        expect(
+            agentRequests
+                .slice(1)
+                .map((request) => request.context.messages.at(-1))
+                .map((message) => messageText(message?.content)),
+        ).toEqual(["again", "again", "again"]);
+    }, 120_000);
+});
+
+interface HistoricalAnchor {
+    offset: number;
+    rows: readonly string[];
+    text: string;
+    totalRows: number;
+}
+
+function historicalResponse(label: string, start: number): string {
+    return [
+        `${label}_HISTORY_BEGIN`,
+        "Here is another ordinary response with prose and bullets:",
+        ...Array.from(
+            { length: 45 },
+            (_, index) =>
+                `- Historical bullet ${String(start + index).padStart(3, "0")} has stable ordinary text.`,
+        ),
+        `${label}_HISTORY_END`,
+    ].join("\n");
+}
+
+function historicalAnchor(
+    snapshot: Awaited<ReturnType<Gym["terminal"]["snapshot"]>>,
+): HistoricalAnchor {
+    return {
+        offset: snapshot.scroll.offset,
+        rows: snapshot.rows,
+        text: snapshot.text,
+        totalRows: snapshot.scroll.totalRows,
+    };
+}
+
+function assertHistoricalAnchor(
+    snapshot: Awaited<ReturnType<Gym["terminal"]["snapshot"]>>,
+    anchor: HistoricalAnchor,
+): void {
+    expect(snapshot.scroll.atTop).toBe(false);
+    expect(snapshot.scroll.atBottom).toBe(false);
+    expect(snapshot.scroll.offset).toBe(anchor.offset);
+    expect(snapshot.rows).toEqual(anchor.rows);
+    expect(snapshot.text).toBe(anchor.text);
+}
+
+function hostTerminalCopy(selectedRows: readonly string[]): string {
+    // Native selection and Cmd-C belong to the host terminal and send no input bytes to Rig.
+    return selectedRows.join("\n");
+}
+
+function submit(gym: Gym, text: string): void {
+    gym.terminal.type(text);
+    gym.terminal.press("enter");
+}
+
+function deferred<T>(): { promise: Promise<T>; resolve: (value?: T) => void } {
+    let resolvePromise: (value: T | PromiseLike<T>) => void = () => {};
+    const promise = new Promise<T>((resolve) => {
+        resolvePromise = resolve;
+    });
+    return {
+        promise,
+        resolve: (value) => resolvePromise(value as T),
+    };
+}
+
+async function waitForIdleText(gym: Gym, text: string): Promise<void> {
+    await gym.terminal.waitUntil(
+        (snapshot) =>
+            snapshot.text.includes(text) &&
+            snapshot.text.includes("Ask Rig to do anything") &&
+            snapshot.scroll.atBottom,
+        `idle response containing ${text}`,
+        30_000,
+    );
+}
+
+async function writeProof(gym: Gym, name: string): Promise<void> {
+    const directory = process.env.RIG_GYM_PROOF_DIR;
+    if (directory === undefined) return;
+    await gym.terminal.screenshot(`${directory}/${name}`);
+}
+
+async function captureScrollback(gym: Gym): Promise<string> {
+    gym.terminal.scrollToTop();
+    let snapshot = await gym.terminal.snapshot();
+    const rows = new Map<number, string>();
+
+    for (;;) {
+        snapshot.rows.forEach((row, index) => {
+            rows.set(snapshot.scroll.offset + index, row);
+        });
+        if (snapshot.scroll.atBottom) break;
+        const maximumOffset = snapshot.scroll.totalRows - snapshot.scroll.visibleRows;
+        const nextOffset = Math.min(
+            snapshot.scroll.offset + snapshot.scroll.visibleRows,
+            maximumOffset,
+        );
+        gym.terminal.scrollBy(nextOffset - snapshot.scroll.offset);
+        snapshot = await gym.terminal.snapshot();
+    }
+
+    gym.terminal.scrollToBottom();
+    return [...rows.entries()]
+        .sort(([left], [right]) => left - right)
+        .map(([, row]) => row)
+        .join("\n");
+}
+
+function countOccurrences(text: string, search: string): number {
+    return text.split(search).length - 1;
+}
+
+function messageText(content: unknown): string {
+    if (typeof content === "string") return content;
+    if (!Array.isArray(content)) return "";
+    return content
+        .filter(
+            (block): block is { text: string } =>
+                typeof block === "object" &&
+                block !== null &&
+                "type" in block &&
+                block.type === "text" &&
+                "text" in block &&
+                typeof block.text === "string",
+        )
+        .map((block) => block.text)
+        .join("\n");
+}
+
+function waitForTerminalOutput(gym: Gym, text: string, timeoutMs: number): Promise<void> {
+    return new Promise((resolve, reject) => {
+        let output = "";
+        const stop = gym.terminal.onOutput((data) => {
+            output += data;
+            if (!output.includes(text)) return;
+            clearTimeout(timer);
+            stop();
+            resolve();
+        });
+        const timer = setTimeout(() => {
+            stop();
+            reject(new Error(`Timed out waiting for terminal output ${JSON.stringify(text)}.`));
+        }, timeoutMs);
+    });
+}
