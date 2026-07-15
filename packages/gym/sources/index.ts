@@ -15,6 +15,7 @@ export {
 } from "./InterceptingHttpProxy.js";
 export { MockInferenceServer } from "./MockInferenceServer.js";
 export { renderTerminalSnapshotPng } from "./renderTerminalSnapshotPng.js";
+export { terminalRowStyleRuns, type TerminalRowStyleRun } from "./terminalRowStyleRuns.js";
 export type {
     GymFixture,
     GymInferenceHandler,

@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 import {
     createGym,
     renderTerminalSnapshotPng,
+    terminalRowStyleRuns,
     type Gym,
 } from "../../packages/gym/sources/index.js";
 
@@ -183,12 +184,47 @@ describe("background subagent completion routes to its parent", () => {
                 .filter((cell) => cell.y === notificationRow)
                 .every((cell) => cell.background === null),
         ).toBe(true);
-        expect({
-            notificationCells: completed.cells.filter(
-                (cell) => cell.y === notificationRow && cell.text !== " ",
-            ),
-            rows: completed.rows.slice(notificationRow),
-        }).toMatchSnapshot("passive background completion");
+        const continuingRow = completed.rows.findIndex((row) =>
+            row.includes("PARENT_CONTINUING_AFTER_SPAWN"),
+        );
+        const acknowledgementRow = completed.rows.findIndex((row) =>
+            row.includes("PARENT_ACKNOWLEDGED_SUBAGENT_RESULT"),
+        );
+        const composerRow = completed.rows.findIndex((row) =>
+            row.includes("Ask Rig to do anything"),
+        );
+        expect(notificationRow).toBeLessThan(continuingRow);
+        expect(continuingRow).toBeLessThan(acknowledgementRow);
+        expect(acknowledgementRow).toBeLessThan(composerRow);
+        expect(terminalRowStyleRuns(completed, notificationRow)).toEqual([
+            {
+                background: null,
+                bold: false,
+                dim: false,
+                foreground: { kind: "palette", index: 3 },
+                italic: false,
+                text: "•",
+                x: 0,
+            },
+            {
+                background: null,
+                bold: true,
+                dim: false,
+                foreground: null,
+                italic: false,
+                text: "Background work",
+                x: 2,
+            },
+            {
+                background: null,
+                bold: false,
+                dim: false,
+                foreground: null,
+                italic: false,
+                text: '"Inspect workspace" completed.',
+                x: 18,
+            },
+        ]);
         const screenshotDirectory = process.env.RIG_GYM_SCREENSHOT_DIR;
         if (screenshotDirectory !== undefined) {
             await renderTerminalSnapshotPng(

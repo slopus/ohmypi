@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 import {
     createGym,
     renderTerminalSnapshotPng,
+    terminalRowStyleRuns,
     type Gym,
 } from "../../packages/gym/sources/index.js";
 
@@ -134,12 +135,39 @@ describe("repeated background terminal polling", () => {
         const completionRow = completed.rows.findIndex((row) =>
             row.includes("Background terminal completed"),
         );
-        expect({
-            rows: completed.rows.slice(completionRow),
-            completionCells: completed.cells.filter(
-                (cell) => cell.y === completionRow && cell.text !== " ",
-            ),
-        }).toMatchSnapshot("tail-only background terminal polling");
+        const completionText = completed.rows[completionRow] ?? "";
+        expect(completionText).toMatch(
+            /^• Background terminal completed · read -r _ < \.poll-release/u,
+        );
+        expect(terminalRowStyleRuns(completed, completionRow)).toEqual([
+            {
+                background: null,
+                bold: false,
+                dim: true,
+                foreground: null,
+                italic: false,
+                text: "•",
+                x: 0,
+            },
+            {
+                background: null,
+                bold: true,
+                dim: true,
+                foreground: null,
+                italic: false,
+                text: "Background terminal completed",
+                x: 2,
+            },
+            {
+                background: null,
+                bold: false,
+                dim: false,
+                foreground: null,
+                italic: false,
+                text: completionText.slice(32),
+                x: 32,
+            },
+        ]);
         const screenshotDirectory = process.env.RIG_GYM_SCREENSHOT_DIR;
         if (screenshotDirectory !== undefined) {
             await renderTerminalSnapshotPng(

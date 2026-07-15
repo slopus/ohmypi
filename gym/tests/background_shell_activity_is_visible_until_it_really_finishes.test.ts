@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 import {
     createGym,
     renderTerminalSnapshotPng,
+    terminalRowStyleRuns,
     type Gym,
     type TerminalSnapshot,
 } from "../../packages/gym/sources/index.js";
@@ -97,9 +98,25 @@ describe("background shell activity stays visible until it really finishes", () 
         expect(active.text).not.toContain("Process printf 'BACKGROUND_PROCESS_STARTED");
         expect(active.scroll.bottomDepartureCount).toBe(baseline.bottomDepartureCount);
         expect(active.scroll.topArrivalCount).toBe(baseline.topArrivalCount);
-        expect(bottomPaneSnapshot(active)).toMatchSnapshot(
-            "active background terminal bottom pane",
-        );
+        expect(active.rows.slice(summaryRow, footerRow + 1)).toEqual([
+            "  1 background terminal running · /ps to view · /stop to close",
+            "",
+            "",
+            "› Ask Rig to do anything",
+            "",
+            "  gym off · /workspace · main [default] · full access",
+        ]);
+        expect(terminalRowStyleRuns(active, summaryRow)).toEqual([
+            {
+                background: null,
+                bold: false,
+                dim: true,
+                foreground: null,
+                italic: false,
+                text: "1 background terminal running · /ps to view · /stop to close",
+                x: 2,
+            },
+        ]);
         await captureReviewImage(active, "background-terminal-active.png");
 
         gym.terminal.type("/ps");
@@ -157,27 +174,6 @@ describe("background shell activity stays visible until it really finishes", () 
         expect(recovered.scroll.topArrivalCount).toBe(baseline.topArrivalCount);
     }, 120_000);
 });
-
-function bottomPaneSnapshot(snapshot: TerminalSnapshot): object {
-    const summaryRow = snapshot.rows.findIndex((row) =>
-        row.includes("background terminal running"),
-    );
-    const footerRow = snapshot.rows.findIndex((row) => row.includes("gym off · /workspace"));
-    return {
-        rows: snapshot.rows.slice(summaryRow, footerRow + 1),
-        summaryCells: snapshot.cells
-            .filter((cell) => cell.y === summaryRow && cell.text !== " ")
-            .map(({ background, bold, dim, foreground, italic, text, x }) => ({
-                background,
-                bold,
-                dim,
-                foreground,
-                italic,
-                text,
-                x,
-            })),
-    };
-}
 
 async function captureReviewImage(snapshot: TerminalSnapshot, fileName: string): Promise<void> {
     const directory = process.env.RIG_GYM_SCREENSHOT_DIR;

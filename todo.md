@@ -138,7 +138,7 @@ This file tracks known defects, verified coverage gaps, and concrete follow-up w
 - [x] Strengthen foreground shell history coverage.
     - The test claims the command renders once but currently checks only containment; count exact `Ran` rows.
 
-- [ ] Reduce oversized terminal snapshots.
+- [x] Reduce oversized terminal snapshots.
     - Several snapshots serialize every glyph and absolute cell coordinate, creating 457–644-line fixtures with high incidental churn.
     - Prefer semantic row assertions plus normalized style runs.
 
