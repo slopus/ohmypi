@@ -7,6 +7,7 @@ export { createEventIdFactory, type EventIdFactoryOptions } from "./createEventI
 export type {
     AbortRequestedEvent,
     AnswerUserInputRequest,
+    AbortRunOptions,
     AbortRunResponse,
     AgentMessageEvent,
     AgentStreamEvent,

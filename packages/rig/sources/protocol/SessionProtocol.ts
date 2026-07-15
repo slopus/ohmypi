@@ -298,8 +298,13 @@ export interface ChangeServiceTierRequest {
 
 export interface AbortRunResponse {
     aborted: boolean;
+    continued?: boolean;
     eventId?: EventId;
     stoppedProcesses?: number;
+}
+
+export interface AbortRunOptions {
+    continuePendingSteering?: boolean;
 }
 
 export type SessionEvent =

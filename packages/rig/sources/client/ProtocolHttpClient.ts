@@ -1,6 +1,7 @@
 import { request as httpRequest } from "node:http";
 
 import type {
+    AbortRunOptions,
     AbortRunResponse,
     AnswerUserInputRequest,
     ChangeEffortRequest,
@@ -74,8 +75,12 @@ export class ProtocolHttpClient {
         );
     }
 
-    abort(sessionId: string): Promise<AbortRunResponse> {
-        return this.#requestJson("POST", `/sessions/${encodeURIComponent(sessionId)}/abort`);
+    abort(sessionId: string, options: AbortRunOptions = {}): Promise<AbortRunResponse> {
+        const query = options.continuePendingSteering === true ? "?continuePendingSteering=1" : "";
+        return this.#requestJson(
+            "POST",
+            `/sessions/${encodeURIComponent(sessionId)}/abort${query}`,
+        );
     }
 
     stopBackgroundProcesses(sessionId: string): Promise<{ stoppedProcesses: number }> {

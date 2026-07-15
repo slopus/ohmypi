@@ -205,6 +205,12 @@ interface PendingSteeringMessage {
     runId: string;
 }
 
+interface PendingSteeringContinuation {
+    cancelled: boolean;
+    ready: Promise<void>;
+    resolveReady: () => void;
+}
+
 export interface SessionRunCompletion {
     errorMessage?: string;
     status: "aborted" | "completed" | "error";
@@ -242,6 +248,7 @@ export class InMemorySession {
     #now: () => number;
     #partialPositions = new Set<number>();
     #pendingSteeringMessages = new Map<string, PendingSteeringMessage>();
+    #pendingSteeringContinuations = new Map<string, PendingSteeringContinuation>();
     #pendingUserInputs = new Map<string, PendingUserInput>();
     #persistence: InMemorySessionPersistence | undefined;
     #providerId: string;
@@ -407,13 +414,48 @@ export class InMemorySession {
     }
 
     async abort(
-        options: { pauseDescendants?: boolean } = {},
-    ): Promise<{ aborted: boolean; eventId?: EventId; stoppedProcesses?: number }> {
+        options: { continuePendingSteering?: boolean; pauseDescendants?: boolean } = {},
+    ): Promise<{
+        aborted: boolean;
+        continued?: boolean;
+        eventId?: EventId;
+        stoppedProcesses?: number;
+    }> {
+        const runId = this.#activeRun?.runId;
+        const shouldContinuePendingSteering =
+            options.continuePendingSteering === true &&
+            runId !== undefined &&
+            [...this.#pendingSteeringMessages.values()].some((pending) => pending.runId === runId);
+        if (
+            options.continuePendingSteering === true &&
+            runId !== undefined &&
+            !shouldContinuePendingSteering
+        ) {
+            return { aborted: false, continued: true };
+        }
+        let continuation: PendingSteeringContinuation | undefined;
+        if (shouldContinuePendingSteering && runId !== undefined) {
+            continuation = this.#pendingSteeringContinuations.get(runId);
+            if (continuation === undefined) {
+                let resolveReady = () => {};
+                const ready = new Promise<void>((resolve) => {
+                    resolveReady = resolve;
+                });
+                continuation = { cancelled: false, ready, resolveReady };
+                this.#pendingSteeringContinuations.set(runId, continuation);
+            }
+        } else if (runId !== undefined) {
+            const pendingContinuation = this.#pendingSteeringContinuations.get(runId);
+            if (pendingContinuation !== undefined) {
+                pendingContinuation.cancelled = true;
+                pendingContinuation.resolveReady();
+                this.#pendingSteeringContinuations.delete(runId);
+            }
+        }
         const pauseDescendants =
             options.pauseDescendants === false
                 ? Promise.resolve(0)
                 : (this.#agentManager?.pauseDescendants(this.id) ?? Promise.resolve(0));
-        const runId = this.#activeRun?.runId;
         const runningProcesses = this.#activeProcessCount();
         if (this.#activeRun === undefined && this.#queue.length === 0 && runningProcesses === 0) {
             return { aborted: (await pauseDescendants) > 0 };
@@ -439,6 +481,7 @@ export class InMemorySession {
         this.#activeRun?.controller.abort();
         this.#restoredActiveRunId = undefined;
         await Promise.all([this.#killRuntimeProcesses(), pauseDescendants]);
+        continuation?.resolveReady();
         const event = this.#append("abort_requested", runId !== undefined ? { runId } : {});
         for (const queuedRunId of queuedRunIds) {
             this.#append("run_error", {
@@ -449,6 +492,7 @@ export class InMemorySession {
         }
         return {
             aborted: true,
+            ...(shouldContinuePendingSteering ? { continued: true } : {}),
             eventId: event.id,
             ...(runningProcesses > 0 ? { stoppedProcesses: runningProcesses } : {}),
         };
@@ -2175,7 +2219,7 @@ export class InMemorySession {
     }
 
     async #runQueued(queued: PersistedQueuedRun): Promise<void> {
-        const controller = new AbortController();
+        let controller = new AbortController();
         this.#activeRun = { controller, kind: queued.kind, runId: queued.runId };
         this.#lastSessionRunId = queued.runId;
         this.#restoredActiveRunId = undefined;
@@ -2190,17 +2234,42 @@ export class InMemorySession {
                 this.#contextMessages = [...this.#contextMessages, queued.userMessage];
                 this.#saveSession();
             }
-            const result = await runtime.agent.run({
-                signal: controller.signal,
-                onEvent: (event) => this.#appendAgentEvent(queued.runId, event),
-                onMessage: (message) => this.#appendAgentMessage(queued.runId, message),
-            });
-            if (this.#activeRun?.runId !== queued.runId) {
-                return;
-            }
-            this.#appendRunFinished(queued.runId, result);
-            if (result.stopReason !== "aborted" && result.stopReason !== "error") {
-                this.#continueGoalIfIdle();
+            for (;;) {
+                const result = await runtime.agent.run({
+                    signal: controller.signal,
+                    onEvent: (event) => this.#appendAgentEvent(queued.runId, event),
+                    onMessage: (message) => this.#appendAgentMessage(queued.runId, message),
+                });
+                if (this.#activeRun?.runId !== queued.runId) {
+                    return;
+                }
+
+                const continuation = this.#pendingSteeringContinuations.get(queued.runId);
+                if (result.stopReason === "aborted" && continuation !== undefined) {
+                    await continuation.ready;
+                    if (
+                        !continuation.cancelled &&
+                        this.#pendingSteeringContinuations.get(queued.runId) === continuation &&
+                        this.#activeRun?.runId === queued.runId
+                    ) {
+                        this.#pendingSteeringContinuations.delete(queued.runId);
+                        controller = new AbortController();
+                        this.#activeRun = {
+                            controller,
+                            kind: queued.kind,
+                            runId: queued.runId,
+                        };
+                        this.#activePartial = undefined;
+                        continue;
+                    }
+                    this.#pendingSteeringContinuations.delete(queued.runId);
+                }
+
+                this.#appendRunFinished(queued.runId, result);
+                if (result.stopReason !== "aborted" && result.stopReason !== "error") {
+                    this.#continueGoalIfIdle();
+                }
+                break;
             }
         } catch (error) {
             if (this.#activeRun?.runId !== queued.runId) {
@@ -2221,6 +2290,7 @@ export class InMemorySession {
                 runId: queued.runId,
             });
         } finally {
+            this.#pendingSteeringContinuations.delete(queued.runId);
             if (this.#activeRun?.runId === queued.runId) {
                 this.#activeRun = undefined;
             }

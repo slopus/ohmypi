@@ -397,7 +397,14 @@ async function handleRequest(
 
     if (request.method === "POST" && route.name === "abort") {
         try {
-            sendJson<AbortRunResponse>(response, 200, await session.abort());
+            sendJson<AbortRunResponse>(
+                response,
+                200,
+                await session.abort({
+                    continuePendingSteering:
+                        url.searchParams.get("continuePendingSteering") === "1",
+                }),
+            );
         } catch (error) {
             sendJson(response, 409, {
                 error: error instanceof Error ? error.message : "The run could not be aborted.",

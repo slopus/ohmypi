@@ -11,7 +11,12 @@ import type {
     CodingAssistantAgentBackend,
     CodingAssistantModelChoice,
 } from "../app/CodingAssistantAgentBackend.js";
-import type { ModelCatalog, ProtocolSession, SessionEvent } from "../protocol/index.js";
+import type {
+    AbortRunOptions,
+    ModelCatalog,
+    ProtocolSession,
+    SessionEvent,
+} from "../protocol/index.js";
 import {
     defineProvider,
     type Model,
@@ -127,8 +132,8 @@ export class RemoteAgent implements CodingAssistantAgentBackend {
         return this.#session.goal === undefined ? undefined : { ...this.#session.goal };
     }
 
-    abort() {
-        return this.#client.abort(this.#session.id);
+    abort(options?: AbortRunOptions) {
+        return this.#client.abort(this.#session.id, options);
     }
 
     async stopBackgroundProcesses(): Promise<number> {

@@ -292,6 +292,7 @@ export class CodingAssistantApp implements Component, Focusable {
     #freeformUserInput: FreeformUserInput | undefined;
     #pendingPrompts: PendingPrompt[] = [];
     #pendingSteeringMessages: PendingSteeringMessage[] = [];
+    #sendingPendingSteering = false;
     #compacting = false;
     #pastedImagesById = new Map<number, PastedImage>();
     #selectionPanel: Component | undefined;
@@ -1871,6 +1872,16 @@ export class CodingAssistantApp implements Component, Focusable {
     }
 
     #handleEscape(): void {
+        if (
+            this.#running &&
+            this.#pendingSteeringMessages.length > 0 &&
+            this.#sessionBacked &&
+            this.#agent.abort !== undefined
+        ) {
+            this.#sendPendingSteeringNow();
+            return;
+        }
+
         this.#restoreQueuedPromptsToComposer();
         if (this.#abortActiveRun()) return;
         if (this.#running && this.#sessionBacked && this.#agent.abort !== undefined) {
@@ -1881,6 +1892,26 @@ export class CodingAssistantApp implements Component, Focusable {
                 this.#requestRender();
             });
         }
+    }
+
+    #sendPendingSteeringNow(): void {
+        if (this.#sendingPendingSteering || this.#agent.abort === undefined) return;
+        this.#sendingPendingSteering = true;
+        this.#statusText = "Sending pending messages";
+        this.#requestRender();
+        void this.#agent
+            .abort({ continuePendingSteering: true })
+            .then((response) => {
+                if (response.continued !== true) this.#sendingPendingSteering = false;
+                if (this.#running) this.#statusText = "Running";
+                this.#requestRender();
+            })
+            .catch((error: unknown) => {
+                this.#sendingPendingSteering = false;
+                this.#statusText = "Error";
+                this.#appendEntry({ role: "error", text: this.#formatError(error) });
+                this.#requestRender();
+            });
     }
 
     #openBacktrackMenu(): boolean {
@@ -2724,6 +2755,7 @@ export class CodingAssistantApp implements Component, Focusable {
                 this.#appendEntry({ id: pending.id, role: "user", text: pending.displayText });
             }
         }
+        if (this.#pendingSteeringMessages.length === 0) this.#sendingPendingSteering = false;
         this.#requestRender();
     }
 

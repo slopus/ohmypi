@@ -168,6 +168,73 @@ describe("CodingAssistantApp", () => {
         expect(applied).toContain("› Pending direction");
     });
 
+    it("uses pending-aware abort without stopping the local run on Escape", async () => {
+        const model = defineModel({
+            id: "openai/gpt-test",
+            name: "GPT Test",
+            thinkingLevels: ["off"],
+            defaultThinkingLevel: "off",
+        });
+        const provider = defineProvider({
+            id: "codex",
+            models: [model],
+            stream() {
+                return streamText("unused");
+            },
+        });
+        const harness = createJustBashToolHarness();
+        const abort = vi.fn(async () => ({ aborted: true, continued: true }));
+        const agent = Object.assign(
+            new Agent({
+                provider,
+                modelId: model.id,
+                context: harness.context,
+                printToConsole: false,
+            }),
+            { abort },
+        );
+        const app = new CodingAssistantApp({
+            agent,
+            cwd: harness.context.fs.cwd,
+            processManager: new NativeProxessManager(),
+            sessionBacked: true,
+            tui: fakeTui(),
+        });
+        const message = {
+            blocks: [{ text: "Pending direction", type: "text" as const }],
+            id: "steer-1",
+            role: "user" as const,
+        };
+        app.applySessionEvent({
+            createdAt: 1,
+            data: { runId: "run-1" },
+            id: "event-started",
+            sessionId: "session-1",
+            type: "run_started",
+        });
+        app.applySessionEvent({
+            createdAt: 2,
+            data: {
+                delivery: "steer",
+                displayText: "Pending direction",
+                message,
+                runId: "run-1",
+            },
+            id: "event-submitted",
+            sessionId: "session-1",
+            type: "message_submitted",
+        });
+
+        app.handleInput("\x1b");
+        await vi.waitFor(() =>
+            expect(abort).toHaveBeenCalledWith({ continuePendingSteering: true }),
+        );
+
+        const rendered = stripAnsi(app.render(100).join("\n"));
+        expect(rendered).toContain("esc to interrupt");
+        expect(rendered).not.toContain("Session interrupted");
+    });
+
     it("uses the idle abort command to stop session background processes", async () => {
         const model = defineModel({
             defaultThinkingLevel: "off",

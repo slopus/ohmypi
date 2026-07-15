@@ -13,6 +13,7 @@ import {
     defineModel,
     defineProvider,
     type AssistantMessage,
+    type Context,
     type InferenceStream,
 } from "../providers/types.js";
 import { InMemorySession } from "./InMemorySession.js";
@@ -95,6 +96,62 @@ describe("InMemorySession abort", () => {
             await rm(cwd, { force: true, recursive: true });
         }
     });
+
+    it("continues the same run immediately when aborting with pending steering", async () => {
+        const started = deferred<void>();
+        const contexts: Context[] = [];
+        const model = defineModel({
+            defaultThinkingLevel: "off",
+            id: "test/pending-steering-continuation",
+            name: "Pending steering continuation",
+            thinkingLevels: ["off"],
+        });
+        const provider = defineProvider({
+            id: "test",
+            models: [model],
+            stream(_model, context, options) {
+                contexts.push(context);
+                if (contexts.length === 1) {
+                    return abortableStream(options?.signal, started.resolve);
+                }
+                return responseStream("Continued immediately.");
+            },
+        });
+        const catalog: ModelCatalog = {
+            defaultModelId: model.id,
+            defaultProviderId: provider.id,
+            models: [model],
+            providers: [{ models: [model], providerId: provider.id }],
+        };
+        const session = new InMemorySession({
+            createEventId: createEventIdFactory(),
+            createRuntime: (options) => createRuntime(options, provider),
+            modelCatalog: catalog,
+            request: { cwd: "/tmp/rig-steering-continuation", modelId: model.id },
+        });
+
+        const submitted = session.submit({ text: "Start waiting." });
+        await started.promise;
+        session.steer({ text: "Apply this pending direction." });
+
+        await expect(
+            session.abort({ continuePendingSteering: true, pauseDescendants: false }),
+        ).resolves.toMatchObject({ aborted: true, continued: true });
+        await expect(session.waitForRun(submitted.runId)).resolves.toEqual({
+            status: "completed",
+        });
+
+        expect(contexts).toHaveLength(2);
+        const continuedUserText = contexts[1]?.messages.flatMap((message) =>
+            message.role === "user" && Array.isArray(message.content)
+                ? message.content.flatMap((block) => (block.type === "text" ? [block.text] : []))
+                : [],
+        );
+        expect(continuedUserText?.filter((text) => text === "Apply this pending direction.")).toHaveLength(1);
+        const events = session.events.since(undefined) ?? [];
+        expect(events.filter((event) => event.type === "steering_applied")).toHaveLength(1);
+        expect(events.filter((event) => event.type === "run_finished")).toHaveLength(1);
+    });
 });
 
 function testCatalog(): ModelCatalog {
@@ -166,6 +223,33 @@ function responseStream(text: string): InferenceStream {
             return message;
         },
     };
+}
+
+function abortableStream(signal: AbortSignal | undefined, onStart: () => void): InferenceStream {
+    return {
+        async *[Symbol.asyncIterator]() {
+            onStart();
+            await new Promise<void>((resolve) => {
+                if (signal?.aborted) {
+                    resolve();
+                    return;
+                }
+                signal?.addEventListener("abort", () => resolve(), { once: true });
+            });
+            throw new Error("aborted");
+        },
+        async result() {
+            throw new Error("aborted");
+        },
+    };
+}
+
+function deferred<T>(): { promise: Promise<T>; resolve: (value?: T) => void } {
+    let resolvePromise: (value: T | PromiseLike<T>) => void = () => {};
+    const promise = new Promise<T>((resolve) => {
+        resolvePromise = resolve;
+    });
+    return { promise, resolve: (value) => resolvePromise(value as T) };
 }
 
 function shellQuote(value: string): string {

@@ -10,7 +10,7 @@ import type {
 import type { Model, Provider, ServiceTier } from "../providers/types.js";
 import type { PermissionMode } from "../permissions/index.js";
 import type { GoalStatus, SessionGoal } from "../goals/index.js";
-import type { AbortRunResponse } from "../protocol/index.js";
+import type { AbortRunOptions, AbortRunResponse } from "../protocol/index.js";
 
 export interface CodingAssistantModelChoice {
     model: Model;
@@ -27,7 +27,7 @@ export interface CodingAssistantAgentBackend {
     readonly modelChoices?: readonly CodingAssistantModelChoice[];
     readonly permissionMode: PermissionMode;
     readonly goal?: SessionGoal | undefined;
-    abort?(): Promise<AbortRunResponse>;
+    abort?(options?: AbortRunOptions): Promise<AbortRunResponse>;
     compact(signal?: AbortSignal): Promise<AgentCompactionResult>;
     changeGoalStatus?(status: GoalStatus): Promise<void>;
     clearGoal?(): Promise<void>;

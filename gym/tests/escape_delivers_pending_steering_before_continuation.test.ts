@@ -12,13 +12,13 @@ afterEach(async () => {
 });
 
 describe("Escape with pending steering", () => {
-    it("delivers every pending message once before the continued inference", async () => {
+    it("interrupts and immediately resumes inference with every pending message once", async () => {
         const firstPending = "Preserve this first pending direction.";
         const secondPending = "Preserve this second pending direction.";
-        const continuation = "Continue using both pending directions.";
+        const releaseContinuation = deferred<void>();
         const gym = await createGym({
             cols: 100,
-            inference: (_request, callIndex) => {
+            inference: async (request, callIndex) => {
                 if (callIndex === 0) {
                     return {
                         content: [{ text: "UNREACHABLE_DELAYED_RESPONSE", type: "text" }],
@@ -27,6 +27,10 @@ describe("Escape with pending steering", () => {
                 }
 
                 expect(callIndex).toBe(1);
+                const continuedUserTexts = request.context.messages.flatMap(userText);
+                expect(continuedUserTexts.filter((text) => text === firstPending)).toHaveLength(1);
+                expect(continuedUserTexts.filter((text) => text === secondPending)).toHaveLength(1);
+                await releaseContinuation.promise;
                 return { content: [{ text: "CONTINUATION_COMPLETE", type: "text" }] };
             },
             rows: 36,
@@ -50,7 +54,7 @@ describe("Escape with pending steering", () => {
         expect(rowContaining(pending.rows, "Messages to be submitted")).toMatch(/^ • /u);
         expect(rowContaining(pending.rows, `↳ ${firstPending}`)).toMatch(/^ ↳ /u);
         expect(rowContaining(pending.rows, `↳ ${secondPending}`)).toMatch(/^ ↳ /u);
-        await screenshot(gym, "before-escape.png");
+        await screenshot(gym, "revised-pending-before-escape.png");
 
         gym.terminal.resize(48, 36);
         const narrow = await gym.terminal.waitUntil(
@@ -68,27 +72,27 @@ describe("Escape with pending steering", () => {
         gym.terminal.resize(100, 36);
         await gym.terminal.waitForText(`↳ ${secondPending}`, 30_000);
         gym.terminal.press("escape");
-        const interrupted = await gym.terminal.waitUntil(
+        const resumed = await gym.terminal.waitUntil(
             (snapshot) =>
-                snapshot.text.includes("Session interrupted") &&
-                !snapshot.text.includes("esc to interrupt"),
-            "Escape interruption with pending steering delivered",
+                agentRequests(gym).length === 2 &&
+                snapshot.text.includes("esc to interrupt") &&
+                !snapshot.text.includes("Messages to be submitted after next tool call") &&
+                snapshot.rows.filter((row) => row.trim() === `› ${firstPending}`).length === 1 &&
+                snapshot.rows.filter((row) => row.trim() === `› ${secondPending}`).length === 1,
+            "pending steering delivered into an immediate continuation",
             30_000,
         );
-        await screenshot(gym, "after-interrupt.png");
-        assertDeliveredExactlyOnce(interrupted, [firstPending, secondPending]);
+        await screenshot(gym, "revised-pending-resumed-immediately.png");
+        assertDeliveredExactlyOnce(resumed, [firstPending, secondPending]);
+        expect(resumed.text).not.toContain("Session interrupted");
 
-        submit(gym, continuation);
+        releaseContinuation.resolve();
         const completed = await gym.terminal.waitForText("CONTINUATION_COMPLETE", 30_000);
-        await screenshot(gym, "completed-continuation.png");
+        await screenshot(gym, "revised-pending-resume-completed.png");
         assertDeliveredExactlyOnce(completed, [firstPending, secondPending]);
 
         const requests = agentRequests(gym);
         expect(requests).toHaveLength(2);
-        const continuedUserTexts = requests[1]?.context.messages.flatMap(userText) ?? [];
-        expect(continuedUserTexts.filter((text) => text === firstPending)).toHaveLength(1);
-        expect(continuedUserTexts.filter((text) => text === secondPending)).toHaveLength(1);
-        expect(continuedUserTexts.filter((text) => text === continuation)).toHaveLength(1);
     }, 120_000);
 });
 
@@ -144,4 +148,12 @@ async function screenshot(gym: Gym, name: string): Promise<void> {
     const directory = process.env.RIG_GYM_SCREENSHOT_DIR;
     if (directory === undefined) return;
     await gym.terminal.screenshot(resolve(directory, name));
+}
+
+function deferred<T>(): { promise: Promise<T>; resolve: (value?: T) => void } {
+    let resolvePromise: (value: T | PromiseLike<T>) => void = () => {};
+    const promise = new Promise<T>((resolve) => {
+        resolvePromise = resolve;
+    });
+    return { promise, resolve: (value) => resolvePromise(value as T) };
 }
