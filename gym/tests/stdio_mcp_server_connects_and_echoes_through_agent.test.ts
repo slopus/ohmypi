@@ -220,9 +220,9 @@ describe("stdio MCP server connects and echoes through the agent", () => {
         );
         expect(trust.text).toContain('Run "node" with arguments "mcp-echo-server.mjs"');
         gym.terminal.press("enter");
-        const echoed = await gym.terminal.waitForText(
+        const echoed = await waitForSettledText(
+            gym,
             "MCP echo returned exactly: Echo: hello from gym",
-            30_000,
         );
         assertHealthyTerminal(echoed, baseline);
         expect(echoed.text).toContain(
@@ -245,7 +245,7 @@ describe("stdio MCP server connects and echoes through the agent", () => {
         assertHealthyTerminal(status, baseline);
 
         submit(gym, "Use the Echo Service tool with error from gym.");
-        const failed = await gym.terminal.waitForText("MCP_APPLICATION_ERROR_OBSERVED", 30_000);
+        const failed = await waitForSettledText(gym, "MCP_APPLICATION_ERROR_OBSERVED");
         assertHealthyTerminal(failed, baseline);
         expect(failed.text).toContain(
             '• Called Echo_Service.echo_value({"value":"error from gym","options":{"format":"multiline","includeMetadata":true}})',
@@ -255,7 +255,7 @@ describe("stdio MCP server connects and echoes through the agent", () => {
         expect(failed.text).not.toContain("Failed Echo_Service.echo_value");
 
         submit(gym, "Confirm the session still works after the MCP call.");
-        const followUp = await gym.terminal.waitForText("FOLLOW_UP_AFTER_MCP", 30_000);
+        const followUp = await waitForSettledText(gym, "FOLLOW_UP_AFTER_MCP");
         assertHealthyTerminal(followUp, baseline);
         expect(followUp.text).toContain("Ask Rig to do anything");
         expect(agentRequests(gym)).toHaveLength(5);
@@ -272,6 +272,20 @@ function submit(gym: Gym, text: string): void {
 function agentRequests(gym: Gym) {
     return gym.inference.requests.filter(
         (request) => !request.options.sessionId?.endsWith(":title"),
+    );
+}
+
+function waitForSettledText(
+    gym: Gym,
+    text: string,
+): Promise<Awaited<ReturnType<Gym["terminal"]["snapshot"]>>> {
+    return gym.terminal.waitUntil(
+        (snapshot) =>
+            snapshot.text.includes(text) &&
+            snapshot.text.includes("gym off") &&
+            snapshot.text.includes("Ask Rig to do anything"),
+        `settled terminal after ${JSON.stringify(text)}`,
+        30_000,
     );
 }
 
