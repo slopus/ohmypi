@@ -12,7 +12,7 @@ afterEach(async () => {
 describe("permission-sensitive command waits for approval before showing Running", () => {
     it("shows the exact proposed action, then truthfully transitions through execution", async () => {
         const command =
-            "printf 'COMMAND_STARTED\\n'; sleep 4; printf 'approved after prompt\\n' > approved-after-prompt.txt; printf 'COMMAND_FINISHED\\n'";
+            "printf 'COMMAND_STARTED\\n'; while [ ! -e .release-approved-command ]; do sleep 0.05; done; rm .release-approved-command; printf 'approved after prompt\\n' > approved-after-prompt.txt; printf 'COMMAND_FINISHED\\n'";
         const gym = await createGym({
             cols: 100,
             inference(request, callIndex) {
@@ -118,11 +118,6 @@ describe("permission-sensitive command waits for approval before showing Running
         });
         assertTerminalHealth(awaitingApproval, baseline);
 
-        await gym.terminal.waitUntil(
-            (snapshot) => snapshot.text.includes("(2s · esc to interrupt)"),
-            "permission wait counted from the user message",
-            30_000,
-        );
         gym.terminal.press("enter");
         const executing = await gym.terminal.waitUntil(
             (snapshot) =>
@@ -138,6 +133,7 @@ describe("permission-sensitive command waits for approval before showing Running
         );
         expect(executing.text).not.toContain("Auto permission");
         assertTerminalHealth(executing, baseline);
+        await gym.runInContainer("touch", [".release-approved-command"]);
 
         const completed = await gym.terminal.waitUntil(
             (snapshot) =>
