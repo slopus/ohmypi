@@ -15,7 +15,7 @@ describe("formatCodexMcpToolResult", () => {
 
     it("handles empty and unavailable results", () => {
         expect(formatCodexMcpToolResult([{ type: "text", text: "" }])).toBe("(empty result)");
-        expect(formatCodexMcpToolResult([])).toBeUndefined();
+        expect(formatCodexMcpToolResult([])).toBe("(empty result)");
         expect(formatCodexMcpToolResult(undefined)).toBeUndefined();
     });
 

@@ -20,6 +20,6 @@ export function formatCodexMcpToolResult(
         );
     }
     if (blocks.length > MAXIMUM_RESULT_BLOCKS) results.push("... [truncated]");
-    if (results.length === 0) return undefined;
+    if (results.length === 0) return "(empty result)";
     return results.length === 1 ? results[0] : results;
 }

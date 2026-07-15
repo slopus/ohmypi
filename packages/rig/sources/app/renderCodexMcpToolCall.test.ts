@@ -33,6 +33,20 @@ describe("renderCodexMcpToolCall", () => {
         expect(rendered[1]).toBe("  \x1b[2m└\x1b[22m \x1b[2m{ ready: true }\x1b[22m");
     });
 
+    it("renders one child marker for a successful empty result", () => {
+        const rendered = renderCodexMcpToolCall(
+            {
+                invocation: { server: "service", tool: "fast_empty", arguments: {} },
+                result: "(empty result)",
+                status: "success",
+            },
+            { width: 80 },
+        ).map(stripAnsi);
+
+        expect(rendered).toEqual(["• Called service.fast_empty({})", "  └ (empty result)"]);
+        expect(rendered.filter((line) => line.includes("└"))).toHaveLength(1);
+    });
+
     it("moves a long invocation below the header and preserves multiline structured output", () => {
         const call: CodexMcpToolCall = {
             invocation: {
