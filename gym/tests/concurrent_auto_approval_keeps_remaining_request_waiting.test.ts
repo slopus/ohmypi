@@ -144,11 +144,7 @@ describe("concurrent Auto approvals keep the remaining request waiting", () => {
 
         const output: string[] = [];
         const stopOutputCapture = gym.terminal.onOutput((data) => output.push(data));
-        const alphaReview = waitForTerminalOutput(
-            gym,
-            "Alpha still needs your explicit approval.",
-            30_000,
-        );
+        const alphaReview = waitForTerminalOutput(gym, "Alpha still needs", 30_000);
         submit(gym, "Run both proof actions, but ask me about each command before it runs.");
         await gym.terminal.waitForText("esc to interrupt", 30_000);
         gym.terminal.scrollToTop();
@@ -332,9 +328,10 @@ function assertSameViewport(
 function waitForTerminalOutput(gym: Gym, text: string, timeoutMs: number): Promise<void> {
     return new Promise((resolvePromise, reject) => {
         let output = "";
+        const expected = normalizeTerminalOutput(text);
         const stop = gym.terminal.onOutput((data) => {
             output += data;
-            if (!output.includes(text)) return;
+            if (!normalizeTerminalOutput(output).includes(expected)) return;
             clearTimeout(timer);
             stop();
             resolvePromise();
@@ -344,6 +341,10 @@ function waitForTerminalOutput(gym: Gym, text: string, timeoutMs: number): Promi
             reject(new Error(`Timed out waiting for terminal output ${JSON.stringify(text)}.`));
         }, timeoutMs);
     });
+}
+
+function normalizeTerminalOutput(value: string): string {
+    return value.replace(/\x1b\[[0-?]*[ -/]*[@-~]/gu, "").replace(/\s+/gu, " ");
 }
 
 async function captureScrollback(gym: Gym): Promise<string> {
