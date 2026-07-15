@@ -11,6 +11,7 @@ import type { CreateSessionRequest, SessionAgentMetadata } from "../protocol/ind
 import type { Message } from "../agent/types.js";
 import type { PermissionMode } from "../permissions/index.js";
 import type { InMemorySession } from "./InMemorySession.js";
+import type { TaskDrain } from "./TrackedTaskDrain.js";
 
 export const DEFAULT_MAX_SUBAGENT_DEPTH = 3;
 export const DEFAULT_MAX_ACTIVE_SUBAGENTS = 8;
@@ -29,6 +30,7 @@ export interface AgentSessionManagerOptions {
     maxActive?: number;
     maxDepth?: number;
     repository: AgentSessionRepository;
+    taskDrain?: TaskDrain;
 }
 
 export class AgentSessionManager {
@@ -38,9 +40,11 @@ export class AgentSessionManager {
     readonly #repository: AgentSessionRepository;
     readonly #slotReservations = new Map<string, number>();
     readonly #stoppedExplicitly = new Set<string>();
+    readonly #taskDrain: TaskDrain | undefined;
 
     constructor(options: AgentSessionManagerOptions) {
         this.#repository = options.repository;
+        this.#taskDrain = options.taskDrain;
         this.maxActive = options.maxActive ?? DEFAULT_MAX_ACTIVE_SUBAGENTS;
         this.maxDepth = options.maxDepth ?? DEFAULT_MAX_SUBAGENT_DEPTH;
     }
@@ -72,7 +76,7 @@ export class AgentSessionManager {
         const submitted = child.submit({ text: message });
         const parent = this.#parentFor(child);
         parent?.recordSubagentChanged(child.subagentSummary());
-        void this.#monitorBackground(parent, child, submitted.runId);
+        this.#startBackgroundMonitor(parent, child, submitted.runId);
         return this.#managedSubagent(child);
     }
 
@@ -107,7 +111,7 @@ export class AgentSessionManager {
         const submitted = child.resumeSuspended();
         const parent = this.#parentFor(child);
         parent?.recordSubagentChanged(child.subagentSummary());
-        void this.#monitorBackground(parent, child, submitted.runId);
+        this.#startBackgroundMonitor(parent, child, submitted.runId);
         return this.#managedSubagent(child);
     }
 
@@ -213,7 +217,7 @@ export class AgentSessionManager {
         }
 
         if (request.background === true) {
-            void this.#monitorBackground(parent, child, submitted.runId);
+            this.#startBackgroundMonitor(parent, child, submitted.runId);
             return {
                 output: "The subagent is running in the background.",
                 path: this.#pathFor(child),
@@ -367,7 +371,7 @@ export class AgentSessionManager {
             if (completion.status === "aborted" && child.consumeSuspendedRun(runId)) return;
             if (child.subagentSummary().status === "suspended") return;
             if (this.#stoppedExplicitly.delete(child.id)) return;
-            if (parent === undefined) return;
+            if (parent === undefined || parent.isClosing?.() === true) return;
             const output = this.#completionOutput(
                 child,
                 completion.status,
@@ -394,6 +398,16 @@ export class AgentSessionManager {
         } catch {
             parent?.recordSubagentChanged(child.subagentSummary());
         }
+    }
+
+    #startBackgroundMonitor(
+        parent: InMemorySession | undefined,
+        child: InMemorySession,
+        runId: string,
+    ): void {
+        const monitor = () => this.#monitorBackground(parent, child, runId);
+        const task = this.#taskDrain?.run(monitor) ?? monitor();
+        void task.catch(() => undefined);
     }
 
     #parentFor(child: InMemorySession): InMemorySession | undefined {

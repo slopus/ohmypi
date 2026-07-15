@@ -5,6 +5,7 @@ import { createModelCatalog } from "./createModelCatalog.js";
 import { getEnvironmentLocalServerPaths } from "./getEnvironmentLocalServerPaths.js";
 import { prepareLocalServerDirectory } from "./prepareLocalServerDirectory.js";
 import { PersistentSessionStore } from "./PersistentSessionStore.js";
+import { TrackedTaskDrain } from "./TrackedTaskDrain.js";
 import { readLocalServerToken } from "./readLocalServerToken.js";
 import { removeStaleSocket } from "./removeStaleSocket.js";
 import { McpClientManager } from "../mcp/index.js";
@@ -28,11 +29,13 @@ export async function runLocalProtocolServer(
     const loadedConfig = await loadConfig({ cwd: process.cwd() });
     const modelCatalog = createModelCatalog({ cwd: process.cwd() });
     const mcpToolProvider = new McpClientManager();
+    const taskDrain = new TrackedTaskDrain();
     const store = new PersistentSessionStore({
         databasePath: paths.databasePath,
         durableGlobalEventQueue: loadedConfig.config.settings.durableGlobalEventQueue,
         mcpToolProvider,
         modelCatalog,
+        taskDrain,
     });
     let stopServer: (() => void) | undefined;
     const server = createProtocolHttpServer({
@@ -49,6 +52,7 @@ export async function runLocalProtocolServer(
         },
         onShutdown: () => stopServer?.(),
         store,
+        taskDrain,
         token,
     });
     try {
@@ -78,17 +82,24 @@ export async function runLocalProtocolServer(
                     return;
                 }
                 stopping = true;
-                try {
-                    store.repairInterruptedSessions("shutdown");
-                } catch (error) {
-                    console.error(
-                        error instanceof Error
-                            ? error.message
-                            : `Failed to repair interrupted sessions: ${String(error)}`,
-                    );
-                } finally {
-                    server.close(() => resolve());
-                }
+                taskDrain.beginClose();
+                const serverClosed = new Promise<void>((resolveClose) => {
+                    server.close(() => resolveClose());
+                });
+                void (async () => {
+                    try {
+                        await store.prepareForShutdown("shutdown");
+                    } catch (error) {
+                        console.error(
+                            error instanceof Error
+                                ? error.message
+                                : `Failed to drain interrupted sessions: ${String(error)}`,
+                        );
+                    }
+                    server.closeAllConnections();
+                    await serverClosed;
+                    resolve();
+                })();
             };
             process.once("SIGINT", stopServer);
             process.once("SIGTERM", stopServer);

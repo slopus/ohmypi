@@ -10,6 +10,7 @@ export type {
     ListGlobalEventQueueOptions,
 } from "./GlobalEventQueue.js";
 export { SessionEventLog, type SessionEventListener } from "./SessionEventLog.js";
+export { TrackedTaskDrain, type TaskDrain } from "./TrackedTaskDrain.js";
 export { getDefaultSessionDatabasePath } from "./getDefaultSessionDatabasePath.js";
 export { createModelCatalog, type CreateModelCatalogOptions } from "./createModelCatalog.js";
 export {

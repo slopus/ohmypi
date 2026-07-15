@@ -152,6 +152,63 @@ describe("InMemorySession abort", () => {
         expect(events.filter((event) => event.type === "steering_applied")).toHaveLength(1);
         expect(events.filter((event) => event.type === "run_finished")).toHaveLength(1);
     });
+
+    it("aborts compaction without overwriting the repaired shutdown state", async () => {
+        const model = defineModel({
+            defaultThinkingLevel: "off",
+            id: "test/shutdown-compaction",
+            name: "Shutdown compaction",
+            thinkingLevels: ["off"],
+        });
+        let compactStartedResolve: (() => void) | undefined;
+        const compactStarted = new Promise<void>((resolve) => {
+            compactStartedResolve = resolve;
+        });
+        let streamCount = 0;
+        const provider = defineProvider({
+            id: "test",
+            models: [model],
+            stream: (_model, _context, options) => {
+                streamCount += 1;
+                if (streamCount <= 2) return responseStream("Earlier answer");
+                compactStartedResolve?.();
+                return abortedStream(options?.signal);
+            },
+        });
+        const session = new InMemorySession({
+            createEventId: createEventIdFactory(),
+            createRuntime: (options) => createRuntime(options, provider),
+            modelCatalog: {
+                defaultModelId: model.id,
+                defaultProviderId: provider.id,
+                models: [model],
+                providers: [{ models: [model], providerId: provider.id }],
+            },
+            request: {
+                cwd: "/tmp/rig-compaction-shutdown-test",
+                modelId: model.id,
+                providerId: provider.id,
+            },
+        });
+
+        const submitted = session.submit({ text: "Earlier request" });
+        await session.waitForRun(submitted.runId);
+        const compacting = session.compact();
+        await compactStarted;
+        const shutdown = session.beginShutdown();
+        session.markInterrupted({
+            interruptedAt: 1,
+            message: "The local daemon shut down during compaction.",
+            reason: "shutdown",
+        });
+
+        await expect(compacting).rejects.toThrow("compaction was stopped");
+        await expect(shutdown).resolves.toBeUndefined();
+        expect(session.summary()).toMatchObject({
+            interruption: { reason: "shutdown" },
+            status: "error",
+        });
+    });
 });
 
 function testCatalog(): ModelCatalog {
@@ -191,10 +248,23 @@ function createRuntime(
 }
 
 function responseStream(text: string): InferenceStream {
-    const message: AssistantMessage = {
+    const message = assistantMessage(text, "test/idle-abort");
+    return {
+        async *[Symbol.asyncIterator]() {
+            yield { partial: message, type: "start" as const };
+            yield { message, reason: "stop" as const, type: "done" as const };
+        },
+        async result() {
+            return message;
+        },
+    };
+}
+
+function assistantMessage(text: string, model: string): AssistantMessage {
+    return {
         api: "test",
         content: [{ text, type: "text" }],
-        model: "test/idle-abort",
+        model,
         provider: "test",
         role: "assistant",
         stopReason: "stop",
@@ -214,10 +284,18 @@ function responseStream(text: string): InferenceStream {
             totalTokens: 0,
         },
     };
+}
+
+function abortedStream(signal: AbortSignal | undefined): InferenceStream {
+    const message = assistantMessage("", "test/shutdown-compaction");
     return {
         async *[Symbol.asyncIterator]() {
             yield { partial: message, type: "start" as const };
-            yield { message, reason: "stop" as const, type: "done" as const };
+            await new Promise<void>((_resolve, reject) => {
+                const abort = () => reject(new Error("Conversation compaction was stopped."));
+                signal?.addEventListener("abort", abort, { once: true });
+                if (signal?.aborted) abort();
+            });
         },
         async result() {
             return message;

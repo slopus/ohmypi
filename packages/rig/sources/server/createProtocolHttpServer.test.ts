@@ -15,6 +15,7 @@ import { createProtocolHttpServer } from "./createProtocolHttpServer.js";
 import type { FileSearchServiceContract } from "./FileSearchService.js";
 import type { DockerExecutionConfig } from "../execution/index.js";
 import type { GlobalEventQueue } from "./GlobalEventQueue.js";
+import { TrackedTaskDrain } from "./TrackedTaskDrain.js";
 
 describe("createProtocolHttpServer", () => {
     it("uses Docker defaults unless the new session chooses another environment", async () => {
@@ -679,6 +680,24 @@ describe("createProtocolHttpServer", () => {
         }
     });
 
+    it("rejects new mutations as soon as shutdown begins", async () => {
+        const taskDrain = new TrackedTaskDrain();
+        const { client, close } = await startServer({ taskDrain });
+        try {
+            const created = await client.createSession({ cwd: "/tmp/rig-closing-test" });
+
+            await expect(client.shutdown()).resolves.toEqual({ shuttingDown: true });
+            await expect(
+                client.submitMessage(created.session.id, { text: "Too late" }),
+            ).rejects.toThrow("local daemon is shutting down");
+            await expect(client.getSession(created.session.id)).resolves.toMatchObject({
+                session: { id: created.session.id },
+            });
+        } finally {
+            await close();
+        }
+    });
+
     it("rewinds a session to a selected user message", async () => {
         const store = new PersistentSessionStore({ databasePath: ":memory:" });
         const state = pausedGoalState();
@@ -751,6 +770,7 @@ async function startServer(
         ) => GlobalEventQueue | undefined | Promise<GlobalEventQueue | undefined>;
         onShutdown?: () => void;
         store?: SessionStore;
+        taskDrain?: TrackedTaskDrain;
     } = {},
 ): Promise<{
     client: ProtocolHttpClient;
@@ -776,6 +796,7 @@ async function startServer(
                   onDurableGlobalEventQueueChange: options.onDurableGlobalEventQueueChange,
               }),
         store,
+        ...(options.taskDrain === undefined ? {} : { taskDrain: options.taskDrain }),
         token: "secret",
     });
     await new Promise<void>((resolve, reject) => {

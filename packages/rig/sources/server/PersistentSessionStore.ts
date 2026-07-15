@@ -36,6 +36,7 @@ import type { SessionStore } from "./SessionStore.js";
 import type { McpToolProvider } from "../mcp/index.js";
 import type { DockerExecutionConfig } from "../execution/index.js";
 import { summarizeDockerExecution } from "../execution/index.js";
+import type { TaskDrain } from "./TrackedTaskDrain.js";
 
 export interface PersistentSessionStoreOptions {
     databasePath: string;
@@ -43,6 +44,7 @@ export interface PersistentSessionStoreOptions {
     mcpToolProvider?: McpToolProvider;
     modelCatalog?: ModelCatalog;
     now?: () => number;
+    taskDrain?: TaskDrain;
 }
 
 export class PersistentSessionStore implements SessionStore, InMemorySessionPersistence {
@@ -54,11 +56,13 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
     #now: () => number;
     #persistentGlobalEventQueue: PersistentGlobalEventQueue | undefined;
     #sessions = new Map<string, InMemorySession>();
+    #taskDrain: TaskDrain | undefined;
 
     constructor(options: PersistentSessionStoreOptions) {
         this.#modelCatalog = options.modelCatalog ?? createModelCatalog();
         this.#mcpToolProvider = options.mcpToolProvider;
         this.#now = options.now ?? Date.now;
+        this.#taskDrain = options.taskDrain;
         if (options.databasePath !== ":memory:") {
             mkdirSync(dirname(options.databasePath), { mode: 0o700, recursive: true });
         }
@@ -77,6 +81,7 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
                 get: (sessionId) => this.get(sessionId),
                 listByRoot: (rootSessionId) => this.#listSubagentSessionsByRoot(rootSessionId),
             },
+            ...(this.#taskDrain === undefined ? {} : { taskDrain: this.#taskDrain }),
         });
         if (options.databasePath !== ":memory:") {
             chmodSync(options.databasePath, 0o600);
@@ -130,10 +135,12 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
     }
 
     create(request: CreateSessionRequest): InMemorySession {
+        this.#assertAcceptingMutations();
         return this.#createSession(request);
     }
 
     fork(sessionId: string): InMemorySession | undefined {
+        this.#assertAcceptingMutations();
         const source = this.get(sessionId);
         if (source === undefined) return undefined;
         const state = source.createForkState();
@@ -149,6 +156,7 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
             persistence: this,
             request: source.requestForSubagent(),
             restore: state,
+            ...(this.#taskDrain === undefined ? {} : { taskDrain: this.#taskDrain }),
         });
         this.#sessions.set(session.id, session);
         this.#transaction(() => {
@@ -165,6 +173,7 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
         metadata?: SessionAgentMetadata,
         contextMessages?: readonly Message[],
     ): InMemorySession {
+        this.#assertAcceptingMutations();
         const session = new InMemorySession({
             agentManager: this.#agentManager,
             createEventId: this.#createEventId,
@@ -178,6 +187,7 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
             onAppendEvent: (event) => this.#appendEvent(event),
             persistence: this,
             request,
+            ...(this.#taskDrain === undefined ? {} : { taskDrain: this.#taskDrain }),
         });
         this.#sessions.set(session.id, session);
         session.emitCreatedEvent();
@@ -422,6 +432,33 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
         }
     }
 
+    async prepareForShutdown(reason: SessionInterruption["reason"]): Promise<void> {
+        this.#taskDrain?.beginClose();
+        const closingSessions = new Set(this.#sessions.values());
+        const cleanup = [...closingSessions].map((session) => session.beginShutdown());
+        let repairError: unknown;
+        try {
+            this.repairInterruptedSessions(reason);
+        } catch (error) {
+            repairError = error;
+        }
+        for (const session of this.#sessions.values()) {
+            if (closingSessions.has(session)) continue;
+            cleanup.push(session.beginShutdown());
+        }
+        const cleanupResults = await Promise.allSettled(cleanup);
+        await this.#taskDrain?.drain();
+        const cleanupErrors = cleanupResults
+            .filter((result): result is PromiseRejectedResult => result.status === "rejected")
+            .map((result) => result.reason);
+        if (repairError !== undefined || cleanupErrors.length > 0) {
+            throw new AggregateError(
+                [...(repairError === undefined ? [] : [repairError]), ...cleanupErrors],
+                "The local daemon could not finish session cleanup.",
+            );
+        }
+    }
+
     saveSession(state: PersistedSessionState): void {
         this.#database
             .prepare(
@@ -537,6 +574,12 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
                 this.#now(),
                 this.#now(),
             );
+    }
+
+    #assertAcceptingMutations(): void {
+        if (this.#taskDrain?.closing === true) {
+            throw new Error("The local daemon is shutting down.");
+        }
     }
 
     upsertMessage(sessionId: string, message: PersistedSessionMessage): void {
@@ -890,6 +933,7 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
             persistence: this,
             request,
             restore,
+            ...(this.#taskDrain === undefined ? {} : { taskDrain: this.#taskDrain }),
         });
     }
 

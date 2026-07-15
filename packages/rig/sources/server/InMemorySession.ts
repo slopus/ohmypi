@@ -85,6 +85,7 @@ import { SessionEventLog } from "./SessionEventLog.js";
 import type { AgentSessionManager } from "./AgentSessionManager.js";
 import type { DockerExecutionConfig } from "../execution/index.js";
 import { summarizeDockerExecution } from "../execution/index.js";
+import type { TaskDrain } from "./TrackedTaskDrain.js";
 
 export interface PersistedSessionMessage {
     isPartial: boolean;
@@ -167,6 +168,7 @@ export interface InMemorySessionOptions {
     persistence?: InMemorySessionPersistence;
     request: CreateSessionRequest;
     restore?: PersistedSessionState;
+    taskDrain?: TaskDrain;
 }
 
 interface ActiveRun {
@@ -227,7 +229,9 @@ export class InMemorySession {
     #agentId: string;
     #createEventId: () => EventId;
     #createRuntime: (options: CreateCodingAssistantAgentOptions) => CodingAssistantRuntime;
+    #compactionController: AbortController | undefined;
     #contextMessages: Message[] | undefined;
+    #closing = false;
     #draining: Promise<void> | undefined;
     #effort: string | undefined;
     #serviceTier: ServiceTier | undefined;
@@ -260,7 +264,9 @@ export class InMemorySession {
     #status: SessionStatus = "idle";
     #suspendedRunIds = new Set<string>();
     #suspendOnAbort = false;
+    #shutdownCleanup: Promise<void> | undefined;
     #tasks: SessionTask[] = [];
+    #taskDrain: TaskDrain | undefined;
     #title: string | undefined;
     #titleError: string | undefined;
     #titleStatus: SessionTitleStatus = "idle";
@@ -282,6 +288,7 @@ export class InMemorySession {
                 ? {}
                 : { docker: { ...options.request.docker } }),
         };
+        this.#taskDrain = options.taskDrain;
         this.#workflowsEnabled =
             options.restore?.workflowsEnabled ?? options.request.workflowsEnabled ?? true;
         this.id = options.restore?.id ?? createId();
@@ -1018,6 +1025,7 @@ export class InMemorySession {
     }
 
     launchWorkflow(request: LaunchWorkflowRequest): WorkflowRun {
+        this.#assertAcceptingWork();
         if (!this.#workflowsEnabled) {
             throw new Error("Workflows are disabled for this session.");
         }
@@ -1069,102 +1077,106 @@ export class InMemorySession {
             status: state.status,
             taskId: state.taskId,
         });
-        void request
-            .execute({
-                onAgentCall: () => {
-                    state.agentCount += 1;
-                    this.#recordWorkflowUpdate({ agentCount: state.agentCount, runId });
-                },
-                onAgentResult: (index, result) => {
-                    internal.agentCalls[index] = result;
-                    this.#saveSession();
-                },
-                onCheckpoint: (checkpoint) => {
-                    internal.checkpoint = checkpoint;
-                    this.#saveSession();
-                },
-                onLog: (message) => {
-                    const trimmed = message.trim();
-                    if (trimmed.length === 0) return;
-                    const logs = state.logs as string[];
-                    logs.push(
-                        trimmed.length <= MAX_WORKFLOW_LOG_CHARS
-                            ? trimmed
-                            : `${trimmed.slice(0, MAX_WORKFLOW_LOG_CHARS)}…`,
-                    );
-                    if (logs.length > 200) logs.shift();
-                    const log = logs.at(-1);
-                    const phase = /^Phase:\s*(.+)$/u.exec(log ?? "")?.[1]?.trim();
-                    if (phase !== undefined && phase.length > 0) state.phase = phase;
-                    if (log !== undefined) {
-                        this.#recordWorkflowUpdate({
-                            log,
-                            ...(state.phase === undefined ? {} : { phase: state.phase }),
-                            runId,
-                        });
-                    }
-                },
-                resumeAgentCalls: resumed?.agentCalls ?? [],
-                ...(resumeCheckpoint === undefined ? {} : { resumeCheckpoint }),
-                runId,
-                signal: controller.signal,
-            })
-            .then((result) => {
-                if (this.#workflowRuns.get(runId) !== internal) return;
-                internal.agentCalls = [...result.agentCalls];
-                state.output = result.output;
-                state.finishedAt = this.#now();
-                state.status = "completed";
-                this.#recordWorkflowUpdate({
-                    finishedAt: state.finishedAt,
-                    output: state.output,
+        const execute = () =>
+            request
+                .execute({
+                    onAgentCall: () => {
+                        state.agentCount += 1;
+                        this.#recordWorkflowUpdate({ agentCount: state.agentCount, runId });
+                    },
+                    onAgentResult: (index, result) => {
+                        internal.agentCalls[index] = result;
+                        this.#saveSession();
+                    },
+                    onCheckpoint: (checkpoint) => {
+                        internal.checkpoint = checkpoint;
+                        this.#saveSession();
+                    },
+                    onLog: (message) => {
+                        const trimmed = message.trim();
+                        if (trimmed.length === 0) return;
+                        const logs = state.logs as string[];
+                        logs.push(
+                            trimmed.length <= MAX_WORKFLOW_LOG_CHARS
+                                ? trimmed
+                                : `${trimmed.slice(0, MAX_WORKFLOW_LOG_CHARS)}…`,
+                        );
+                        if (logs.length > 200) logs.shift();
+                        const log = logs.at(-1);
+                        const phase = /^Phase:\s*(.+)$/u.exec(log ?? "")?.[1]?.trim();
+                        if (phase !== undefined && phase.length > 0) state.phase = phase;
+                        if (log !== undefined) {
+                            this.#recordWorkflowUpdate({
+                                log,
+                                ...(state.phase === undefined ? {} : { phase: state.phase }),
+                                runId,
+                            });
+                        }
+                    },
+                    resumeAgentCalls: resumed?.agentCalls ?? [],
+                    ...(resumeCheckpoint === undefined ? {} : { resumeCheckpoint }),
                     runId,
-                    status: state.status,
-                });
-            })
-            .catch((error: unknown) => {
-                if (this.#workflowRuns.get(runId) !== internal) return;
-                if (state.status !== "stopped") {
-                    state.error = error instanceof Error ? error.message : String(error);
+                    signal: controller.signal,
+                })
+                .then((result) => {
+                    if (this.#workflowRuns.get(runId) !== internal) return;
+                    internal.agentCalls = [...result.agentCalls];
+                    state.output = result.output;
                     state.finishedAt = this.#now();
-                    state.status = "error";
+                    state.status = "completed";
                     this.#recordWorkflowUpdate({
-                        error: state.error,
                         finishedAt: state.finishedAt,
+                        output: state.output,
                         runId,
                         status: state.status,
                     });
-                }
-            })
-            .finally(() => {
-                if (this.#workflowRuns.get(runId) !== internal) return;
-                internal.resolveCompletion(cloneWorkflowRun(state));
-                const statusText =
-                    state.status === "completed"
-                        ? "completed"
-                        : state.status === "stopped"
-                          ? "was stopped"
-                          : "failed";
-                const resultText =
-                    state.status === "completed"
-                        ? serializeWorkflowValue(state.output)
-                        : (state.error ?? "The workflow did not return a result.");
-                this.deliverNotification({
-                    displayText: `Workflow ${humanizeWorkflowName(state.name)} ${statusText}.`,
-                    text: [
-                        "<workflow-notification>",
-                        `Workflow: ${state.name}`,
-                        `Run ID: ${state.runId}`,
-                        `Status: ${state.status}`,
-                        `Agents: ${state.agentCount}`,
-                        `Result: ${resultText}`,
-                        ...(state.logs.length === 0
-                            ? []
-                            : ["Progress:", ...state.logs.map((log) => `- ${log}`)]),
-                        "</workflow-notification>",
-                    ].join("\n"),
+                })
+                .catch((error: unknown) => {
+                    if (this.#workflowRuns.get(runId) !== internal) return;
+                    if (state.status !== "stopped") {
+                        state.error = error instanceof Error ? error.message : String(error);
+                        state.finishedAt = this.#now();
+                        state.status = "error";
+                        this.#recordWorkflowUpdate({
+                            error: state.error,
+                            finishedAt: state.finishedAt,
+                            runId,
+                            status: state.status,
+                        });
+                    }
+                })
+                .finally(() => {
+                    if (this.#workflowRuns.get(runId) !== internal) return;
+                    internal.resolveCompletion(cloneWorkflowRun(state));
+                    if (this.#closing) return;
+                    const statusText =
+                        state.status === "completed"
+                            ? "completed"
+                            : state.status === "stopped"
+                              ? "was stopped"
+                              : "failed";
+                    const resultText =
+                        state.status === "completed"
+                            ? serializeWorkflowValue(state.output)
+                            : (state.error ?? "The workflow did not return a result.");
+                    this.deliverNotification({
+                        displayText: `Workflow ${humanizeWorkflowName(state.name)} ${statusText}.`,
+                        text: [
+                            "<workflow-notification>",
+                            `Workflow: ${state.name}`,
+                            `Run ID: ${state.runId}`,
+                            `Status: ${state.status}`,
+                            `Agents: ${state.agentCount}`,
+                            `Result: ${resultText}`,
+                            ...(state.logs.length === 0
+                                ? []
+                                : ["Progress:", ...state.logs.map((log) => `- ${log}`)]),
+                            "</workflow-notification>",
+                        ].join("\n"),
+                    });
                 });
-            });
+        const execution = this.#taskDrain?.run(execute) ?? execute();
+        void execution.catch(() => undefined);
         return cloneWorkflowRun(state);
     }
 
@@ -1190,11 +1202,27 @@ export class InMemorySession {
         this.#append("session_created", { session: this.snapshot() });
     }
 
+    beginShutdown(): Promise<void> {
+        if (this.#shutdownCleanup !== undefined) return this.#shutdownCleanup;
+        this.#closing = true;
+        for (const workflow of this.#workflowRuns.values()) {
+            if (workflow.state.status === "running") this.stopWorkflow(workflow.state.runId);
+        }
+        this.#activeRun?.controller.abort();
+        this.#compactionController?.abort();
+        this.#shutdownCleanup = this.#killRuntimeProcesses(5_000);
+        return this.#shutdownCleanup;
+    }
+
+    isClosing(): boolean {
+        return this.#closing;
+    }
+
     markInterrupted(interruption: SessionInterruption): void {
         this.#interruption = interruption;
         this.#status = "error";
         this.#activeRun?.controller.abort();
-        void this.#killRuntimeProcesses();
+        if (!this.#closing) void this.#killRuntimeProcesses();
         this.#activeRun = undefined;
         this.#restoredActiveRunId = undefined;
         this.#activePartial = undefined;
@@ -1355,20 +1383,28 @@ export class InMemorySession {
     }
 
     async compact(signal?: AbortSignal): Promise<AgentCompactionResult> {
+        this.#assertAcceptingWork();
         if (this.#activeRun !== undefined || this.#queue.length > 0) {
             throw new Error("Wait for the active response to finish before compacting.");
         }
 
+        const controller = new AbortController();
+        this.#compactionController = controller;
+        const compactSignal =
+            signal === undefined ? controller.signal : AbortSignal.any([signal, controller.signal]);
         const previousStatus = this.#status;
         this.#status = "running";
         this.#saveSession();
         try {
-            const result = await this.#ensureRuntime().agent.compact(signal);
+            const result = await this.#ensureRuntime().agent.compact(compactSignal);
             this.#syncContextMessages();
             return result;
         } finally {
-            this.#status = previousStatus;
-            this.#saveSession();
+            if (this.#compactionController === controller) this.#compactionController = undefined;
+            if (!this.#closing) {
+                this.#status = previousStatus;
+                this.#saveSession();
+            }
         }
     }
 
@@ -1514,6 +1550,7 @@ export class InMemorySession {
         request: SubmitMessageRequest,
         options: { source?: "notification" } = {},
     ): SubmitMessageResponse {
+        this.#assertAcceptingWork();
         const runId = createId();
         const displayText = request.displayText ?? request.text;
         const blocks: readonly ContentBlock[] = request.content ?? [
@@ -1566,6 +1603,7 @@ export class InMemorySession {
     }
 
     steer(request: SubmitMessageRequest): SteerMessageResponse {
+        this.#assertAcceptingWork();
         const activeRun = this.#activeRun;
         if (activeRun === undefined) {
             throw new Error("There is no active run to steer.");
@@ -1616,6 +1654,7 @@ export class InMemorySession {
     deliverNotification(
         request: SubmitMessageRequest,
     ): SubmitMessageResponse | SteerMessageResponse {
+        this.#assertAcceptingWork();
         if (this.#activeRun === undefined) {
             return this.submit(request, { source: "notification" });
         }
@@ -2095,10 +2134,10 @@ export class InMemorySession {
             : nativeProcesses + (runtime?.context.bash.activeSessionCount?.() ?? 0);
     }
 
-    async #killRuntimeProcesses(): Promise<void> {
+    async #killRuntimeProcesses(forceAfterMs = 500): Promise<void> {
         const runtime = this.#runtime;
         if (runtime === undefined) return;
-        await runtime.processManager.killAll({ forceAfterMs: 500 });
+        await runtime.processManager.killAll({ forceAfterMs });
         if (this.#request.docker !== undefined) await runtime.context.bash.killAllSessions?.();
     }
 
@@ -2193,7 +2232,9 @@ export class InMemorySession {
         this.#titleStatus = "generating";
         this.#titleError = undefined;
         this.#append("session_title_changed", { status: this.#titleStatus });
-        void this.#generateTitle(firstMessage);
+        const generate = () => this.#generateTitle(firstMessage);
+        const generation = this.#taskDrain?.run(generate) ?? generate();
+        void generation.catch(() => undefined);
     }
 
     async #generateTitle(firstMessage: string): Promise<void> {
@@ -2311,13 +2352,24 @@ export class InMemorySession {
             return;
         }
 
-        this.#draining = this.#drainQueue().finally(() => {
+        const drain = () => this.#drainQueue();
+        const draining = this.#taskDrain?.run(drain) ?? drain();
+        this.#draining = draining.finally(() => {
             this.#draining = undefined;
         });
+        void this.#draining.catch(() => undefined);
+    }
+
+    #assertAcceptingWork(): void {
+        if (this.#closing || this.#taskDrain?.closing === true) {
+            throw new Error("The local daemon is shutting down.");
+        }
     }
 
     #continueGoalIfIdle(): void {
         if (
+            this.#closing ||
+            this.#taskDrain?.closing === true ||
             this.isSubagent() ||
             this.#goal?.status !== "active" ||
             this.#restoredActiveRunId !== undefined ||

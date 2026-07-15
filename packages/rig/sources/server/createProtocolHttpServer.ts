@@ -53,6 +53,7 @@ import { isPermissionMode } from "../permissions/index.js";
 import { isGoalStatus } from "../goals/index.js";
 import { resolveDockerExecutionConfig, validateDockerExecutionConfig } from "../execution/index.js";
 import type { DockerExecutionConfig } from "../execution/index.js";
+import type { TaskDrain } from "./TrackedTaskDrain.js";
 
 export interface ProtocolHttpServerOptions {
     defaultDocker?: DockerExecutionConfig;
@@ -66,6 +67,7 @@ export interface ProtocolHttpServerOptions {
     ) => GlobalEventQueue | undefined | Promise<GlobalEventQueue | undefined>;
     onShutdown?: () => void;
     store?: SessionStore;
+    taskDrain?: TaskDrain;
     token: string;
 }
 
@@ -84,18 +86,28 @@ export function createProtocolHttpServer(options: ProtocolHttpServerOptions): Se
     };
 
     const server = createServer((request, response) => {
-        void handleRequest(
-            request,
-            response,
-            store,
-            state,
-            fileSearchService,
-            runtimeConfig,
-            options.token,
-            options.onShutdown,
-            options.defaultDocker,
-        ).catch((error: unknown) => {
-            sendJson(response, 500, {
+        const mutating = isMutatingProtocolRequest(request);
+        if (mutating && options.taskDrain?.closing === true) {
+            sendJson(response, 503, { error: "The local daemon is shutting down." });
+            return;
+        }
+        const handle = () =>
+            handleRequest(
+                request,
+                response,
+                store,
+                state,
+                fileSearchService,
+                runtimeConfig,
+                options.token,
+                options.onShutdown,
+                options.defaultDocker,
+                options.taskDrain,
+            );
+        const handling =
+            mutating && options.taskDrain !== undefined ? options.taskDrain.run(handle) : handle();
+        void handling.catch((error: unknown) => {
+            sendJson(response, mutating && options.taskDrain?.closing === true ? 503 : 500, {
                 error: error instanceof Error ? error.message : String(error),
             });
         });
@@ -130,6 +142,7 @@ async function handleRequest(
     token: string,
     onShutdown: (() => void) | undefined,
     defaultDocker: DockerExecutionConfig | undefined,
+    taskDrain: TaskDrain | undefined,
 ): Promise<void> {
     if (!isAuthorized(request, token)) {
         sendJson(response, 401, { error: "Unauthorized" });
@@ -153,6 +166,7 @@ async function handleRequest(
     }
 
     if (request.method === "POST" && route.name === "shutdown") {
+        taskDrain?.beginClose();
         sendJson<ShutdownServerResponse>(response, 202, { shuttingDown: true });
         setImmediate(() => onShutdown?.());
         return;
@@ -776,6 +790,17 @@ function isSessionMutation(routeName: string, method: string | undefined): boole
         (method === "PATCH" &&
             ["effort", "model", "permissions", "service-tier"].includes(routeName))
     );
+}
+
+function isMutatingProtocolRequest(request: IncomingMessage): boolean {
+    const url = new URL(request.url ?? "/", "http://unix");
+    const route = matchRoute(url.pathname);
+    if (route === undefined) return false;
+    if (route.name === "config") return request.method === "PATCH";
+    if (route.name === "global-events-trim") return request.method === "POST";
+    if (route.name === "sessions") return request.method === "POST";
+    if (route.sessionId === undefined) return false;
+    return isSessionMutation(route.name, request.method);
 }
 
 async function readJson<T>(request: IncomingMessage): Promise<T> {
