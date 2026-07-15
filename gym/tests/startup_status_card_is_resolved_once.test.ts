@@ -23,6 +23,7 @@ describe("resolved startup status card", () => {
         expect(fresh.text).not.toContain("system Ready.");
         await screenshot(gym, "fresh-wide.png");
 
+        await recordTranscript(gym);
         gym.terminal.press("ctrlD");
         const resumed = await gym.terminal.waitUntil(
             (snapshot) => {
@@ -35,7 +36,7 @@ describe("resolved startup status card", () => {
         const resumedText = resumed.text.slice(resumed.text.indexOf("WIDE_RESUME_BOUNDARY"));
         expect(countOccurrences(resumedText, "Resumed")).toBe(1);
         expect(resumedText).not.toContain("New session");
-        expect(resumedText.indexOf("Resumed")).toBeLessThan(resumedText.indexOf("Ask Rig"));
+        expect(resumedText.indexOf("Resumed")).toBeLessThan(resumedText.indexOf("REPLAY_HISTORY"));
         assertWideCard({ ...resumed, text: resumedText }, "Resumed");
         await screenshot(gym, "resumed-wide.png");
     }, 120_000);
@@ -48,6 +49,7 @@ describe("resolved startup status card", () => {
         assertNarrowCard(fresh, "New session");
         await screenshot(gym, "fresh-19-columns.png");
 
+        await recordTranscript(gym);
         gym.terminal.press("ctrlD");
         const resumed = await gym.terminal.waitUntil(
             (snapshot) => {
@@ -60,6 +62,7 @@ describe("resolved startup status card", () => {
         const resumedText = resumed.text.slice(resumed.text.indexOf("R19"));
         assertNarrowCard({ ...resumed, text: resumedText }, "Resumed");
         expect(countOccurrences(resumedText, "Resumed")).toBe(1);
+        expect(resumedText.indexOf("Resumed")).toBeLessThan(resumedText.indexOf("REPLAY_HISTORY"));
         await screenshot(gym, "resumed-19-columns.png");
     }, 120_000);
 
@@ -91,10 +94,20 @@ async function createResumingGym(cols: number, rows: number, marker: string): Pr
             "-lc",
             `node /app/packages/rig/dist/main.js; echo ${marker}; exec node /app/packages/rig/dist/main.js resume --last`,
         ],
-        inference: [],
+        inference: [{ content: [{ text: "REPLAY_HISTORY", type: "text" }] }],
         rows,
         ...(cols === 19 ? { startupText: "Ask Rig" } : {}),
     });
+}
+
+async function recordTranscript(gym: Gym): Promise<void> {
+    gym.terminal.type("Keep one turn for resume replay.");
+    gym.terminal.press("enter");
+    await gym.terminal.waitUntil(
+        (snapshot) => snapshot.text.includes("REPLAY_HISTORY") && snapshot.text.includes("Ask Rig"),
+        "the transcript marker and idle composer",
+        30_000,
+    );
 }
 
 function assertWideCard(snapshot: TerminalSnapshot, sessionLabel: string): void {
