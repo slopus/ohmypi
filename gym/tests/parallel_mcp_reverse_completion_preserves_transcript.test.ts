@@ -1,0 +1,144 @@
+import { mkdir } from "node:fs/promises";
+import { resolve } from "node:path";
+
+import { afterEach, beforeAll, describe, expect, it } from "vitest";
+
+import { createGym, type Gym } from "../../packages/gym/sources/index.js";
+
+const artifacts = resolve(
+    import.meta.dirname,
+    "../../artifacts/integrated-critical-wave/review-fixes",
+);
+const running = new Set<Gym>();
+
+const MCP_SERVER = `
+import { writeFile } from "node:fs/promises";
+import { McpServer } from "/app/packages/rig/node_modules/@modelcontextprotocol/sdk/dist/esm/server/mcp.js";
+import { StdioServerTransport } from "/app/packages/rig/node_modules/@modelcontextprotocol/sdk/dist/esm/server/stdio.js";
+
+const server = new McpServer({ name: "parallel-service", version: "1.0.0" });
+server.registerTool(
+    "slow",
+    { annotations: { readOnlyHint: true }, description: "Return a delayed result." },
+    async () => {
+        await new Promise((resolve) => setTimeout(resolve, 4_000));
+        return { content: [{ type: "text", text: "SLOW_RESULT" }] };
+    },
+);
+server.registerTool(
+    "fast_empty",
+    { annotations: { readOnlyHint: true }, description: "Return an empty result immediately." },
+    async () => {
+        await writeFile("/workspace/fast.done", "done");
+        return { content: [] };
+    },
+);
+await server.connect(new StdioServerTransport());
+`;
+
+beforeAll(async () => {
+    await mkdir(artifacts, { recursive: true });
+});
+
+afterEach(async () => {
+    await Promise.all([...running].map((gym) => gym.dispose()));
+    running.clear();
+});
+
+describe("parallel MCP reverse completion", () => {
+    it("keeps both calls live until ordered durable results arrive", async () => {
+        const gym = await createGym({
+            cols: 110,
+            homeFiles: {
+                ".config/rig/config.toml": `[mcp_servers."Parallel Service"]\ncommand = "node"\nargs = ["parallel-mcp.mjs"]\nstartup_timeout_sec = 10\ntool_timeout_sec = 10\n`,
+                "parallel-mcp.mjs": MCP_SERVER,
+            },
+            inference(request, callIndex) {
+                if (callIndex === 0) {
+                    return {
+                        content: [
+                            {
+                                arguments: {},
+                                id: "slow-call",
+                                name: "mcp__Parallel_Service__slow",
+                                type: "toolCall",
+                            },
+                            {
+                                arguments: {},
+                                id: "fast-call",
+                                name: "mcp__Parallel_Service__fast_empty",
+                                type: "toolCall",
+                            },
+                        ],
+                    };
+                }
+
+                expect(callIndex).toBe(1);
+                const results = request.context.messages.filter(
+                    (message) => message.role === "toolResult",
+                );
+                expect(results.map((message) => message.toolCallId)).toEqual([
+                    "slow-call",
+                    "fast-call",
+                ]);
+                return { content: [{ text: "PARALLEL_MCP_COMPLETE", type: "text" }] };
+            },
+            rows: 30,
+        });
+        running.add(gym);
+        const baseline = (await gym.terminal.snapshot()).scroll;
+
+        submit(gym, "Run both Parallel Service tools together.");
+        await gym.terminal.waitForText("Trust MCP server", 30_000);
+        gym.terminal.press("enter");
+        await waitForFile(gym, "fast.done", 30_000);
+
+        const staged = await gym.terminal.snapshot();
+        expect(staged.text).toContain("◦ Calling Parallel_Service.slow({})");
+        expect(staged.text).toContain("◦ Calling Parallel_Service.fast_empty({})");
+        expect(staged.text).not.toContain("• Called Parallel_Service.fast_empty({})");
+        assertHealthyTerminal(staged, baseline);
+
+        const completed = await gym.terminal.waitForText("PARALLEL_MCP_COMPLETE", 30_000);
+        const slowIndex = completed.rows.findIndex((row) =>
+            row.includes("Called Parallel_Service.slow"),
+        );
+        const fastIndex = completed.rows.findIndex((row) =>
+            row.includes("Called Parallel_Service.fast_empty"),
+        );
+        expect(slowIndex).toBeGreaterThanOrEqual(0);
+        expect(fastIndex).toBeGreaterThan(slowIndex);
+        expect(completed.rows.filter((row) => row.includes("└ (empty result)"))).toHaveLength(1);
+        expect(completed.text).not.toContain("�");
+        assertHealthyTerminal(completed, baseline);
+        await gym.terminal.screenshot(`${artifacts}/parallel-mcp-reverse-completion.png`);
+    }, 120_000);
+});
+
+function submit(gym: Gym, text: string): void {
+    gym.terminal.type(text);
+    gym.terminal.press("enter");
+}
+
+async function waitForFile(gym: Gym, path: string, timeoutMs: number): Promise<void> {
+    const deadline = Date.now() + timeoutMs;
+    for (;;) {
+        try {
+            await gym.readFile(path);
+            return;
+        } catch (error) {
+            if (Date.now() >= deadline) throw error;
+            await new Promise((resolve) => setTimeout(resolve, 50));
+        }
+    }
+}
+
+function assertHealthyTerminal(
+    snapshot: Awaited<ReturnType<Gym["terminal"]["snapshot"]>>,
+    baseline: Awaited<ReturnType<Gym["terminal"]["snapshot"]>>["scroll"],
+): void {
+    expect(snapshot.rows).toHaveLength(30);
+    expect(snapshot.scroll.atBottom).toBe(true);
+    expect(snapshot.scroll.bottomDepartureCount).toBe(baseline.bottomDepartureCount);
+    expect(snapshot.scroll.topArrivalCount).toBe(baseline.topArrivalCount);
+}
