@@ -38,14 +38,16 @@ describe("blocked MCP servers render as stable child rows", () => {
         const wide = await gym.terminal.waitUntil(
             (snapshot) =>
                 snapshot.rows.includes("• MCP servers blocked") &&
-                snapshot.rows.includes(`  OpenAI Developer Docs — ${BLOCKED_REASON}`) &&
-                snapshot.rows.includes(`  PostHog — ${BLOCKED_REASON}`) &&
+                snapshot.rows.includes(`  └ OpenAI Developer Docs — ${BLOCKED_REASON}`) &&
+                snapshot.rows.includes(`    PostHog — ${BLOCKED_REASON}`) &&
                 snapshot.text.includes("BLOCKED_MCP_NOTICE_COMPLETE") &&
                 snapshot.scroll.atBottom,
             "two blocked MCP child rows in the wide transcript",
             30_000,
         );
         expect(wide.rows.filter((row) => row === "• MCP servers blocked")).toHaveLength(1);
+        expect(wide.rows.filter((row) => row.includes("└"))).toHaveLength(1);
+        expect(wide.text).not.toMatch(/[│├↳]/u);
         await writeProof(gym, "blocked-mcp-wide.png");
 
         gym.terminal.resize(52, 24);
@@ -72,14 +74,16 @@ describe("blocked MCP servers render as stable child rows", () => {
         const parent = narrow.rows.indexOf("• MCP servers blocked");
         expect(narrow.rows.slice(parent, parent + 6)).toEqual([
             "• MCP servers blocked",
-            "  OpenAI Developer Docs — MCP servers are available",
-            "  in Auto or Full access because they can act",
-            "  outside Rig's sandbox.",
-            "  PostHog — MCP servers are available in Auto or",
-            "  Full access because they can act outside Rig's",
+            "  └ OpenAI Developer Docs — MCP servers are",
+            "    available in Auto or Full access because they",
+            "    can act outside Rig's sandbox.",
+            "    PostHog — MCP servers are available in Auto or",
+            "    Full access because they can act outside Rig's",
         ]);
-        expect(narrow.rows[parent + 6]).toBe("  sandbox.");
+        expect(narrow.rows[parent + 6]).toBe("    sandbox.");
         expect(narrow.rows.filter((row) => row === "• MCP servers blocked")).toHaveLength(1);
+        expect(narrow.rows.filter((row) => row.includes("└"))).toHaveLength(1);
+        expect(narrow.text).not.toMatch(/[│├↳]/u);
         expect(narrow.rows.every((row) => row.length <= 52)).toBe(true);
         await writeProof(gym, "blocked-mcp-narrow.png");
     });

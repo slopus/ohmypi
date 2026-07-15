@@ -1,12 +1,13 @@
-import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
+import { truncateToWidth } from "@earendil-works/pi-tui";
 
 import type { NoticeChild } from "./NoticeChild.js";
+import { renderChildRows } from "./renderChildRows.js";
 import { sanitizeTerminalText } from "./sanitizeTerminalText.js";
 
 const BOLD = "\x1b[1m";
 const NOT_BOLD_OR_DIM = "\x1b[22m";
 const RESET = "\x1b[0m";
-const CHILD_INDENT = "  ";
+const DIM = "\x1b[2m";
 
 export function renderNoticeWithChildren(options: {
     readonly children: readonly NoticeChild[];
@@ -24,17 +25,16 @@ export function renderNoticeWithChildren(options: {
             true,
         ),
     ];
-    const indent = width > visibleWidth(CHILD_INDENT) ? CHILD_INDENT : "";
-    const childWidth = Math.max(1, width - visibleWidth(indent));
-
-    for (const child of options.children) {
-        const label = sanitizeTerminalText(child.label).replace(/\s+/gu, " ").trim();
-        const reason = sanitizeTerminalText(child.reason).replace(/\s+/gu, " ").trim();
-        const childText = `${label} — ${reason}`;
-        for (const row of wrapTextWithAnsi(childText, childWidth)) {
-            lines.push(truncateToWidth(`${indent}${row}`, width, "", true));
-        }
-    }
+    lines.push(
+        ...renderChildRows(
+            options.children.map((child) => {
+                const label = sanitizeTerminalText(child.label).replace(/\s+/gu, " ").trim();
+                const reason = sanitizeTerminalText(child.reason).replace(/\s+/gu, " ").trim();
+                return { text: `${label} — ${reason}` };
+            }),
+            { afterMarker: RESET, markerStyle: DIM, width },
+        ),
+    );
 
     return lines;
 }

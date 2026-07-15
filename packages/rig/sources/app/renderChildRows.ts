@@ -1,6 +1,7 @@
 import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
 
 export interface ChildRow {
+    lineLimit?: number;
     prefix?: string;
     suffix?: string;
     text: string;
@@ -21,13 +22,15 @@ export function renderChildRows(
     const firstPrefix = `  ${options.markerStyle ?? ""}└${options.afterMarker ?? ""} `;
     const continuationPrefix = " ".repeat(visibleWidth(firstPrefix));
     const contentWidth = Math.max(1, width - visibleWidth(firstPrefix));
-    const renderedRows = rows.flatMap((row) =>
-        row.text.split("\n").flatMap((logicalLine) => {
-            const lines =
-                row.wrap === false ? [logicalLine] : wrapTextWithAnsi(logicalLine, contentWidth);
-            return lines.map((line) => `${row.prefix ?? ""}${line}${row.suffix ?? ""}`);
-        }),
-    );
+    const renderedRows = rows.flatMap((row) => {
+        const lines = row.text
+            .split("\n")
+            .flatMap((logicalLine) =>
+                row.wrap === false ? [logicalLine] : wrapTextWithAnsi(logicalLine, contentWidth),
+            );
+        const visibleLines = row.lineLimit === undefined ? lines : lines.slice(0, row.lineLimit);
+        return visibleLines.map((line) => `${row.prefix ?? ""}${line}${row.suffix ?? ""}`);
+    });
 
     return renderedRows.map((row, index) =>
         truncateToWidth(`${index === 0 ? firstPrefix : continuationPrefix}${row}`, width, "", true),

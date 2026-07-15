@@ -1,4 +1,7 @@
-import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
+import { truncateToWidth } from "@earendil-works/pi-tui";
+
+import { renderChildRows } from "./renderChildRows.js";
+import { sanitizeTerminalText } from "./sanitizeTerminalText.js";
 
 const RESET = "\x1b[0m";
 const DIM = "\x1b[2m";
@@ -19,23 +22,16 @@ export function renderPendingSteeringMessages(
             true,
         ),
     ];
-    const prefix = " ↳ ";
-    const indent = " ".repeat(visibleWidth(prefix));
-    for (const message of messages) {
-        const wrapped = wrapTextWithAnsi(
-            message,
-            Math.max(1, safeWidth - visibleWidth(prefix)),
-        ).slice(0, PREVIEW_LINE_LIMIT);
-        lines.push(
-            ...wrapped.map((line, index) =>
-                truncateToWidth(
-                    `${DIM}${index === 0 ? prefix : indent}${line}${RESET}`,
-                    safeWidth,
-                    "",
-                    true,
-                ),
-            ),
-        );
-    }
+    lines.push(
+        ...renderChildRows(
+            messages.map((message) => ({
+                lineLimit: PREVIEW_LINE_LIMIT,
+                prefix: DIM,
+                suffix: RESET,
+                text: sanitizeTerminalText(message),
+            })),
+            { afterMarker: RESET, markerStyle: DIM, width: safeWidth },
+        ),
+    );
     return lines;
 }

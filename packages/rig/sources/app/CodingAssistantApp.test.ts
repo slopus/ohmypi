@@ -156,7 +156,7 @@ describe("CodingAssistantApp", () => {
         });
         const pending = stripAnsi(app.render(100).join("\n"));
         expect(pending).toContain("Messages to be submitted after next tool call");
-        expect(pending).toContain("↳ Pending direction");
+        expect(pending).toContain("└ Pending direction");
         expect(pending).not.toContain("› Pending direction");
 
         app.applySessionEvent({
@@ -1609,8 +1609,8 @@ describe("CodingAssistantApp", () => {
         const wideParent = wideRows.findIndex((row) => row === "• MCP servers blocked");
         expect(wideRows.slice(wideParent, wideParent + 3)).toEqual([
             "• MCP servers blocked",
-            "  OpenAI Developer Docs — MCP servers are available in Auto or Full access because they can act outside Rig's sandbox.",
-            "  PostHog — This MCP server is not trusted on this machine.",
+            "  └ OpenAI Developer Docs — MCP servers are available in Auto or Full access because they can act outside Rig's sandbox.",
+            "    PostHog — This MCP server is not trusted on this machine.",
         ]);
 
         const narrowRows = stripAnsi(app.render(52).join("\n"))
@@ -1619,13 +1619,14 @@ describe("CodingAssistantApp", () => {
         const narrowParent = narrowRows.findIndex((row) => row === "• MCP servers blocked");
         expect(narrowRows.slice(narrowParent, narrowParent + 6)).toEqual([
             "• MCP servers blocked",
-            "  OpenAI Developer Docs — MCP servers are available",
-            "  in Auto or Full access because they can act",
-            "  outside Rig's sandbox.",
-            "  PostHog — This MCP server is not trusted on this",
-            "  machine.",
+            "  └ OpenAI Developer Docs — MCP servers are",
+            "    available in Auto or Full access because they",
+            "    can act outside Rig's sandbox.",
+            "    PostHog — This MCP server is not trusted on this",
+            "    machine.",
         ]);
         expect(narrowRows.every((row) => visibleWidth(row) <= 52)).toBe(true);
+        expect(narrowRows.slice(narrowParent, narrowParent + 6).join("\n")).not.toMatch(/[│├↳]/u);
 
         app.applySessionEvent({
             createdAt: 2,

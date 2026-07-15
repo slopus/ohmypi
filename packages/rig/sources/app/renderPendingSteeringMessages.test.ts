@@ -13,9 +13,11 @@ describe("renderPendingSteeringMessages", () => {
 
         expect(plain).toEqual([
             " • Messages to be submitted after next tool call (esc to send now)",
-            " ↳ First steering message",
-            " ↳ Second steering message",
+            "  └ First steering message",
+            "    Second steering message",
         ]);
+        expect(plain.filter((line) => line.includes("└"))).toHaveLength(1);
+        expect(plain.join("\n")).not.toMatch(/[│├↳]/u);
     });
 
     it("keeps the heading and previews dedented within a narrow terminal", () => {
@@ -27,9 +29,11 @@ describe("renderPendingSteeringMessages", () => {
 
         expect(plain).toEqual([
             " • Messages to be submitted after next t",
-            " ↳ First steering message",
-            " ↳ Second steering message",
+            "  └ First steering message",
+            "    Second steering message",
         ]);
         expect(plain.every((line) => line.length <= 40)).toBe(true);
+        expect(plain.filter((line) => line.includes("└"))).toHaveLength(1);
+        expect(plain.join("\n")).not.toMatch(/[│├↳]/u);
     });
 });

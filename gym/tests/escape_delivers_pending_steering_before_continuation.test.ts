@@ -46,14 +46,16 @@ describe("Escape with pending steering", () => {
             (snapshot) =>
                 snapshot.text.includes("Messages to be submitted after next tool call") &&
                 snapshot.text.includes("(esc to send now)") &&
-                snapshot.text.includes(`↳ ${firstPending}`) &&
-                snapshot.text.includes(`↳ ${secondPending}`),
+                snapshot.text.includes(`└ ${firstPending}`) &&
+                snapshot.text.includes(secondPending),
             "both pending steering messages",
             30_000,
         );
         expect(rowContaining(pending.rows, "Messages to be submitted")).toMatch(/^ • /u);
-        expect(rowContaining(pending.rows, `↳ ${firstPending}`)).toMatch(/^ ↳ /u);
-        expect(rowContaining(pending.rows, `↳ ${secondPending}`)).toMatch(/^ ↳ /u);
+        expect(rowContaining(pending.rows, `└ ${firstPending}`)).toMatch(/^  └ /u);
+        expect(rowContaining(pending.rows, secondPending)).toMatch(/^    /u);
+        expect(pending.rows.filter((row) => row.includes("└"))).toHaveLength(1);
+        expect(pending.text).not.toMatch(/[│├↳]/u);
         await screenshot(gym, "revised-pending-before-escape.png");
 
         gym.terminal.resize(48, 36);
@@ -66,11 +68,13 @@ describe("Escape with pending steering", () => {
             30_000,
         );
         expect(rowContaining(narrow.rows, "Messages to be submitted")).toMatch(/^ • /u);
-        expect(rowContaining(narrow.rows, `↳ ${firstPending}`)).toMatch(/^ ↳ /u);
-        expect(rowContaining(narrow.rows, `↳ ${secondPending}`)).toMatch(/^ ↳ /u);
+        expect(rowContaining(narrow.rows, `└ ${firstPending}`)).toMatch(/^  └ /u);
+        expect(rowContaining(narrow.rows, secondPending)).toMatch(/^    /u);
+        expect(narrow.rows.filter((row) => row.includes("└"))).toHaveLength(1);
+        expect(narrow.text).not.toMatch(/[│├↳]/u);
 
         gym.terminal.resize(100, 36);
-        await gym.terminal.waitForText(`↳ ${secondPending}`, 30_000);
+        await gym.terminal.waitForText(secondPending, 30_000);
         gym.terminal.press("escape");
         const resumed = await gym.terminal.waitUntil(
             (snapshot) =>
@@ -115,7 +119,7 @@ function assertDeliveredExactlyOnce(
     expect(snapshot.text).not.toContain("(esc to send now)");
     for (const message of messages) {
         expect(snapshot.rows.filter((row) => row.trim() === `› ${message}`)).toHaveLength(1);
-        expect(snapshot.text).not.toContain(`↳ ${message}`);
+        expect(snapshot.text).not.toContain(`└ ${message}`);
     }
 }
 
