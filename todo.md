@@ -126,7 +126,7 @@ This file tracks known defects, verified coverage gaps, and concrete follow-up w
     - The helper currently detects only complete query sequences contained in one write.
     - Add split-sequence unit coverage.
 
-- [ ] Align screenshot renderer defaults with the emulated terminal colors.
+- [x] Align screenshot renderer defaults with the emulated terminal colors.
     - PNG defaults differ from the foreground/background advertised by the Ghostty helper.
     - Add direct renderer unit coverage; normal Gym runs currently exercise screenshots only when an environment variable is set.
 
