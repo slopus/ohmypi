@@ -2,7 +2,7 @@
 
 <p><img src="./logo.png" alt="Rig" width="400" /></p>
 
-<h3>The best of Pi, Codex, and Claude Code—unified in one coding-agent harness.</h3>
+<h3>The best of Pi, Codex, and Claude Code — unified in one coding-agent harness.</h3>
 
 <p>
   Use Rig interactively in your terminal, run it headlessly, or integrate through
