@@ -27,6 +27,8 @@ import {
     modelAnthropicSonnet461m,
 } from "./models.js";
 import { resolveClaudeCodeExecutablePath } from "./resolveClaudeCodeExecutablePath.js";
+import { createProviderQuotaCache } from "./createProviderQuotaCache.js";
+import { fetchClaudeProviderQuota } from "./fetchClaudeProviderQuota.js";
 import {
     defineProvider,
     type AssistantContent,
@@ -63,6 +65,18 @@ export function createClaudeSdkProvider(options: ClaudeSdkProviderOptions) {
     const now = options.now ?? Date.now;
     const pathToClaudeCodeExecutable =
         options.pathToClaudeCodeExecutable ?? resolveClaudeCodeExecutablePath();
+    const quota = createProviderQuotaCache(async () => {
+        const probe = query({
+            prompt: idleQuotaPrompt(),
+            options: {
+                cwd: options.agentContext.fs.cwd,
+                pathToClaudeCodeExecutable,
+                persistSession: false,
+                settingSources: [],
+            },
+        });
+        return fetchClaudeProviderQuota(probe);
+    });
 
     return defineProvider({
         id: CLAUDE_SDK_PROVIDER_ID,
@@ -76,6 +90,7 @@ export function createClaudeSdkProvider(options: ClaudeSdkProviderOptions) {
             modelAnthropicSonnet46,
             modelAnthropicHaiku45,
         ],
+        quota: () => quota.get(),
         stream(model, context, streamOptions) {
             const activeTools = toolsForProviderContext(tools, context);
             const sdkOptions = toClaudeSdkOptions({
@@ -216,6 +231,10 @@ export function createClaudeSdkProvider(options: ClaudeSdkProviderOptions) {
             return createInferenceStream(run);
         },
     });
+}
+
+async function* idleQuotaPrompt(): AsyncGenerator<SDKUserMessage> {
+    await new Promise<void>(() => {});
 }
 
 function toolsForProviderContext(

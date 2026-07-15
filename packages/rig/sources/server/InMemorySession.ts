@@ -46,6 +46,7 @@ import type {
     SteerMessageResponse,
 } from "../protocol/index.js";
 import type { Model, ServiceTier, StopReason } from "../providers/types.js";
+import type { ProviderQuota } from "../providers/providerQuota.js";
 import type { UserInputRequest, UserInputResponse } from "../user-input/index.js";
 import {
     humanizeWorkflowName,
@@ -87,6 +88,7 @@ import type { AgentSessionManager } from "./AgentSessionManager.js";
 import type { DockerExecutionConfig } from "../execution/index.js";
 import { summarizeDockerExecution } from "../execution/index.js";
 import type { TaskDrain } from "./TrackedTaskDrain.js";
+import { aggregateSessionUsage, type SessionUsageSummary } from "./sessionUsage/index.js";
 
 export interface PersistedSessionMessage {
     isPartial: boolean;
@@ -609,6 +611,16 @@ export class InMemorySession {
 
     agentMetadata(): SessionAgentMetadata {
         return { ...this.#agentMetadata };
+    }
+
+    usage(): SessionUsageSummary {
+        return aggregateSessionUsage(this.events.since(undefined) ?? [], {
+            type: this.#agentMetadata.type,
+        });
+    }
+
+    providerQuota(): Promise<ProviderQuota | undefined> {
+        return this.#ensureRuntime().provider.quota?.() ?? Promise.resolve(undefined);
     }
 
     hasModel(modelId: string, providerId?: string): boolean {

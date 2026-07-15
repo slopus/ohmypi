@@ -5,7 +5,8 @@ import type {
     ContentBlock,
 } from "../agent/index.js";
 import type { Message, UserMessage } from "../agent/types.js";
-import type { Model, ServiceTier, StopReason } from "../providers/types.js";
+import type { Model, ServiceTier, StopReason, Usage } from "../providers/types.js";
+import type { ProviderQuota } from "../providers/providerQuota.js";
 import type { PermissionMode } from "../permissions/index.js";
 import type { UserInputRequest, UserInputResponse } from "../user-input/index.js";
 import type { McpServerSummary } from "../mcp/index.js";
@@ -238,6 +239,32 @@ export interface ListSessionsResponse {
 
 export interface ListSubagentsResponse {
     subagents: readonly SubagentSummary[];
+}
+
+export interface SessionUsageGroup {
+    kind: "attributed" | "earlier";
+    modelId: string | null;
+    providerId: string | null;
+    usage: Usage;
+    label?: string;
+    modelLabel?: string;
+    requestedModelId?: string | null;
+}
+
+export interface SessionContextUsage {
+    approximate: boolean;
+    modelId: string;
+    providerId: string;
+    requestedModelId: string;
+    responseModel?: string;
+    totalTokens: number;
+}
+
+export interface GetSessionUsageResponse {
+    currentProviderId: string;
+    groups: readonly SessionUsageGroup[];
+    context?: SessionContextUsage;
+    quota?: ProviderQuota;
 }
 
 export interface StopWorkflowResponse {

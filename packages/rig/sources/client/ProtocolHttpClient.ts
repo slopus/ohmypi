@@ -15,6 +15,7 @@ import type {
     EventId,
     ForkSessionResponse,
     GetDaemonConfigResponse,
+    GetSessionUsageResponse,
     GlobalEventQueueEntry,
     HealthResponse,
     GoalSessionResponse,
@@ -213,6 +214,10 @@ export class ProtocolHttpClient {
 
     getSession(sessionId: string): Promise<{ session: ProtocolSession }> {
         return this.#requestJson("GET", `/sessions/${encodeURIComponent(sessionId)}`);
+    }
+
+    getSessionUsage(sessionId: string): Promise<GetSessionUsageResponse> {
+        return this.#requestJson("GET", `/sessions/${encodeURIComponent(sessionId)}/usage`);
     }
 
     getEvents(sessionId: string, after?: EventId): Promise<{ events: SessionEvent[] }> {

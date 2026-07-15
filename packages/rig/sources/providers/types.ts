@@ -6,6 +6,7 @@
  */
 
 import type { TSchema } from "@sinclair/typebox";
+import type { ProviderQuota } from "./providerQuota.js";
 
 export type StopReason = "stop" | "length" | "toolUse" | "error" | "aborted";
 export type ProviderErrorCode = "invalid_image_request";
@@ -155,6 +156,7 @@ export interface Provider {
     readonly id: string;
     readonly models: readonly Model[];
     readonly serviceTiers?: readonly ServiceTier[];
+    quota?(): Promise<ProviderQuota>;
     stream<TThinkingLevel extends string>(
         model: Model<TThinkingLevel>,
         context: Context,
@@ -192,6 +194,7 @@ export function defineProvider(provider: {
     id: string;
     models: readonly Model[];
     serviceTiers?: readonly ServiceTier[];
+    quota?: () => Promise<ProviderQuota>;
     stream<TThinkingLevel extends string>(
         model: Model<TThinkingLevel>,
         context: Context,

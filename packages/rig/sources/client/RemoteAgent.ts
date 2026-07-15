@@ -141,6 +141,10 @@ export class RemoteAgent implements CodingAssistantAgentBackend {
         return response.stoppedProcesses;
     }
 
+    getUsage() {
+        return this.#client.getSessionUsage(this.#session.id);
+    }
+
     async setGoal(objective: string): Promise<void> {
         const response = await this.#client.setGoal(this.#session.id, { objective });
         this.#replaceSession(response.session);

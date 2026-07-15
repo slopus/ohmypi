@@ -18,6 +18,69 @@ import type { GlobalEventQueue } from "./GlobalEventQueue.js";
 import { TrackedTaskDrain } from "./TrackedTaskDrain.js";
 
 describe("createProtocolHttpServer", () => {
+    it("serves durable attributed usage and current-provider quota", async () => {
+        const { client, close, store } = await startServer();
+        try {
+            const created = await client.createSession({ cwd: "/tmp/usage-project" });
+            const session = store.get(created.session.id);
+            if (session === undefined) throw new Error("Expected the created session.");
+            vi.spyOn(session, "providerQuota").mockResolvedValue({
+                capturedAt: 10,
+                resetsAt: 20,
+                source: "codex",
+                status: "available",
+                usedPercent: 32,
+                window: "five_hour",
+            });
+            session.events.append({
+                createdAt: 2,
+                data: {
+                    message: {
+                        blocks: [{ text: "done", type: "text" }],
+                        id: "assistant-1",
+                        providerId: "codex",
+                        requestedModelId: created.session.modelId,
+                        role: "agent",
+                        usage: {
+                            cacheRead: 3,
+                            cacheWrite: 4,
+                            cost: {
+                                cacheRead: 0,
+                                cacheWrite: 0,
+                                input: 0,
+                                output: 0,
+                                total: 0,
+                            },
+                            input: 10,
+                            output: 2,
+                            totalTokens: 19,
+                        },
+                    },
+                    runId: "run-1",
+                },
+                id: createEventIdFactory()(),
+                sessionId: created.session.id,
+                type: "agent_message",
+            });
+
+            await expect(client.getSessionUsage(created.session.id)).resolves.toMatchObject({
+                context: { approximate: false, totalTokens: 19 },
+                currentProviderId: "codex",
+                groups: [
+                    {
+                        kind: "attributed",
+                        modelId: created.session.modelId,
+                        providerId: "codex",
+                        usage: { input: 10, output: 2, totalTokens: 19 },
+                    },
+                ],
+                quota: { status: "available", usedPercent: 32 },
+            });
+        } finally {
+            await close();
+        }
+    });
+
     it("records raw user activity without appending a session event", async () => {
         const { client, close, store } = await startServer();
         try {

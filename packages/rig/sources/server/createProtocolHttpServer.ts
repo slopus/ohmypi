@@ -15,6 +15,7 @@ import type {
     DaemonIdentity,
     ForkSessionResponse,
     GetDaemonConfigResponse,
+    GetSessionUsageResponse,
     ListGlobalEventsResponse,
     HealthResponse,
     GoalSessionResponse,
@@ -334,6 +335,19 @@ async function handleRequest(
 
     if (request.method === "GET" && route.name === "session") {
         sendJson(response, 200, { session: session.snapshot() });
+        return;
+    }
+
+    if (request.method === "GET" && route.name === "usage") {
+        const usage = session.usage();
+        const currentProviderId = session.snapshot().providerId;
+        const quota = await session.providerQuota();
+        sendJson<GetSessionUsageResponse>(response, 200, {
+            currentProviderId,
+            groups: usage.groups,
+            ...(usage.currentContext === undefined ? {} : { context: usage.currentContext }),
+            ...(quota === undefined ? {} : { quota }),
+        });
         return;
     }
 
@@ -714,7 +728,8 @@ function matchRoute(pathname: string):
               | "session"
               | "stream"
               | "steer"
-              | "subagents";
+              | "subagents"
+              | "usage";
           sessionId: string;
       }
     | { name: "user-input"; requestId: string; sessionId: string }
@@ -777,6 +792,7 @@ function matchRoute(pathname: string):
     if (parts[2] === "stream") return { name: "stream", sessionId };
     if (parts[2] === "steer") return { name: "steer", sessionId };
     if (parts[2] === "subagents") return { name: "subagents", sessionId };
+    if (parts[2] === "usage") return { name: "usage", sessionId };
     return undefined;
 }
 

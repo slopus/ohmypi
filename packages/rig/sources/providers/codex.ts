@@ -27,6 +27,8 @@ import {
 import { normalizeCodexThinkingLevel } from "./normalizeCodexThinkingLevel.js";
 import { toPiContext, wrapPiStream } from "./pi-bridge.js";
 import { defineProvider, type Model, type Provider, type StreamOptions } from "./types.js";
+import { createProviderQuotaCache } from "./createProviderQuotaCache.js";
+import { fetchCodexProviderQuota } from "./fetchCodexProviderQuota.js";
 
 const CODEX_PROVIDER_ID = "openai-codex";
 
@@ -68,11 +70,29 @@ export function createCodexProvider(options: CodexProviderOptions = {}): Provide
         }
     }
     const resolveApiKey = buildApiKeyResolver(options);
+    const quota = createProviderQuotaCache(() =>
+        options.apiKey !== undefined ||
+        options.resolveApiKey !== undefined ||
+        options.useLocalCodexAuth === false
+            ? Promise.resolve({
+                  capturedAt: Date.now(),
+                  source: "codex" as const,
+                  status: "unavailable" as const,
+                  window: "five_hour" as const,
+              })
+            : fetchCodexProviderQuota({
+                  ...(options.baseUrl === undefined ? {} : { baseUrl: options.baseUrl }),
+                  ...(options.codexAuthPath === undefined
+                      ? {}
+                      : { authPath: options.codexAuthPath }),
+              }),
+    );
 
     return defineProvider({
         id: "codex",
         models: codexModels,
         serviceTiers: ["fast"],
+        quota: () => quota.get(),
         stream(model, context, streamOptions) {
             const piModel = piModelById.get(toPiCodexModelId(model.id));
             if (!piModel) {
