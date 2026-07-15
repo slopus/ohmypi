@@ -176,6 +176,11 @@ This file tracks known defects, verified coverage gaps, and concrete follow-up w
     - Preserve diff markers, indentation, syntax coloring, and readable continuation alignment at narrow widths.
     - Add exact narrow-width rendering coverage and a real Gym screenshot before implementation is considered complete.
 
+- [ ] Tighten collapsed output for long commands.
+    - Remove two additional retained middle lines around the `… +N lines` collapse marker so long command output stays easier to scan.
+    - Preserve the command header, useful leading/trailing context, exact omitted-line count, and single-`└` continuation grammar.
+    - Add wide/narrow exact-row coverage and a real Gym screenshot; do not change the underlying command result or protocol payload.
+
 - [x] React to system light/dark appearance changes during an active session.
     - Terminal palette notifications now re-query the effective background, re-resolve the configured theme, and force a settled full repaint including the composer.
     - Real-PTY Gym coverage verifies both light-to-dark and dark-to-light changes during an active session, including synchronized-output settlement and stale-surface removal.
