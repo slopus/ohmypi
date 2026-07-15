@@ -1596,6 +1596,7 @@ export class CodingAssistantApp implements Component, Focusable {
                 .then((summary) => {
                     if (version !== this.#usageRequestVersion) return;
                     this.#appendEntry({
+                        childText: true,
                         role: "event",
                         title: "Usage",
                         text: formatSessionUsageSummary(

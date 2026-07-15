@@ -5,6 +5,7 @@ import type {
 } from "../protocol/index.js";
 import type { ProviderQuotaWindow } from "../providers/providerQuota.js";
 import type { CodingAssistantModelChoice } from "./CodingAssistantAgentBackend.js";
+import { formatCompactTokens } from "./formatCompactTokens.js";
 
 export function formatSessionUsageSummary(
     summary: GetSessionUsageResponse,
@@ -19,12 +20,18 @@ export function formatSessionUsageSummary(
         summary.currentProviderId,
     ]);
 
-    for (const providerId of providerIds) {
+    let hasObservedRemaining = false;
+    for (const [providerIndex, providerId] of providerIds.entries()) {
+        if (providerIndex > 0) lines.push("");
         lines.push(providerName(providerId));
         for (const group of summary.groups.filter(
             (candidate) => (candidate.providerId ?? "earlier") === providerId,
         )) {
-            lines.push(formatModelUsage(group, modelChoices));
+            lines.push(`  ${modelName(group, modelChoices)}`);
+            lines.push(`    ${formatModelUsage(group)}`);
+            if (isCurrentContextGroup(group, summary)) {
+                lines.push(`    ${formatContext(summary, modelChoices)}`);
+            }
         }
         if (providerId !== "earlier") {
             const quota = summary.quotas.find((entry) => entry.providerId === providerId)?.quota;
@@ -32,42 +39,62 @@ export function formatSessionUsageSummary(
                 (entry) => entry.providerId === providerId,
             );
             lines.push(
-                formatQuotaWindow("5-hour", quota?.windows.fiveHour, now),
-                formatQuotaWindow("Weekly", quota?.windows.weekly, now),
-                formatObservedQuota(contribution),
+                "  Account quota",
+                `    ${formatQuotaWindow("5-hour", quota?.windows.fiveHour, now)}`,
+                `    ${formatQuotaWindow("Weekly", quota?.windows.weekly, now)}`,
             );
-        }
-        if (providerId === summary.currentProviderId) {
-            lines.push(formatContext(summary, modelChoices));
+            const observed = formatObservedQuota(contribution);
+            if (observed !== undefined) {
+                lines.push(`    ${observed}`);
+                hasObservedRemaining = true;
+            }
         }
     }
 
-    if (summary.observedQuota.length > 0) {
-        lines.push("Account usage may include other activity.");
+    if (hasObservedRemaining) {
+        lines.push("");
+        lines.push("Observed remaining may include other account activity.");
     }
     const total = summary.groups.reduce((sum, group) => sum + group.usage.totalTokens, 0);
-    lines.push(`Overall session total: ${formatExactTokens(total)}`);
+    lines.push(`Session total: ${formatTokens(total)}`);
     return lines.join("\n");
 }
 
-function formatModelUsage(
+function modelName(
     group: SessionUsageGroup,
     modelChoices: readonly CodingAssistantModelChoice[],
 ): string {
-    const model =
-        group.modelId === null
-            ? (group.modelLabel ?? "Model unavailable")
-            : (modelChoices.find((choice) => choice.model.id === group.modelId)?.model.name ??
-              group.modelId);
+    if (group.modelId === null) return group.modelLabel ?? "Model unavailable";
+    const choice = modelChoices.find(
+        (candidate) =>
+            candidate.providerId === group.providerId && candidate.model.id === group.modelId,
+    );
+    return choice?.model.name ?? humanizeIdentifier(group.modelId);
+}
+
+function formatModelUsage(group: SessionUsageGroup): string {
     const reasoning =
         group.usage.reasoning === undefined
             ? ""
-            : ` · ${formatExactTokens(group.usage.reasoning)} reasoning`;
+            : ` · ${formatTokens(group.usage.reasoning)} reasoning`;
     const cost =
         group.providerId === "claude-sdk" && group.usage.cost.total > 0
             ? ` · ${formatUsd(group.usage.cost.total)}`
             : "";
-    return `${model} · ${formatExactTokens(group.usage.input)} in · ${formatExactTokens(group.usage.output)} out · ${formatExactTokens(group.usage.cacheRead)} read · ${formatExactTokens(group.usage.cacheWrite)} write${reasoning} · ${formatExactTokens(group.usage.totalTokens)} total${cost}`;
+    return `${formatTokens(group.usage.totalTokens)} total · ${formatTokens(group.usage.input)} input · ${formatTokens(group.usage.output)} output · ${formatTokens(group.usage.cacheRead)} cache read · ${formatTokens(group.usage.cacheWrite)} cache write${reasoning}${cost}`;
+}
+
+function isCurrentContextGroup(
+    group: SessionUsageGroup,
+    summary: GetSessionUsageResponse,
+): boolean {
+    const context = summary.context;
+    return (
+        context !== undefined &&
+        group.providerId === summary.currentProviderId &&
+        group.providerId === context.providerId &&
+        group.modelId === context.modelId
+    );
 }
 
 function formatQuotaWindow(
@@ -76,8 +103,8 @@ function formatQuotaWindow(
     now: number,
 ): string {
     if (window?.status !== "available") return `${label}: unavailable`;
-    const left = Math.max(0, Math.min(100, Math.round(100 - window.usedPercent)));
-    return `${label}: ${left}% left · resets in ${formatResetDuration(window.resetsAt - now)}`;
+    const left = Math.max(0, Math.min(100, 100 - window.usedPercent));
+    return `${label}: ${formatPercent(left)} left · resets in ${formatResetDuration(window.resetsAt - now)}`;
 }
 
 function formatObservedQuota(
@@ -89,16 +116,21 @@ function formatObservedQuota(
               };
           }
         | undefined,
-): string {
-    const fiveHour = formatObservedWindow(contribution?.windows.fiveHour);
-    const weekly = formatObservedWindow(contribution?.windows.weekly);
-    return `Observed while this session was active: 5h ${fiveHour} · week ${weekly} (approx.)`;
+): string | undefined {
+    const windows = [
+        formatObservedWindow("5h", contribution?.windows.fiveHour),
+        formatObservedWindow("week", contribution?.windows.weekly),
+    ].filter((value): value is string => value !== undefined);
+    if (windows.length === 0) return undefined;
+    return `Observed remaining: ${windows.join(" · ")} (approx.)`;
 }
 
-function formatObservedWindow(contribution: SessionQuotaWindowContribution | undefined): string {
-    return contribution === undefined
-        ? "unavailable"
-        : formatPercent(contribution.observedUsedPercent);
+function formatObservedWindow(
+    label: "5h" | "week",
+    contribution: SessionQuotaWindowContribution | undefined,
+): string | undefined {
+    if (contribution === undefined || contribution.observedUsedPercent <= 0) return undefined;
+    return `${label} ${formatPercent(-contribution.observedUsedPercent)}`;
 }
 
 function formatContext(
@@ -113,9 +145,9 @@ function formatContext(
             choice.model.id === context.requestedModelId,
     )?.model.contextWindow;
     const prefix = context.approximate ? "~" : "";
-    if (window === undefined) return `Context: ${prefix}${formatExactTokens(context.totalTokens)}`;
-    const percentLeft = Math.max(0, Math.round((1 - context.totalTokens / window) * 100));
-    return `Context: ${prefix}${formatExactTokens(context.totalTokens)} / ${formatExactTokens(window)} · ${percentLeft}% left`;
+    if (window === undefined) return `Context: ${prefix}${formatTokens(context.totalTokens)}`;
+    const percentLeft = Math.max(0, (1 - context.totalTokens / window) * 100);
+    return `Context: ${prefix}${formatTokens(context.totalTokens)} / ${formatTokens(window)} · ${formatPercent(percentLeft)} left`;
 }
 
 function formatResetDuration(milliseconds: number): string {
@@ -132,16 +164,19 @@ function formatResetDuration(milliseconds: number): string {
 
 function formatPercent(value: number): string {
     const rounded = Math.round(value * 10) / 10;
-    if (rounded === 0 && value > 0) return "<+0.1%";
-    return `+${rounded}%`;
+    if (Object.is(rounded, -0) || rounded === 0) return "0%";
+    const sign = rounded < 0 ? "-" : "";
+    const absolute = Math.abs(rounded);
+    const number = absolute < 1 ? String(absolute).replace(/^0/u, "") : String(absolute);
+    return `${sign}${number}%`;
 }
 
 function formatUsd(value: number): string {
     return `$${value < 0.01 ? value.toFixed(4) : value.toFixed(2)}`;
 }
 
-function formatExactTokens(value: number): string {
-    return Math.max(0, Math.round(value)).toLocaleString("en-US");
+function formatTokens(value: number): string {
+    return formatCompactTokens(Math.max(0, Math.round(value))).replace(/\.0([km])$/u, "$1");
 }
 
 function providerName(providerId: string): string {
@@ -150,7 +185,14 @@ function providerName(providerId: string): string {
     if (providerId === "earlier") return "Earlier usage";
     if (providerId === "gym") return "Gym";
     if (providerId === "bedrock") return "Amazon Bedrock";
-    return providerId;
+    return humanizeIdentifier(providerId);
+}
+
+function humanizeIdentifier(value: string): string {
+    const name = value.split("/").at(-1) ?? value;
+    return name
+        .replaceAll(/[-_]+/gu, " ")
+        .replace(/\b\p{L}/gu, (character) => character.toUpperCase());
 }
 
 function distinct(values: readonly string[]): string[] {

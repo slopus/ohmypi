@@ -24,11 +24,14 @@ export function renderChildRows(
     const continuationPrefix = " ".repeat(visibleWidth(firstPrefix));
     const contentWidth = Math.max(1, width - visibleWidth(firstPrefix));
     const renderedRows = rows.flatMap((row) => {
-        const lines = row.text
-            .split("\n")
-            .flatMap((logicalLine) =>
-                row.wrap === false ? [logicalLine] : wrapTextWithAnsi(logicalLine, contentWidth),
+        const lines = row.text.split("\n").flatMap((logicalLine) => {
+            if (row.wrap === false) return [logicalLine];
+            const leadingSpaces = logicalLine.match(/^ */u)?.[0] ?? "";
+            const wrapped = wrapTextWithAnsi(logicalLine, contentWidth);
+            return wrapped.map((line, index) =>
+                index === 0 || line.length === 0 ? line : `${leadingSpaces}${line}`,
             );
+        });
         const visibleLines = row.lineLimit === undefined ? lines : lines.slice(0, row.lineLimit);
         return visibleLines.map((line) => `${row.prefix ?? ""}${line}${row.suffix ?? ""}`);
     });
