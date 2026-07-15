@@ -83,8 +83,8 @@ describe("messages sent during active inference", () => {
         const pending = await gym.terminal.waitUntil(
             (snapshot) =>
                 snapshot.text.includes("Messages to be submitted after next tool call") &&
-                snapshot.text.includes("↳ Explain the local result too.") &&
-                snapshot.text.includes("↳ Include the other client's concern.") &&
+                snapshot.text.includes("└ Explain the local result too.") &&
+                snapshot.text.includes("Include the other client's concern.") &&
                 snapshot.text.includes("1 background terminal running") &&
                 snapshot.text.includes("Ask Rig to do anything") &&
                 snapshot.text.includes("gym off · /workspace") &&
@@ -98,11 +98,8 @@ describe("messages sent during active inference", () => {
             pending.rows,
             "Messages to be submitted after next tool call",
         );
-        const localSteerRow = rowContaining(pending.rows, "↳ Explain the local result too.");
-        const externalSteerRow = rowContaining(
-            pending.rows,
-            "↳ Include the other client's concern.",
-        );
+        const localSteerRow = rowContaining(pending.rows, "└ Explain the local result too.");
+        const externalSteerRow = rowContaining(pending.rows, "Include the other client's concern.");
         const composerRow = rowContaining(pending.rows, "Ask Rig to do anything");
         const footerRow = rowContaining(pending.rows, "gym off · /workspace");
         expect([
@@ -132,6 +129,9 @@ describe("messages sent during active inference", () => {
         expect(
             pending.rows.filter((row) => row.trim() === "› Include the other client's concern."),
         ).toEqual([]);
+        const pendingRows = pending.rows.slice(pendingHeaderRow, composerRow);
+        expect(pendingRows.filter((row) => row.includes("└"))).toHaveLength(1);
+        expect(pendingRows.join("\n")).not.toMatch(/[│├↳]/u);
 
         const screenshotDirectory = process.env.RIG_GYM_SCREENSHOT_DIR;
         if (screenshotDirectory !== undefined) {

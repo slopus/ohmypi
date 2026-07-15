@@ -143,7 +143,14 @@ describe("compiled Claude SDK requests through an intercepting HTTP proxy", () =
 
         gym.terminal.type(firstPrompt);
         gym.terminal.press("enter");
-        await gym.terminal.waitForText(firstResponse, 30_000);
+        await gym.terminal.waitUntil(
+            (snapshot) =>
+                snapshot.text.includes(firstResponse) &&
+                snapshot.text.includes("Ask Rig to do anything") &&
+                !snapshot.text.includes("esc to interrupt"),
+            "the first Claude turn to return to the idle composer",
+            30_000,
+        );
         gym.terminal.type(secondPrompt);
         gym.terminal.press("enter");
         await gym.terminal.waitForText(secondResponse, 30_000);
