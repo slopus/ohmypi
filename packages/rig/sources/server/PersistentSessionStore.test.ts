@@ -411,6 +411,109 @@ describe("PersistentSessionStore", () => {
         }
     });
 
+    it("repairs terminal legacy steering once without duplicating stored or applied messages", async () => {
+        const { cleanup, databasePath } = await createDatabasePath();
+        try {
+            const alreadyStored = textUserMessage("already-stored", "already stored");
+            const alreadyApplied = textUserMessage("already-applied", "already applied");
+            const orphaned = textUserMessage("legacy-orphan", "repair me");
+            const notification = textUserMessage("legacy-notification", "background display text");
+            const state = sessionState({
+                contextMessages: [alreadyStored, alreadyApplied],
+                modelId: "openai/test",
+                models: testModelCatalog().models,
+                providerId: "codex",
+                status: "aborted",
+            });
+            const store = new PersistentSessionStore({
+                databasePath,
+                modelCatalog: testModelCatalog(),
+            });
+            store.saveSession(state);
+            store.upsertMessage(state.id, {
+                isPartial: false,
+                message: alreadyStored,
+                position: 0,
+                runId: "legacy-run",
+            });
+            store.upsertMessage(state.id, {
+                isPartial: false,
+                message: alreadyApplied,
+                position: 1,
+                runId: "legacy-run",
+            });
+            store.close();
+
+            const database = new DatabaseSync(databasePath);
+            insertEvent(database, state.id, "submitted-orphan", "message_submitted", 1, {
+                delivery: "steer",
+                displayText: "repair me",
+                message: orphaned,
+                runId: "legacy-run",
+            });
+            insertEvent(database, state.id, "submitted-stored", "message_submitted", 2, {
+                delivery: "steer",
+                displayText: "already stored",
+                message: alreadyStored,
+                runId: "legacy-run",
+            });
+            insertEvent(database, state.id, "submitted-applied", "message_submitted", 3, {
+                delivery: "steer",
+                displayText: "already applied",
+                message: alreadyApplied,
+                runId: "legacy-run",
+            });
+            insertEvent(database, state.id, "applied-modern", "steering_applied", 4, {
+                messageIds: [alreadyApplied.id],
+                runId: "legacy-run",
+            });
+            insertEvent(database, state.id, "submitted-notification", "message_submitted", 5, {
+                delivery: "steer",
+                displayText: "Background work completed.",
+                message: notification,
+                runId: "legacy-run",
+                source: "notification",
+            });
+            insertEvent(database, state.id, "finished-legacy-run", "run_finished", 6, {
+                agentRunId: "legacy-agent-run",
+                modelLocked: true,
+                runId: "legacy-run",
+                stopReason: "aborted",
+            });
+            database.close();
+
+            for (let restore = 0; restore < 2; restore += 1) {
+                const restoredStore = new PersistentSessionStore({
+                    databasePath,
+                    modelCatalog: testModelCatalog(),
+                });
+                const restored = restoredStore.get(state.id);
+                expect(restored?.snapshot().snapshot.messages.map((message) => message.id)).toEqual(
+                    [alreadyStored.id, alreadyApplied.id, orphaned.id],
+                );
+                expect(
+                    restored?.snapshot().snapshot.contextMessages?.map((message) => message.id),
+                ).toEqual([alreadyStored.id, alreadyApplied.id, orphaned.id]);
+                const events = restored?.events.since(undefined) ?? [];
+                const appliedIds = events.flatMap((event) =>
+                    event.type === "steering_applied" ? event.data.messageIds : [],
+                );
+                expect(appliedIds.filter((id) => id === orphaned.id)).toHaveLength(1);
+                expect(appliedIds.filter((id) => id === alreadyStored.id)).toHaveLength(1);
+                expect(appliedIds.filter((id) => id === alreadyApplied.id)).toHaveLength(1);
+                expect(appliedIds.filter((id) => id === notification.id)).toHaveLength(1);
+                expect(
+                    restored
+                        ?.snapshot()
+                        .snapshot.messages.some((message) => message.id === notification.id),
+                ).toBe(false);
+                restoredStore.close();
+            }
+        } finally {
+            await cleanup();
+        }
+    });
+
     it("keeps workflows disabled across daemon restarts", async () => {
         const { cleanup, databasePath } = await createDatabasePath();
         try {
@@ -1584,4 +1687,19 @@ function insertSessionEvent(
             `,
         )
         .run(sessionId, id, type, 1_700_000_000_000, JSON.stringify(data));
+}
+
+function insertEvent<TType extends import("../protocol/index.js").SessionEvent["type"]>(
+    database: DatabaseSync,
+    sessionId: string,
+    eventId: string,
+    type: TType,
+    createdAt: number,
+    data: Extract<import("../protocol/index.js").SessionEvent, { type: TType }>["data"],
+): void {
+    database
+        .prepare(
+            "INSERT INTO session_events (session_id, event_id, type, created_at_ms, data_json) VALUES (?, ?, ?, ?, ?)",
+        )
+        .run(sessionId, eventId, type, createdAt, JSON.stringify(data));
 }

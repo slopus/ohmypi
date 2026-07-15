@@ -81,6 +81,7 @@ import {
 import { createSessionMetadataTranscript } from "./createSessionMetadataTranscript.js";
 import { generateSessionMetadata } from "./generateSessionMetadata.js";
 import { createGoalTitle } from "./createGoalTitle.js";
+import { findLegacyOrphanedSteering } from "./findLegacyOrphanedSteering.js";
 import { getProviderIdForModel } from "./getProviderIdForModel.js";
 import { resolveInitialModelSelection } from "./resolveInitialModelSelection.js";
 import { SessionEventLog } from "./SessionEventLog.js";
@@ -442,6 +443,7 @@ export class InMemorySession {
         this.#latestMetadataBoundaryRunId = findLatestForegroundRunBoundary(
             this.events.since(undefined) ?? [],
         );
+        if (options.restore !== undefined) this.#repairLegacyOrphanedSteering();
 
         this.#ensureKnownModel(this.#modelId, this.#providerId);
         this.#saveSession();
@@ -2047,6 +2049,34 @@ export class InMemorySession {
     #recordWorkflowUpdate(update: WorkflowRunUpdate): void {
         this.#append("workflow_changed", { update });
         this.#restartMetadataSettlement();
+    }
+
+    #repairLegacyOrphanedSteering(): void {
+        const orphaned = findLegacyOrphanedSteering(this.events.since(undefined) ?? []);
+        for (const group of orphaned) {
+            for (const event of group.events) {
+                if (event.data.source === "notification") continue;
+                const message = event.data.message;
+                if (!this.#messages.some((stored) => stored.message.id === message.id)) {
+                    const position =
+                        this.#messages.reduce(
+                            (highest, stored) => Math.max(highest, stored.position),
+                            -1,
+                        ) + 1;
+                    this.#storeMessage(position, message, false, group.runId);
+                }
+                if (
+                    this.#contextMessages !== undefined &&
+                    !this.#contextMessages.some((stored) => stored.id === message.id)
+                ) {
+                    this.#contextMessages.push(message);
+                }
+            }
+            this.#append("steering_applied", {
+                messageIds: group.events.map((event) => event.data.message.id),
+                runId: group.runId,
+            });
+        }
     }
 
     #appendAgentEvent(runId: string, event: AgentLoopEvent): void {
