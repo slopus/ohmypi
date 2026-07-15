@@ -122,7 +122,7 @@ This file tracks known defects, verified coverage gaps, and concrete follow-up w
 
 ## Gym and test harness
 
-- [ ] Buffer OSC 10/11 terminal color queries across PTY chunks.
+- [x] Buffer OSC 10/11 terminal color queries across PTY chunks.
     - The helper currently detects only complete query sequences contained in one write.
     - Add split-sequence unit coverage.
 

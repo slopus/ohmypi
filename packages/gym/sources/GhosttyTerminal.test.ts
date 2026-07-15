@@ -56,6 +56,27 @@ describe("GhosttyTerminal cell styles", () => {
         expect(responses.join("")).toContain("\x1b]11;");
     });
 
+    it("returns terminal color-query responses when OSC sequences span PTY chunks", async () => {
+        const terminal = await GhosttyTerminal.create(20, 4);
+        running.add(terminal);
+        const responses: string[] = [];
+        terminal.onPtyWrite((data) => responses.push(data));
+
+        terminal.write("\x1b]1");
+        await terminal.snapshot();
+        expect(responses).toEqual([]);
+
+        terminal.write("0;?");
+        terminal.write("\x07\x1b]11;");
+        await terminal.snapshot();
+        expect(responses.join("")).toContain("\x1b]10;rgb:eeee/eeee/eeee\x1b\\");
+        expect(responses.join("")).not.toContain("\x1b]11;");
+
+        terminal.write("?\x07");
+        await terminal.snapshot();
+        expect(responses.join("")).toContain("\x1b]11;rgb:0d0d/0d0d/0d0d\x1b\\");
+    });
+
     it("observes application output separately from terminal replies", async () => {
         const terminal = await GhosttyTerminal.create(20, 4);
         running.add(terminal);

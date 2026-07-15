@@ -94,6 +94,10 @@ struct ScrollTracker {
     top_arrival_count: u64,
 }
 
+struct OscColorQueryTracker {
+    suffix: Vec<u8>,
+}
+
 struct SynchronizedOutputTracker {
     active: bool,
     suffix: Vec<u8>,
@@ -127,6 +131,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             move |_terminal, data| pty_writes.borrow_mut().push(data.to_vec())
         })?;
     let mut scroll_tracker = ScrollTracker::new(&terminal)?;
+    let mut osc_color_query_tracker = OscColorQueryTracker::new();
     let mut synchronized_output_tracker = SynchronizedOutputTracker::new();
 
     for line in stdin.lock().lines() {
@@ -170,15 +175,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 if contains(&decoded, b"\x1b[?2031l") {
                     color_scheme_notifications_enabled = false;
                 }
-                if decoded.windows(6).any(|window| window == b"\x1b]10;?") {
+                for slot in osc_color_query_tracker.observe(&decoded) {
+                    let color = if slot == 10 { default_fg } else { default_bg };
                     pty_writes
                         .borrow_mut()
-                        .push(osc_color_response(10, default_fg));
-                }
-                if decoded.windows(6).any(|window| window == b"\x1b]11;?") {
-                    pty_writes
-                        .borrow_mut()
-                        .push(osc_color_response(11, default_bg));
+                        .push(osc_color_response(slot, color));
                 }
                 scroll_tracker.observe(&terminal)?;
                 for data in pty_writes.borrow_mut().drain(..) {
@@ -211,6 +212,33 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
     Ok(())
+}
+
+impl OscColorQueryTracker {
+    fn new() -> Self {
+        Self { suffix: Vec::new() }
+    }
+
+    fn observe(&mut self, data: &[u8]) -> Vec<u8> {
+        const FOREGROUND_QUERY: &[u8] = b"\x1b]10;?";
+        const BACKGROUND_QUERY: &[u8] = b"\x1b]11;?";
+        let mut slots = Vec::new();
+
+        for byte in data {
+            self.suffix.push(*byte);
+            if self.suffix.ends_with(FOREGROUND_QUERY) {
+                slots.push(10);
+                self.suffix.clear();
+            } else if self.suffix.ends_with(BACKGROUND_QUERY) {
+                slots.push(11);
+                self.suffix.clear();
+            } else if self.suffix.len() >= FOREGROUND_QUERY.len() {
+                self.suffix.remove(0);
+            }
+        }
+
+        slots
+    }
 }
 
 impl SynchronizedOutputTracker {
