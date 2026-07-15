@@ -52,6 +52,7 @@ import type {
 import { createEditorTheme } from "./createEditorTheme.js";
 import { createSelectionPanel } from "./createSelectionPanel.js";
 import { createWorkflowMonitor } from "./createWorkflowMonitor.js";
+import { containsMarkdownTable } from "./containsMarkdownTable.js";
 import { DEFAULT_TERMINAL_THEME } from "./defaultTerminalTheme.js";
 import { createSlashCommands, type SlashCommandItem } from "./createSlashCommands.js";
 import { describeModelChoice } from "./describeModelChoice.js";
@@ -3508,12 +3509,16 @@ export class CodingAssistantApp implements Component, Focusable {
         const prefix = `${DIM}•${RESET} `;
         const prefixWidth = visibleWidth(prefix);
         const contentWidth = Math.max(1, width - prefixWidth);
-        const renderedMarkdown = renderAgentMarkdown({
+        let renderedMarkdown = renderAgentMarkdown({
             text: entry.text,
             width: contentWidth,
             cwd: this.#cwd,
             theme: this.#theme,
         });
+        if (entry.id === this.#streamEntryId && containsMarkdownTable(entry.text)) {
+            const mutableTableRows = Math.max(1, this.#tui.terminal.rows - 8);
+            renderedMarkdown = renderedMarkdown.slice(0, mutableTableRows);
+        }
         const indent = " ".repeat(prefixWidth);
         return renderedMarkdown.map((line, index) =>
             this.#fitLine(`${index === 0 ? prefix : indent}${line}`, width),
