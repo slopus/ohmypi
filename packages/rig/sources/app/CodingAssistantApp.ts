@@ -76,6 +76,7 @@ import {
     type ReadClipboardImageOptions,
 } from "./readClipboardImage.js";
 import { ACTIVITY_WAVE_FRAME_COUNT, renderActivityWave } from "./renderActivityWave.js";
+import { AppendOnlyStreamingRender } from "./AppendOnlyStreamingRender.js";
 import { renderAgentMarkdown } from "./renderAgentMarkdown.js";
 import { renderBackgroundTerminalCompletion } from "./renderBackgroundTerminalCompletion.js";
 import { renderBackgroundTerminalInteraction } from "./renderBackgroundTerminalInteraction.js";
@@ -280,6 +281,7 @@ export class CodingAssistantApp implements Component, Focusable {
     #activityAnimationTimer: ReturnType<typeof setInterval> | undefined;
     #cursorVisible = true;
     #entries: AppTranscriptEntry[] = [];
+    readonly #assistantStreamingRender = new AppendOnlyStreamingRender<AppTranscriptEntry>();
     readonly #entryRenderCache = new TranscriptEntryRenderCache();
     #showHeaderInFrame = true;
     #transcriptStartIndex = 0;
@@ -1027,6 +1029,7 @@ export class CodingAssistantApp implements Component, Focusable {
 
     setTheme(theme: TerminalTheme): void {
         Object.assign(this.#theme, theme);
+        this.#assistantStreamingRender.clear();
         this.#entryRenderCache.clear();
         this.invalidate();
         this.#requestRender(true);
@@ -3510,15 +3513,27 @@ export class CodingAssistantApp implements Component, Focusable {
         const prefix = `${DIM}•${RESET} `;
         const prefixWidth = visibleWidth(prefix);
         const contentWidth = Math.max(1, width - prefixWidth);
-        let renderedMarkdown = renderAgentMarkdown({
-            text: entry.text,
-            width: contentWidth,
-            cwd: this.#cwd,
-            theme: this.#theme,
-        });
-        if (entry.id === this.#streamEntryId && containsMarkdownTable(entry.text)) {
+        const isStreaming = entry.id === this.#streamEntryId;
+        const renderMarkdown = (text: string): readonly string[] =>
+            renderAgentMarkdown({
+                text,
+                width: contentWidth,
+                cwd: this.#cwd,
+                theme: this.#theme,
+            });
+        let renderedMarkdown: readonly string[];
+        if (isStreaming && containsMarkdownTable(entry.text)) {
+            this.#assistantStreamingRender.discard(entry);
             const mutableTableRows = Math.max(1, this.#tui.terminal.rows - 8);
-            renderedMarkdown = renderedMarkdown.slice(0, mutableTableRows);
+            renderedMarkdown = renderMarkdown(entry.text).slice(0, mutableTableRows);
+        } else {
+            renderedMarkdown = this.#assistantStreamingRender.render({
+                entry,
+                isStreaming,
+                render: renderMarkdown,
+                text: entry.text,
+                width: contentWidth,
+            });
         }
         const indent = " ".repeat(prefixWidth);
         return renderedMarkdown.map((line, index) =>
