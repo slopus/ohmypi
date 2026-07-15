@@ -72,6 +72,7 @@ describe("Escape with pending steering", () => {
         expect(rowContaining(narrow.rows, secondPending)).toMatch(/^    /u);
         expect(narrow.rows.filter((row) => row.includes("└"))).toHaveLength(1);
         expect(narrow.text).not.toMatch(/[│├↳]/u);
+        await screenshot(gym, "revised-pending-narrow-wrapped.png");
 
         gym.terminal.resize(100, 36);
         await gym.terminal.waitForText(secondPending, 30_000);
