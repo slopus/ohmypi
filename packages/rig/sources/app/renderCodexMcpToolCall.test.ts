@@ -1,5 +1,3 @@
-/* eslint-disable no-control-regex -- Tests intentionally inspect terminal ANSI controls. */
-
 import { visibleWidth } from "@earendil-works/pi-tui";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
@@ -7,12 +5,7 @@ import { describe, expect, it } from "vitest";
 
 import type { CodexMcpToolCall } from "./CodexMcpToolCall.js";
 import { renderCodexMcpToolCall } from "./renderCodexMcpToolCall.js";
-
-const ANSI_PATTERN = /\x1b\[[0-?]*[ -/]*[@-~]/g;
-
-function stripAnsi(value: string): string {
-    return value.replace(ANSI_PATTERN, "");
-}
+import { stripAnsi } from "./testing/stripAnsi.js";
 
 describe("renderCodexMcpToolCall", () => {
     it("renders a short successful invocation inline with compact arguments and Codex styles", () => {
@@ -107,7 +100,7 @@ describe("renderCodexMcpToolCall", () => {
         );
 
         expect(rendered.map(stripAnsi)).toEqual(["◦ Calling metrics.summary({})"]);
-        expect(rendered[0]).toMatch(/^\x1b\[38;5;252m\x1b\[2m◦/u);
+        expect(rendered[0]?.startsWith("\x1b[38;5;252m\x1b[2m◦")).toBe(true);
         expect(rendered[0]).toContain("\x1b[38;5;81mmetrics\x1b[38;5;252m");
     });
 

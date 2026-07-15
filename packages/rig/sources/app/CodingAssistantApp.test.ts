@@ -1,4 +1,3 @@
-/* eslint-disable no-control-regex -- Tests intentionally strip terminal ANSI controls. */
 import { visibleWidth, type TUI } from "@earendil-works/pi-tui";
 import { describe, expect, it, vi } from "vitest";
 
@@ -21,6 +20,7 @@ import {
 import { CodingAssistantApp } from "./CodingAssistantApp.js";
 import { createSerialTaskQueue } from "./createSerialTaskQueue.js";
 import { DEFAULT_TERMINAL_THEME } from "./defaultTerminalTheme.js";
+import { stripAnsi } from "./testing/stripAnsi.js";
 
 describe("CodingAssistantApp", () => {
     it("renders the startup frame and Codex-style empty composer", () => {
@@ -6090,8 +6090,4 @@ function zeroUsage(): Usage {
             total: 0,
         },
     };
-}
-
-function stripAnsi(text: string): string {
-    return text.replace(/\x1b\[[0-9;]*m/g, "").replace(/\x1b_pi:c\x07/g, "");
 }

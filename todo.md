@@ -142,7 +142,7 @@ This file tracks known defects, verified coverage gaps, and concrete follow-up w
     - Several snapshots serialize every glyph and absolute cell coordinate, creating 457–644-line fixtures with high incidental churn.
     - Prefer semantic row assertions plus normalized style runs.
 
-- [ ] Resolve intentional ANSI-regex lint warnings in test helpers.
+- [x] Resolve intentional ANSI-regex lint warnings in test helpers.
     - Four tests currently trigger `no-control-regex`; use a shared ANSI stripping helper or a scoped rule suppression.
 
 ## Residual verification risks

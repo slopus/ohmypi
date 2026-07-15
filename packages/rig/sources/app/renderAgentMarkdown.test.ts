@@ -1,8 +1,8 @@
-/* eslint-disable no-control-regex -- Tests intentionally strip terminal ANSI controls. */
 import { resetCapabilitiesCache, setCapabilities } from "@earendil-works/pi-tui";
 import { describe, expect, it } from "vitest";
 
 import { renderAgentMarkdown } from "./renderAgentMarkdown.js";
+import { stripAnsi } from "./testing/stripAnsi.js";
 
 describe("renderAgentMarkdown", () => {
     it("renders markdown formatting instead of plain wrapping", () => {
@@ -11,7 +11,7 @@ describe("renderAgentMarkdown", () => {
             width: 64,
             cwd: "/workspace",
         }).join("\n");
-        const rendered = stripAnsiAndLinks(raw);
+        const rendered = stripAnsi(raw);
 
         expect(raw).toContain("\x1b[1m");
         expect(raw).toContain("\x1b[39m");
@@ -44,7 +44,7 @@ describe("renderAgentMarkdown", () => {
                 width: 100,
                 cwd: "/workspace",
             }).join("\n");
-            const rendered = stripAnsiAndLinks(raw);
+            const rendered = stripAnsi(raw);
 
             expect(raw).toContain("file:///workspace/sources/app/CodingAssistantApp.ts#L12");
             expect(raw).toContain("https://example.com/docs");
@@ -63,7 +63,7 @@ describe("renderAgentMarkdown", () => {
         }).join("\n");
 
         expect(raw).not.toContain("file:///workspace");
-        expect(stripAnsiAndLinks(raw)).toContain("sources/app/CodingAssistantApp.ts:12");
+        expect(stripAnsi(raw)).toContain("sources/app/CodingAssistantApp.ts:12");
     });
 
     it("keeps true-color escape sequences intact in fenced YAML", () => {
@@ -74,7 +74,7 @@ describe("renderAgentMarkdown", () => {
                 width: 38,
                 cwd: "/workspace",
             }).join("\n");
-            const rendered = stripAnsiAndLinks(raw);
+            const rendered = stripAnsi(raw);
 
             expect(rendered).toContain("containers:");
             expect(rendered).toContain("public: true");
@@ -97,7 +97,7 @@ describe("renderAgentMarkdown", () => {
             width: 64,
             cwd: "/workspace",
         }).join("\n");
-        const rendered = stripAnsiAndLinks(raw);
+        const rendered = stripAnsi(raw);
 
         expect(raw).not.toContain("\x1b[31m\x1b[1m");
         expect(raw).not.toContain("\x1b[2J");
@@ -113,38 +113,16 @@ describe("renderAgentMarkdown", () => {
     });
 });
 
-function stripAnsiAndLinks(text: string): string {
-    return text
-        .replace(/\x1b\]8;;.*?\x07/g, "")
-        .replace(/\x1b\]8;;\x07/g, "")
-        .replace(/\x1b\[[0-9;]*m/g, "")
-        .replace(/\x1b_pi:c\x07/g, "");
-}
-
 function visibleLength(text: string): number {
-    return [...stripAnsiAndLinks(text)].length;
+    return [...stripAnsi(text)].length;
 }
 
 function isDimAtText(text: string, needle: string): boolean {
     const needleIndex = text.indexOf(needle);
     expect(needleIndex).toBeGreaterThanOrEqual(0);
 
-    let dim = false;
-    for (const match of text.slice(0, needleIndex).matchAll(/\x1b\[([0-9;]*)m/g)) {
-        const parameters = (match[1] ?? "0").split(";").map(Number);
-        for (let index = 0; index < parameters.length; index += 1) {
-            const parameter = parameters[index];
-            if ((parameter === 38 || parameter === 48) && parameters[index + 1] === 2) {
-                index += 4;
-                continue;
-            }
-            if ((parameter === 38 || parameter === 48) && parameters[index + 1] === 5) {
-                index += 2;
-                continue;
-            }
-            if (parameter === 0 || parameter === 22) dim = false;
-            if (parameter === 2) dim = true;
-        }
-    }
-    return dim;
+    const prefix = text.slice(0, needleIndex);
+    const dimStart = prefix.lastIndexOf("\x1b[2m");
+    const dimEnd = Math.max(prefix.lastIndexOf("\x1b[0m"), prefix.lastIndexOf("\x1b[22m"));
+    return dimStart > dimEnd;
 }

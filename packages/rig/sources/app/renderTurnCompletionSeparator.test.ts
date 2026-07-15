@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { renderTurnCompletionSeparator } from "./renderTurnCompletionSeparator.js";
+import { stripAnsi } from "./testing/stripAnsi.js";
 
 describe("renderTurnCompletionSeparator", () => {
     it("renders elapsed work as one width-bounded history row", () => {
@@ -12,7 +13,3 @@ describe("renderTurnCompletionSeparator", () => {
         expect(stripAnsi(renderTurnCompletionSeparator(3_723_000, 24))).toHaveLength(24);
     });
 });
-
-function stripAnsi(value: string): string {
-    return value.replaceAll(/\x1b\[[0-9;]*m/gu, "");
-}

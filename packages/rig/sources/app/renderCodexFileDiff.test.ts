@@ -1,16 +1,9 @@
-/* eslint-disable no-control-regex -- Tests intentionally inspect terminal ANSI controls. */
-
 import { visibleWidth } from "@earendil-works/pi-tui";
 import { describe, expect, it } from "vitest";
 
 import type { CodexFileDiff } from "./CodexFileDiff.js";
 import { renderCodexFileDiff } from "./renderCodexFileDiff.js";
-
-const ANSI_PATTERN = /\x1b\[[0-?]*[ -/]*[@-~]/g;
-
-function stripAnsi(value: string): string {
-    return value.replace(ANSI_PATTERN, "");
-}
+import { stripAnsi } from "./testing/stripAnsi.js";
 
 describe("renderCodexFileDiff", () => {
     it("renders an edited JavaScript file with Codex line layout and syntax colors", () => {
@@ -52,15 +45,15 @@ describe("renderCodexFileDiff", () => {
         expect(context).toContain("\x1b[38;2;205;214;244m{\x1b[39m");
 
         const deleted = rendered[2] ?? "";
-        expect(deleted).toMatch(
-            /^\x1b\[48;5;52m {4}\x1b\[2m2 \x1b\[22m\x1b\[31m-\x1b\[39m\x1b\[2m/,
-        );
+        expect(
+            deleted.startsWith("\x1b[48;5;52m    \x1b[2m2 \x1b[22m\x1b[31m-\x1b[39m\x1b[2m"),
+        ).toBe(true);
         expect(deleted).toContain("\x1b[38;2;166;227;161mgoodbye, \x1b[39m");
         expect(deleted).toContain("\x1b[38;2;203;166;247m${\x1b[39m");
         expect(deleted.endsWith("\x1b[0m")).toBe(true);
 
         const added = rendered[3] ?? "";
-        expect(added).toMatch(/^\x1b\[48;5;22m {4}\x1b\[2m2 \x1b\[22m\x1b\[32m\+\x1b\[39m/);
+        expect(added.startsWith("\x1b[48;5;22m    \x1b[2m2 \x1b[22m\x1b[32m+\x1b[39m")).toBe(true);
         expect(added).toContain("\x1b[38;2;166;227;161mhello, \x1b[39m");
         expect(added).not.toContain("\x1b[39m\x1b[2m\x1b[38;2;205;214;244m  return");
         expect(added.endsWith("\x1b[0m")).toBe(true);
@@ -193,7 +186,8 @@ describe("renderCodexFileDiff", () => {
 
         expect(rendered[1]).toContain("\x1b[48;5;224m");
         expect(rendered[2]).toContain("\x1b[48;5;194m");
-        expect(rendered.join("\n")).not.toMatch(/\x1b\[48;5;(?:22|52)m/);
+        expect(rendered.join("\n")).not.toContain("\x1b[48;5;22m");
+        expect(rendered.join("\n")).not.toContain("\x1b[48;5;52m");
     });
 
     it("sanitizes tool-controlled paths and lines, respects width, and caps large diffs", () => {

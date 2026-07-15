@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { renderExecCommand } from "./renderExecCommand.js";
+import { stripAnsi } from "./testing/stripAnsi.js";
 
 describe("renderExecCommand", () => {
     it("wraps and highlights commands with Codex-style output trees", () => {
@@ -47,7 +48,3 @@ describe("renderExecCommand", () => {
         ]);
     });
 });
-
-function stripAnsi(value: string): string {
-    return value.replace(/\x1b\[[0-9;]*m/gu, "");
-}

@@ -1,7 +1,7 @@
-/* eslint-disable no-control-regex -- Tests intentionally strip terminal ANSI controls. */
 import { describe, expect, it } from "vitest";
 
 import { renderActivityWave } from "./renderActivityWave.js";
+import { stripAnsi } from "./testing/stripAnsi.js";
 
 describe("renderActivityWave", () => {
     it("renders readable text with a moving grayscale highlight", () => {
@@ -15,7 +15,3 @@ describe("renderActivityWave", () => {
         expect(firstFrame).toContain("\x1b[38;5;244m");
     });
 });
-
-function stripAnsi(text: string): string {
-    return text.replace(/\x1b\[[0-9;]*m/g, "");
-}

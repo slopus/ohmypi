@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { renderPendingSteeringMessages } from "./renderPendingSteeringMessages.js";
+import { stripAnsi } from "./testing/stripAnsi.js";
 
 describe("renderPendingSteeringMessages", () => {
     it("renders the Escape hint and dedented ordered previews at normal width", () => {
@@ -32,7 +33,3 @@ describe("renderPendingSteeringMessages", () => {
         expect(plain.every((line) => line.length <= 40)).toBe(true);
     });
 });
-
-function stripAnsi(value: string): string {
-    return value.replace(/\x1b\[[0-9;]*m/gu, "");
-}

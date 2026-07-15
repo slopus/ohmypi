@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { renderSubagentSummary } from "./renderSubagentSummary.js";
+import { stripAnsi } from "./testing/stripAnsi.js";
 
 describe("renderSubagentSummary", () => {
     it("uses compact grammar and truncates to the terminal width", () => {
@@ -10,7 +11,3 @@ describe("renderSubagentSummary", () => {
         expect(stripAnsi(renderSubagentSummary(2, 20) ?? "").length).toBeLessThanOrEqual(20);
     });
 });
-
-function stripAnsi(value: string): string {
-    return value.replaceAll(/\x1b\[[0-9;]*m/gu, "");
-}

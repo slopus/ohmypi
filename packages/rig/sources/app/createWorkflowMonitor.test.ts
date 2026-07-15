@@ -1,10 +1,10 @@
-/* eslint-disable no-control-regex -- Tests intentionally strip terminal ANSI controls. */
 import { describe, expect, it, vi } from "vitest";
 
 import type { SubagentSummary } from "../protocol/index.js";
 import type { WorkflowRun } from "../workflows/index.js";
 import { applyWorkflowRunUpdate } from "./applyWorkflowRunUpdate.js";
 import { createWorkflowMonitor } from "./createWorkflowMonitor.js";
+import { stripAnsi } from "./testing/stripAnsi.js";
 
 describe("createWorkflowMonitor", () => {
     it("opens a workflow and renders live completion updates", () => {
@@ -111,7 +111,7 @@ describe("createWorkflowMonitor", () => {
 });
 
 function render(component: ReturnType<typeof createWorkflowMonitor>): string {
-    return component.render(100).join("\n").replaceAll(new RegExp("\\x1b\\[[0-9;]*m", "gu"), "");
+    return stripAnsi(component.render(100).join("\n"));
 }
 
 function runningWorkflow(): WorkflowRun {

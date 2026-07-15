@@ -1,8 +1,8 @@
-/* eslint-disable no-control-regex -- Tests intentionally strip terminal ANSI controls. */
 import { visibleWidth } from "@earendil-works/pi-tui";
 import { describe, expect, it } from "vitest";
 
 import { createSelectionPanel } from "./createSelectionPanel.js";
+import { stripAnsi } from "./testing/stripAnsi.js";
 
 describe("createSelectionPanel", () => {
     it("wraps a long subtitle without overflowing or losing its approval details", () => {
@@ -67,7 +67,3 @@ describe("createSelectionPanel", () => {
         expect(text).toContain("Before  after");
     });
 });
-
-function stripAnsi(value: string): string {
-    return value.replace(/\x1b\[[0-9;]*m/gu, "");
-}
