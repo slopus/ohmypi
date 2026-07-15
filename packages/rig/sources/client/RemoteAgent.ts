@@ -166,21 +166,9 @@ export class RemoteAgent implements CodingAssistantAgentBackend {
         return response.result;
     }
 
-    reset(): void {
-        this.#session = {
-            ...this.#session,
-            modelLocked: false,
-            status: "idle",
-            snapshot: {
-                ...this.#session.snapshot,
-                messages: [],
-                queue: [],
-                status: "idle",
-            },
-        };
-        void this.#client.reset(this.#session.id).then((response) => {
-            this.#replaceSession(response.session);
-        });
+    async reset(): Promise<void> {
+        const response = await this.#client.reset(this.#session.id);
+        this.#replaceSession(response.session);
     }
 
     async rewind(messageId: string): Promise<UserMessage> {

@@ -36,7 +36,7 @@ export interface CodingAssistantAgentBackend {
     compact(signal?: AbortSignal): Promise<AgentCompactionResult>;
     changeGoalStatus?(status: GoalStatus): Promise<void>;
     clearGoal?(): Promise<void>;
-    reset(): void;
+    reset(): void | Promise<void>;
     rewind?(messageId: string): Promise<UserMessage>;
     stopBackgroundProcesses?(): Promise<number>;
     send(

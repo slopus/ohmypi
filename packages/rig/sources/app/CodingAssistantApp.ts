@@ -313,6 +313,10 @@ export class CodingAssistantApp implements Component, Focusable {
     #compacting = false;
     #pastedImagesById = new Map<number, PastedImage>();
     #selectionPanel: Component | undefined;
+    #sessionMutationInFlight = false;
+    #activeSessionMutation: Promise<void> | undefined;
+    #sessionMutationBoundaryApplied = false;
+    #ignoredBoundaryRunIds = new Set<string>();
     #dismissedSlashCommandText: string | undefined;
     #activeSubmission: Promise<void> | undefined;
     #bracketedPasteBuffer: string | undefined;
@@ -539,6 +543,15 @@ export class CodingAssistantApp implements Component, Focusable {
     }
 
     applySessionEvent(event: SessionEvent): void {
+        const eventRunId = this.#sessionEventRunId(event);
+        if (
+            event.type !== "session_reset" &&
+            event.type !== "session_rewound" &&
+            eventRunId !== undefined &&
+            this.#ignoredBoundaryRunIds.has(eventRunId)
+        ) {
+            return;
+        }
         if (event.type === "message_submitted") {
             this.#modelLocked = true;
             const notificationPrefix = "Background work ";
@@ -767,9 +780,15 @@ export class CodingAssistantApp implements Component, Focusable {
 
         if (event.type === "session_reset") {
             this.#usageRequestVersion += 1;
+            if (this.#activeSessionRunId !== undefined) {
+                this.#ignoredBoundaryRunIds.add(this.#activeSessionRunId);
+            }
+            const discardedQueuedPrompts = this.#discardLocalPromptsForBoundary();
+            this.#sessionMutationBoundaryApplied = true;
             this.#lastEscapeAtMs = undefined;
             this.#activeSessionRunId = undefined;
             this.#interruptSettlementRunId = undefined;
+            this.#sendingPendingSteering = false;
             this.#setRunning(false);
             this.#clearEntries();
             this.#pendingSteeringMessages = [];
@@ -793,16 +812,25 @@ export class CodingAssistantApp implements Component, Focusable {
             this.#clearUserInputRequests();
             this.#appendEntry({
                 role: "system",
-                text: "Session reset. Started a new session.",
+                text:
+                    discardedQueuedPrompts > 0
+                        ? "Session reset. Started a new session. Queued input was saved to input history."
+                        : "Session reset. Started a new session.",
             });
             return;
         }
 
         if (event.type === "session_rewound") {
             this.#usageRequestVersion += 1;
+            if (this.#activeSessionRunId !== undefined) {
+                this.#ignoredBoundaryRunIds.add(this.#activeSessionRunId);
+            }
+            const discardedQueuedPrompts = this.#discardLocalPromptsForBoundary();
+            this.#sessionMutationBoundaryApplied = true;
             this.#lastEscapeAtMs = undefined;
             this.#activeSessionRunId = undefined;
             this.#interruptSettlementRunId = undefined;
+            this.#sendingPendingSteering = false;
             this.#setRunning(false);
             this.#pendingSteeringMessages = [];
             const targetIndex = this.#entries.findIndex(
@@ -820,6 +848,12 @@ export class CodingAssistantApp implements Component, Focusable {
             this.#runningToolCallIds.clear();
             this.#toolStatusByCallId.clear();
             this.#clearUserInputRequests();
+            if (discardedQueuedPrompts > 0) {
+                this.#appendEntry({
+                    role: "system",
+                    text: "Conversation rewound. Queued input was saved to input history.",
+                });
+            }
             this.#requestRender();
             return;
         }
@@ -880,11 +914,14 @@ export class CodingAssistantApp implements Component, Focusable {
             }
 
             const activeRun = this.#activeRun;
-            if (activeRun === undefined) {
-                return;
+            if (activeRun !== undefined) {
+                await activeRun;
+                continue;
             }
 
-            await activeRun;
+            const sessionMutation = this.#activeSessionMutation;
+            if (sessionMutation === undefined) return;
+            await sessionMutation;
         }
     }
 
@@ -902,6 +939,11 @@ export class CodingAssistantApp implements Component, Focusable {
         const escapePressed = matchesKey(data, "escape");
         if (!escapePressed) this.#lastEscapeAtMs = undefined;
         this.#onUserActivity?.();
+
+        if (this.#sessionMutationInFlight) {
+            this.#requestRender();
+            return;
+        }
 
         if (escapePressed && this.#running) {
             this.#handleEscape();
@@ -1876,31 +1918,59 @@ export class CodingAssistantApp implements Component, Focusable {
     }
 
     #resetSession(): void {
+        if (this.#sessionMutationInFlight) return;
         this.#usageRequestVersion += 1;
-        this.#abortActiveRun({ silent: true });
-        this.#runToken += 1;
-        this.#pendingPrompts = [];
-        this.#pastedImagesById.clear();
-        this.#clearEntries();
-        this.#modelLocked = false;
-        this.#seenToolCallIds.clear();
-        this.#streamEntryId = undefined;
-        this.#thinkingEntryIdsByContentIndex.clear();
-        this.#toolCallEntryIdsByContentIndex.clear();
-        this.#activeToolCallIds.clear();
-        this.#awaitingApprovalToolCallIds.clear();
-        this.#runningToolCallIds.clear();
-        this.#toolStatusByCallId.clear();
-        this.#usage = zeroUsage();
-        this.#latestContextTokens = 0;
-        this.#lastUserInputAtMs = undefined;
-        this.#abortNotified = false;
-        this.#statusText = "Idle";
-        this.#agent.reset();
-        this.#appendEntry({
-            role: "system",
-            text: "Session reset. Started a new session.",
+        const discardedQueuedPrompts = this.#discardLocalPromptsForBoundary();
+        if (this.#activeSessionRunId !== undefined) {
+            this.#ignoredBoundaryRunIds.add(this.#activeSessionRunId);
+        }
+        this.#sessionMutationInFlight = true;
+        this.#sessionMutationBoundaryApplied = false;
+        this.#lastEscapeAtMs = undefined;
+        this.#statusText = "Resetting session";
+        this.#requestRender();
+        const mutation = Promise.resolve(this.#agent.reset())
+            .then(() => {
+                if (!this.#sessionMutationBoundaryApplied) {
+                    this.#clearEntries();
+                    this.#modelLocked = false;
+                    this.#seenToolCallIds.clear();
+                    this.#streamEntryId = undefined;
+                    this.#thinkingEntryIdsByContentIndex.clear();
+                    this.#toolCallEntryIdsByContentIndex.clear();
+                    this.#activeToolCallIds.clear();
+                    this.#awaitingApprovalToolCallIds.clear();
+                    this.#runningToolCallIds.clear();
+                    this.#toolStatusByCallId.clear();
+                    this.#usage = zeroUsage();
+                    this.#latestContextTokens = 0;
+                    this.#lastUserInputAtMs = undefined;
+                    this.#abortNotified = false;
+                    this.#statusText = "Idle";
+                    this.#appendEntry({
+                        role: "system",
+                        text:
+                            discardedQueuedPrompts > 0
+                                ? "Session reset. Started a new session. Queued input was saved to input history."
+                                : "Session reset. Started a new session.",
+                    });
+                }
+            })
+            .catch((error: unknown) => {
+                this.#statusText = "Error";
+                this.#appendEntry({
+                    role: "error",
+                    text: `The session could not be reset: ${this.#formatError(error)}`,
+                });
+            })
+            .finally(() => {
+                this.#sessionMutationInFlight = false;
+                if (this.#activeSessionMutation === mutation) {
+                    this.#activeSessionMutation = undefined;
+                }
+                this.#requestRender();
         });
+        this.#activeSessionMutation = mutation;
     }
 
     #startDrainQueue(): void {
@@ -2134,15 +2204,27 @@ export class CodingAssistantApp implements Component, Focusable {
                 onSelect: (item) => {
                     if (this.#agent.rewind === undefined) return;
                     this.#closeSelectionPanel();
+                    this.#discardLocalPromptsForBoundary();
+                    this.#sessionMutationInFlight = true;
+                    this.#sessionMutationBoundaryApplied = false;
+                    this.#lastEscapeAtMs = undefined;
                     this.#statusText = "Rewinding";
                     this.#requestRender();
-                    void this.#agent
+                    const mutation = this.#agent
                         .rewind(item.value)
                         .then((message) => this.#finishBacktrack(item.value, message))
                         .catch((error: unknown) => {
                             this.#statusText = "Error";
                             this.#appendEntry({ role: "error", text: this.#formatError(error) });
+                        })
+                        .finally(() => {
+                            this.#sessionMutationInFlight = false;
+                            if (this.#activeSessionMutation === mutation) {
+                                this.#activeSessionMutation = undefined;
+                            }
+                            this.#requestRender();
                         });
+                    this.#activeSessionMutation = mutation;
                 },
                 subtitle: "Choose a prompt to edit again. Files stay unchanged.",
                 title: "Rewind conversation",
@@ -2175,6 +2257,21 @@ export class CodingAssistantApp implements Component, Focusable {
         this.#pendingPrompts = [];
         this.#editor.setText(restored.join("\n"));
         this.#syncAutocompleteState();
+    }
+
+    #discardLocalPromptsForBoundary(): number {
+        const discarded = this.#pendingPrompts;
+        for (const prompt of discarded) this.#editor.addToHistory(prompt.displayText);
+        this.#pendingPrompts = [];
+        this.#runToken += 1;
+        this.#abortController?.abort();
+        this.#abortController = undefined;
+        return discarded.length;
+    }
+
+    #sessionEventRunId(event: SessionEvent): string | undefined {
+        const runId = (event.data as { runId?: unknown }).runId;
+        return typeof runId === "string" ? runId : undefined;
     }
 
     #abortActiveRun(options: { silent?: boolean } = {}): boolean {

@@ -804,6 +804,126 @@ describe("CodingAssistantApp", () => {
         expect(stripAnsi(app.render(100).join("\n"))).toContain("› Ask Rig to do anything");
     });
 
+    it.each(["session_reset", "session_rewound"] as const)(
+        "discards local queued execution into history and ignores stale work after %s",
+        (boundaryType) => {
+            const model = defineModel({
+                id: "openai/gpt-test",
+                name: "GPT Test",
+                thinkingLevels: ["off"],
+                defaultThinkingLevel: "off",
+            });
+            const provider = defineProvider({
+                id: "codex",
+                models: [model],
+                stream() {
+                    return streamText("unused");
+                },
+            });
+            const harness = createJustBashToolHarness();
+            const send = vi.fn(async () => ({
+                contextMessages: [],
+                messages: [],
+                runId: "unexpected-run",
+                stopReason: "stop" as const,
+            }));
+            const agent = Object.assign(
+                new Agent({
+                    provider,
+                    modelId: model.id,
+                    context: harness.context,
+                    printToConsole: false,
+                }),
+                { send },
+            );
+            const app = new CodingAssistantApp({
+                agent,
+                cwd: harness.context.fs.cwd,
+                processManager: new NativeProxessManager(),
+                sessionBacked: true,
+                tui: fakeTui(),
+            });
+            app.applySessionEvent({
+                createdAt: 1,
+                data: { runId: "old-run" },
+                id: "old-started",
+                sessionId: "session-1",
+                type: "run_started",
+            });
+            app.handleInput("Discard this queued execution");
+            app.handleInput("\t");
+            app.handleInput("Preserve this external-boundary draft");
+
+            app.applySessionEvent(
+                boundaryType === "session_reset"
+                    ? {
+                          createdAt: 2,
+                          data: { snapshot: agent.snapshot() },
+                          id: "boundary",
+                          sessionId: "session-1",
+                          type: "session_reset",
+                      }
+                    : {
+                          createdAt: 2,
+                          data: { messageId: "rewind-target", snapshot: agent.snapshot() },
+                          id: "boundary",
+                          sessionId: "session-1",
+                          type: "session_rewound",
+                      },
+            );
+            app.applySessionEvent({
+                createdAt: 3,
+                data: {
+                    message: {
+                        blocks: [{ text: "STALE OLD MESSAGE", type: "text" }],
+                        id: "stale-message",
+                        role: "agent",
+                    },
+                    runId: "old-run",
+                },
+                id: "stale-agent-message",
+                sessionId: "session-1",
+                type: "agent_message",
+            });
+            app.applySessionEvent({
+                createdAt: 4,
+                data: {
+                    agentRunId: "old-agent-run",
+                    modelLocked: true,
+                    runId: "old-run",
+                    stopReason: "aborted",
+                },
+                id: "stale-finished",
+                sessionId: "session-1",
+                type: "run_finished",
+            });
+            app.applySessionEvent({
+                createdAt: 5,
+                data: {
+                    errorMessage: "STALE OLD ERROR",
+                    modelLocked: true,
+                    runId: "old-run",
+                },
+                id: "stale-error",
+                sessionId: "session-1",
+                type: "run_error",
+            });
+
+            const rendered = stripAnsi(app.render(100).join("\n"));
+            expect(rendered).toContain("› Preserve this external-boundary draft");
+            expect(rendered).not.toContain("↳ queued");
+            expect(rendered).not.toContain("STALE OLD MESSAGE");
+            expect(rendered).not.toContain("STALE OLD ERROR");
+            expect(send).not.toHaveBeenCalled();
+
+            app.handleInput("\x03");
+            app.handleInput("\x1b[A");
+            expect(stripAnsi(app.render(100).join("\n"))).toContain(
+                "› Discard this queued execution",
+            );
+        },
+    );
+
     it("does not let selection-panel Escape arm the composer chain", () => {
         const model = defineModel({
             id: "openai/gpt-test",
@@ -3320,6 +3440,7 @@ describe("CodingAssistantApp", () => {
         expect(resetAutocomplete).toContain("/new");
         expect(resetAutocomplete).toContain("Reset this session and start fresh.");
         app.handleInput("\r");
+        await app.waitForIdle();
 
         const rendered = stripAnsi(app.render(80).join("\n"));
         expect(agent.snapshot().messages).toEqual([]);
@@ -4196,6 +4317,7 @@ describe("CodingAssistantApp", () => {
         expect(report).toContain("Total processed: 1.6k");
 
         submit(app, "/new");
+        await app.waitForIdle();
         submit(app, "/usage");
         expect(stripAnsi(app.render(100).join("\n"))).toContain("Total processed: 0");
     });

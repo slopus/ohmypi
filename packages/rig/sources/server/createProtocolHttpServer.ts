@@ -502,7 +502,7 @@ async function handleRequest(
     }
 
     if (request.method === "POST" && route.name === "reset") {
-        sendJson(response, 200, { session: session.reset() });
+        sendJson(response, 200, { session: await session.reset() });
         return;
     }
 

@@ -1389,14 +1389,19 @@ export class InMemorySession {
         this.#saveSession();
     }
 
-    reset(): ProtocolSession {
+    async reset(): Promise<ProtocolSession> {
         this.#clearMetadataSettlement();
         this.#invalidateSessionMetadata();
-        void this.#agentManager?.stopDescendants(this.id);
-        void this.abort({ pauseDescendants: false }).catch(() => undefined);
-        for (const run of this.#workflowRuns.values()) {
-            if (run.state.status === "running") run.controller.abort();
+        await this.#agentManager?.stopDescendants(this.id);
+        const activeRunId = this.#activeRun?.runId;
+        await this.abort({ pauseDescendants: false });
+        if (activeRunId !== undefined) await this.waitForRun(activeRunId);
+        await this.#draining?.catch(() => undefined);
+        const workflowRuns = [...this.#workflowRuns.values()];
+        for (const run of workflowRuns) {
+            if (run.state.status === "running") this.stopWorkflow(run.state.runId);
         }
+        await Promise.all(workflowRuns.map((run) => run.completion));
         this.#workflowRuns.clear();
         this.#ensureRuntime().agent.reset();
         this.#status = "idle";
