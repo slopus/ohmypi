@@ -1733,11 +1733,13 @@ describe("CodingAssistantApp", () => {
                     createdAt: 1,
                     depth: 1,
                     description: "Inspect the implementation",
+                    elapsedMs: 60_000,
                     id: "subagent-1",
                     modelId: model.id,
                     parentSessionId: "session-1",
                     status: "running",
                     taskName: "inspect_implementation",
+                    totalTokens: 1_000,
                     updatedAt: 1,
                 },
             ],
@@ -1752,11 +1754,13 @@ describe("CodingAssistantApp", () => {
                     createdAt: 1,
                     depth: 1,
                     description: "Inspect the implementation",
+                    elapsedMs: 65_000,
                     id: "subagent-1",
                     modelId: model.id,
                     parentSessionId: "session-1",
                     status: "completed",
                     taskName: "inspect_implementation",
+                    totalTokens: 1_250,
                     updatedAt: 2,
                 },
             },
@@ -1768,7 +1772,7 @@ describe("CodingAssistantApp", () => {
         const statusTransition = stripAnsi(app.render(100).join("\n"));
         expect(statusTransition).not.toContain("agent running · /agents to view");
         expect(statusTransition).toContain(
-            'Background work "Inspect the implementation" completed.',
+            'Background work "Inspect the implementation" completed in 1m 5s · 1.3k tokens.',
         );
         app.applySessionEvent({
             createdAt: 3,
@@ -1788,15 +1792,17 @@ describe("CodingAssistantApp", () => {
         });
         const completed = stripAnsi(app.render(100).join("\n"));
         expect(completed).not.toContain("agent running · /agents to view");
-        expect(completed).toContain('Background work "Inspect the implementation" completed.');
+        expect(completed).toContain(
+            'Background work "Inspect the implementation" completed in 1m 5s · 1.3k tokens.',
+        );
         expect(
-            completed.match(/Background work "Inspect the implementation" completed\./gu),
+            completed.match(/Background work "Inspect the implementation" completed/gu),
         ).toHaveLength(1);
 
         submit(app, "/agents");
 
         expect(stripAnsi(app.render(100).join("\n"))).toContain(
-            "Completed · Inspect the implementation",
+            "Completed · Inspect the implementation · 1m 5s · 1.3k tokens",
         );
     });
 

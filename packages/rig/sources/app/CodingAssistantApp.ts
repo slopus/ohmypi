@@ -59,10 +59,12 @@ import { describeModelChoice } from "./describeModelChoice.js";
 import { describeReasoningLevel } from "./describeReasoningLevel.js";
 import { encodeModelChoice } from "./encodeModelChoice.js";
 import { formatActivityElapsedTime } from "./formatActivityElapsedTime.js";
+import { formatCompactTokens as formatTokens } from "./formatCompactTokens.js";
 import { formatCodexMcpToolResult } from "./formatCodexMcpToolResult.js";
 import { FileMentionAutocomplete } from "./FileMentionAutocomplete.js";
 import type { FileMentionContext } from "./findFileMentionContext.js";
 import { formatFileMention } from "./formatFileMention.js";
+import { formatSubagentRows } from "./formatSubagentRows.js";
 import { formatToolResultForDisplay } from "./formatToolResultForDisplay.js";
 import { humanizeReasoningLevel } from "./humanizeReasoningLevel.js";
 import { humanizePermissionMode } from "./humanizePermissionMode.js";
@@ -88,6 +90,7 @@ import { renderExecCommand } from "./renderExecCommand.js";
 import { renderPendingSteeringMessages } from "./renderPendingSteeringMessages.js";
 import { renderRigBanner } from "./renderRigBanner.js";
 import { sanitizeTerminalText } from "./sanitizeTerminalText.js";
+import { subagentElapsedMs } from "./subagentElapsedMs.js";
 import { renderSubagentSummary } from "./renderSubagentSummary.js";
 import { renderTurnCompletionSeparator } from "./renderTurnCompletionSeparator.js";
 import { renderWorkflowSummary } from "./renderWorkflowSummary.js";
@@ -191,12 +194,6 @@ function zeroUsage(): Usage {
         totalTokens: 0,
         cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
     };
-}
-
-function formatTokens(value: number): string {
-    if (value < 1_000) return String(value);
-    if (value < 1_000_000) return `${(value / 1_000).toFixed(value < 10_000 ? 1 : 0)}k`;
-    return `${(value / 1_000_000).toFixed(value < 10_000_000 ? 1 : 0)}m`;
 }
 
 export interface DefaultModelPreference {
@@ -333,6 +330,7 @@ export class CodingAssistantApp implements Component, Focusable {
     #stopped = false;
     #streamEntryId: string | undefined;
     #subagents: readonly SubagentSummary[];
+    #subagentRefreshTimer: ReturnType<typeof setInterval> | undefined;
     #tasks: readonly SessionTask[];
     #thinkingEntryIdsByContentIndex = new Map<number, string>();
     #toolCallEntryIdsByContentIndex = new Map<number, string>();
@@ -421,6 +419,7 @@ export class CodingAssistantApp implements Component, Focusable {
         for (const process of this.#observedShellProcesses) {
             this.#yieldedBackgroundTerminals.set(process.sessionId, process.command);
         }
+        this.#syncSubagentRefreshTimer();
 
         void this.#refreshSkillCommands();
     }
@@ -460,6 +459,7 @@ export class CodingAssistantApp implements Component, Focusable {
         this.#statusText = "Stopped";
         this.#abortController?.abort();
         this.#stopActivityAnimation();
+        this.#stopSubagentRefreshTimer();
         this.#stopCursorBlink();
         this.#activeToolCallIds.clear();
         this.#awaitingApprovalToolCallIds.clear();
@@ -599,6 +599,7 @@ export class CodingAssistantApp implements Component, Focusable {
             ) {
                 this.#recordSubagentCompletion(event.data.subagent);
             }
+            this.#syncSubagentRefreshTimer();
             this.#requestRender();
             return;
         }
@@ -1613,21 +1614,10 @@ export class CodingAssistantApp implements Component, Focusable {
             });
             return;
         }
-        const labels = {
-            aborted: "Stopped",
-            completed: "Completed",
-            error: "Failed",
-            idle: "Idle",
-            queued: "Queued",
-            running: "Running",
-            suspended: "Suspended",
-        } as const;
         this.#appendEntry({
             role: "event",
             title: "Subagents",
-            text: this.#subagents
-                .map((subagent) => `${labels[subagent.status]} · ${subagent.description}`)
-                .join("\n"),
+            text: formatSubagentRows(this.#subagents, this.#now()).join("\n"),
         });
     }
 
@@ -2758,8 +2748,21 @@ export class CodingAssistantApp implements Component, Focusable {
     }
 
     #renderActiveWorkList(width: number): string[] {
+        const activeSubagents = this.#subagents.filter((subagent) =>
+            this.#isActiveSubagent(subagent),
+        );
         const rows = [
-            renderSubagentSummary(this.#activeSubagentCount(), width),
+            renderSubagentSummary({
+                count: activeSubagents.length,
+                elapsedMs: Math.max(
+                    0,
+                    ...activeSubagents.map((subagent) => subagentElapsedMs(subagent, this.#now())),
+                ),
+                totalTokens: this.#subagents
+                    .filter((subagent) => !subagent.taskName?.startsWith("workflow_"))
+                    .reduce((total, subagent) => total + (subagent.totalTokens ?? 0), 0),
+                width,
+            }),
             renderWorkflowSummary(this.#activeWorkflowCount(), width),
             renderBackgroundTerminalSummary(this.#backgroundProcesses.length, width),
         ];
@@ -2771,6 +2774,10 @@ export class CodingAssistantApp implements Component, Focusable {
         if (window === undefined) return `${formatTokens(this.#latestContextTokens)} tokens`;
         const percentLeft = Math.max(0, Math.round((1 - this.#latestContextTokens / window) * 100));
         return `${formatTokens(this.#latestContextTokens)} tokens · ${percentLeft}% left`;
+    }
+
+    #subagentMetrics(subagent: SubagentSummary): string {
+        return `${formatActivityElapsedTime(subagentElapsedMs(subagent, this.#now()))} · ${formatTokens(subagent.totalTokens ?? 0)} tokens`;
     }
 
     #renderQueuedPrompts(width: number): string[] {
@@ -3962,7 +3969,12 @@ export class CodingAssistantApp implements Component, Focusable {
                     ? "was stopped"
                     : "failed";
         const displayText = `Background work "${subagent.description}" ${outcome}.`;
-        this.#recordCompletionNotice(displayText, "Background work", "Background work ");
+        const metricsDisplayText = `Background work "${subagent.description}" ${outcome} in ${this.#subagentMetrics(subagent)}.`;
+        this.#renderedCompletionNotices.set(
+            displayText,
+            (this.#renderedCompletionNotices.get(displayText) ?? 0) + 1,
+        );
+        this.#recordCompletionNotice(metricsDisplayText, "Background work", "Background work ");
     }
 
     #recordWorkflowCompletion(workflow: WorkflowRun): void {
@@ -4489,6 +4501,22 @@ export class CodingAssistantApp implements Component, Focusable {
         this.#activityAnimationTimer = undefined;
         this.#activityAnimationFrame = 0;
         this.#activityStartedAtMs = undefined;
+    }
+
+    #syncSubagentRefreshTimer(): void {
+        if (this.#activeSubagentCount() === 0) {
+            this.#stopSubagentRefreshTimer();
+            return;
+        }
+        if (this.#subagentRefreshTimer !== undefined || this.#stopped) return;
+        this.#subagentRefreshTimer = setInterval(() => this.#requestRender(), 1_000);
+        this.#subagentRefreshTimer.unref?.();
+    }
+
+    #stopSubagentRefreshTimer(): void {
+        if (this.#subagentRefreshTimer === undefined) return;
+        clearInterval(this.#subagentRefreshTimer);
+        this.#subagentRefreshTimer = undefined;
     }
 
     #requestRender(force = false): void {

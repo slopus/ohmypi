@@ -1178,10 +1178,30 @@ describe("PersistentSessionStore", () => {
                         type: "subagent",
                     },
                     agentId: "agent-2",
+                    activeSince: 1_500,
+                    elapsedMs: 2_500,
                     id: "subagent-1",
                     status: "completed",
                     title: "Inspect the persistence layer",
                     titleStatus: "ready",
+                    totalTokens: 12_345,
+                }),
+            );
+            store.saveSession(
+                sessionState({
+                    agent: {
+                        depth: 2,
+                        description: "Inspect the nested query",
+                        parentSessionId: "subagent-1",
+                        rootSessionId: "session-1",
+                        taskName: "inspect_nested_query",
+                        type: "subagent",
+                    },
+                    agentId: "agent-3",
+                    elapsedMs: 900,
+                    id: "subagent-2",
+                    status: "error",
+                    totalTokens: 600,
                 }),
             );
             store.close();
@@ -1191,13 +1211,27 @@ describe("PersistentSessionStore", () => {
                 expect(restoredStore.list().map((session) => session.id)).toEqual(["session-1"]);
                 expect(restoredStore.listSubagents("session-1")).toEqual([
                     expect.objectContaining({
+                        activeSince: 1_500,
                         depth: 1,
                         description: "Inspect the persistence layer",
+                        elapsedMs: 2_500,
                         id: "subagent-1",
                         parentToolCallId: "tool-1",
                         status: "completed",
                         taskName: "inspect_persistence",
+                        totalTokens: 12_345,
                     }),
+                    expect.objectContaining({
+                        depth: 2,
+                        elapsedMs: 900,
+                        id: "subagent-2",
+                        parentSessionId: "subagent-1",
+                        status: "error",
+                        totalTokens: 600,
+                    }),
+                ]);
+                expect(restoredStore.listSubagents("subagent-1")).toEqual([
+                    expect.objectContaining({ id: "subagent-2" }),
                 ]);
                 expect(restoredStore.get("subagent-1")?.snapshot().agent).toEqual({
                     depth: 1,

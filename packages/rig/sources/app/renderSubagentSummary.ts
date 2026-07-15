@@ -1,12 +1,20 @@
 import { truncateToWidth } from "@earendil-works/pi-tui";
 
+import { formatActivityElapsedTime } from "./formatActivityElapsedTime.js";
+import { formatCompactTokens } from "./formatCompactTokens.js";
+
 const RESET = "\x1b[0m";
 const DIM = "\x1b[2m";
 
-export function renderSubagentSummary(count: number, width: number): string | undefined {
-    if (count === 0) return undefined;
+export function renderSubagentSummary(options: {
+    count: number;
+    elapsedMs: number;
+    totalTokens: number;
+    width: number;
+}): string | undefined {
+    if (options.count === 0) return undefined;
 
-    const plural = count === 1 ? "" : "s";
-    const summary = `  ${String(count)} agent${plural} running · /agents to view`;
-    return truncateToWidth(`${DIM}${summary}${RESET}`, Math.max(1, width), "", true);
+    const plural = options.count === 1 ? "" : "s";
+    const summary = `  ${String(options.count)} agent${plural} running · ${formatActivityElapsedTime(options.elapsedMs)} · ${formatCompactTokens(options.totalTokens)} tokens · /agents to view`;
+    return truncateToWidth(`${DIM}${summary}${RESET}`, Math.max(1, options.width), "", true);
 }

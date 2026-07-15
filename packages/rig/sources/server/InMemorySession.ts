@@ -105,11 +105,13 @@ export interface PersistedQueuedRun {
 }
 
 export interface PersistedSessionState {
+    activeSince?: number;
     activeRunId?: string;
     agent: SessionAgentMetadata;
     agentId: string;
     cwd: string;
     docker?: DockerExecutionConfig;
+    elapsedMs?: number;
     contextMessages?: readonly Message[];
     effort?: string;
     serviceTier?: ServiceTier;
@@ -133,6 +135,7 @@ export interface PersistedSessionState {
     title?: string;
     titleError?: string;
     titleStatus: SessionTitleStatus;
+    totalTokens?: number;
     tools: readonly string[];
     workflows?: readonly PersistedWorkflowRun[];
     workflowsEnabled?: boolean;
@@ -224,6 +227,7 @@ export interface SessionRunCompletion {
 }
 
 export class InMemorySession {
+    #activeSince: number | undefined;
     readonly events: SessionEventLog;
     readonly id: string;
 
@@ -239,6 +243,7 @@ export class InMemorySession {
     #closing = false;
     #compactionActive = false;
     #draining: Promise<void> | undefined;
+    #elapsedMs = 0;
     #effort: string | undefined;
     #serviceTier: ServiceTier | undefined;
     #goal: SessionGoal | undefined;
@@ -284,6 +289,7 @@ export class InMemorySession {
     #title: string | undefined;
     #titleError: string | undefined;
     #titleStatus: SessionTitleStatus = "idle";
+    #totalTokens = 0;
     #tools: readonly string[] = [];
     #workflowRuns = new Map<string, InternalWorkflowRun>();
     #workflowsEnabled: boolean;
@@ -364,6 +370,8 @@ export class InMemorySession {
                 : [...options.restore.contextMessages];
         this.#models = this.#modelsForProvider(this.#providerId);
         this.#status = options.restore?.status ?? "idle";
+        this.#activeSince = options.restore?.activeSince;
+        this.#elapsedMs = options.restore?.elapsedMs ?? 0;
         this.#lastMessageAt = options.restore?.lastMessageAt;
         this.#metadataRunId = options.restore?.metadataRunId;
         this.#metadataUpdatedAt = options.restore?.metadataUpdatedAt;
@@ -375,6 +383,7 @@ export class InMemorySession {
         this.#titleStatus =
             options.restore?.titleStatus ??
             (this.#agentMetadata.description !== undefined ? "ready" : "idle");
+        this.#totalTokens = options.restore?.totalTokens ?? 0;
         this.#tasks =
             options.restore?.tasks === undefined ? [] : options.restore.tasks.map(cloneTask);
         this.#nextTaskId = options.restore?.nextTaskId ?? nextTaskId(this.#tasks);
@@ -1260,6 +1269,7 @@ export class InMemorySession {
     }
 
     markInterrupted(interruption: SessionInterruption): void {
+        this.#finishElapsedInterval();
         this.#interruption = interruption;
         this.#status = "error";
         this.#activeRun?.controller.abort();
@@ -1299,6 +1309,7 @@ export class InMemorySession {
         if (!this.isSubagent() || this.#status !== "suspended") {
             throw new Error("Only a suspended subagent can be repaired as resumable.");
         }
+        this.#finishElapsedInterval();
         this.#activeRun?.controller.abort();
         this.#activeRun = undefined;
         this.#restoredActiveRunId = undefined;
@@ -1575,9 +1586,11 @@ export class InMemorySession {
                       ...runtimeSnapshot.queue.map((queued) => queued.message),
                   ];
         const state: PersistedSessionState = {
+            ...(this.#activeSince === undefined ? {} : { activeSince: this.#activeSince }),
             agent: this.agentMetadata(),
             agentId: this.#agentId,
             cwd: this.#request.cwd,
+            elapsedMs: this.#elapsedMs,
             ...(this.#request.docker === undefined ? {} : { docker: this.#request.docker }),
             ...(contextMessages !== undefined ? { contextMessages: [...contextMessages] } : {}),
             ...(this.#effort !== undefined ? { effort: this.#effort } : {}),
@@ -1604,6 +1617,7 @@ export class InMemorySession {
             ...(this.#title !== undefined ? { title: this.#title } : {}),
             ...(this.#titleError !== undefined ? { titleError: this.#titleError } : {}),
             titleStatus: this.#titleStatus,
+            totalTokens: this.#totalTokens,
             tools: this.#tools,
             workflowsEnabled: this.#workflowsEnabled,
             workflows: [...this.#workflowRuns.values()].map((run) => ({
@@ -1800,10 +1814,12 @@ export class InMemorySession {
         const latestText = limitInspectionText(findLastAgentResponseText(messages));
         const prompt = limitInspectionText(findFirstUserRequestText(messages));
         return {
+            ...(this.#activeSince === undefined ? {} : { activeSince: this.#activeSince }),
             agentId: this.#agentId,
             createdAt: this.events.firstCreatedAt() ?? this.#now(),
             depth: this.#agentMetadata.depth,
             description: this.#agentMetadata.description ?? "Delegated task",
+            elapsedMs: this.#elapsedMs,
             id: this.id,
             ...(latestText === undefined ? {} : { latestText }),
             modelId: this.#modelId,
@@ -1816,6 +1832,7 @@ export class InMemorySession {
             ...(this.#agentMetadata.taskName !== undefined
                 ? { taskName: this.#agentMetadata.taskName }
                 : {}),
+            totalTokens: this.#totalTokens,
             updatedAt: this.events.lastCreatedAt() ?? this.#now(),
         };
     }
@@ -2052,9 +2069,10 @@ export class InMemorySession {
             return;
         }
 
-        const existingPosition = this.#messages.find(
+        const existingMessage = this.#messages.find(
             (candidate) => !candidate.isPartial && candidate.message.id === message.id,
-        )?.position;
+        );
+        const existingPosition = existingMessage?.position;
         const partialPosition =
             message.role === "agent" && this.#activePartial?.runId === runId
                 ? this.#activePartial.position
@@ -2068,7 +2086,15 @@ export class InMemorySession {
         if (partialPosition !== undefined) {
             this.#activePartial = undefined;
         }
+        if (message.role === "agent") {
+            const previousTokens =
+                existingMessage?.message.role === "agent"
+                    ? (existingMessage.message.usage?.totalTokens ?? 0)
+                    : 0;
+            this.#totalTokens += (message.usage?.totalTokens ?? 0) - previousTokens;
+        }
         this.#append("agent_message", { message, runId });
+        if (this.isSubagent()) this.#agentManager?.recordChanged(this);
     }
 
     #appendRunFinished(runId: string, result: AgentRunResult): void {
@@ -2079,6 +2105,7 @@ export class InMemorySession {
                     ? "suspended"
                     : "aborted"
                 : "completed";
+        this.#finishElapsedInterval();
         this.#suspendOnAbort = false;
         this.#activePartial = undefined;
         if (this.#activeRun?.runId === runId) {
@@ -2093,6 +2120,13 @@ export class InMemorySession {
         });
         this.#latestMetadataBoundaryRunId = runId;
         this.#restartMetadataSettlement();
+        if (this.isSubagent()) this.#agentManager?.recordChanged(this);
+    }
+
+    #finishElapsedInterval(): void {
+        if (this.#activeSince === undefined) return;
+        this.#elapsedMs += Math.max(0, this.#now() - this.#activeSince);
+        this.#activeSince = undefined;
     }
 
     #committedMessages(): Message[] {
@@ -2464,7 +2498,9 @@ export class InMemorySession {
         this.#lastSessionRunId = queued.runId;
         this.#restoredActiveRunId = undefined;
         this.#status = "running";
+        this.#activeSince ??= this.#now();
         this.#append("run_started", { runId: queued.runId });
+        if (this.isSubagent()) this.#agentManager?.recordChanged(this);
 
         try {
             const runtime = this.#ensureRuntime();
@@ -2517,6 +2553,7 @@ export class InMemorySession {
             }
             this.#status =
                 controller.signal.aborted && this.#suspendOnAbort ? "suspended" : "error";
+            this.#finishElapsedInterval();
             this.#suspendOnAbort = false;
             this.#activePartial = undefined;
             this.#discardPendingSteeringMessages(queued.runId);
@@ -2531,6 +2568,7 @@ export class InMemorySession {
             });
             this.#latestMetadataBoundaryRunId = queued.runId;
             this.#restartMetadataSettlement();
+            if (this.isSubagent()) this.#agentManager?.recordChanged(this);
         } finally {
             this.#pendingSteeringContinuations.delete(queued.runId);
             if (this.#activeRun?.runId === queued.runId) {

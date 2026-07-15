@@ -339,11 +339,23 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
         return this.#database
             .prepare(
                 `
+                WITH RECURSIVE descendants(id) AS (
+                    SELECT id
+                    FROM sessions
+                    WHERE parent_session_id = ?
+                    UNION ALL
+                    SELECT sessions.id
+                    FROM sessions
+                    JOIN descendants ON sessions.parent_session_id = descendants.id
+                )
                 SELECT
                     id,
                     agent_id,
                     model_id,
                     status,
+                    active_since_ms,
+                    elapsed_ms,
+                    total_tokens,
                     parent_session_id,
                     parent_tool_call_id,
                     task_name,
@@ -352,7 +364,7 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
                     created_at_ms,
                     updated_at_ms
                 FROM sessions
-                WHERE parent_session_id = ?
+                WHERE id IN descendants
                 ORDER BY created_at_ms ASC
                 `,
             )
@@ -360,17 +372,21 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
             .map((row) => {
                 const parentToolCallId = readOptionalString(row, "parent_tool_call_id");
                 const taskName = readOptionalString(row, "task_name");
+                const activeSince = readOptionalNumber(row, "active_since_ms");
                 return {
+                    ...(activeSince === undefined ? {} : { activeSince }),
                     agentId: readString(row, "agent_id"),
                     createdAt: readNumber(row, "created_at_ms"),
                     depth: readNumber(row, "depth"),
                     description: readOptionalString(row, "description") ?? "Delegated task",
+                    elapsedMs: readNumber(row, "elapsed_ms"),
                     id: readString(row, "id"),
                     modelId: readString(row, "model_id"),
                     parentSessionId: readString(row, "parent_session_id"),
                     ...(parentToolCallId !== undefined ? { parentToolCallId } : {}),
                     status: readString(row, "status") as SubagentSummary["status"],
                     ...(taskName !== undefined ? { taskName } : {}),
+                    totalTokens: readNumber(row, "total_tokens"),
                     updatedAt: readNumber(row, "updated_at_ms"),
                 };
             });
@@ -421,7 +437,7 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
                 const parentSessionId = session.agentMetadata().parentSessionId;
                 const parent =
                     parentSessionId === undefined ? undefined : this.get(parentSessionId);
-                parent?.recordSubagentChanged(session.subagentSummary());
+                this.#agentManager.recordChanged(session);
                 parent?.recordSubagentStoppedAfterRestart(session.subagentSummary());
                 continue;
             }
@@ -436,7 +452,7 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
             });
             const parentSessionId = session.agentMetadata().parentSessionId;
             if (parentSessionId !== undefined) {
-                this.get(parentSessionId)?.recordSubagentChanged(session.subagentSummary());
+                this.#agentManager.recordChanged(session);
             }
         }
     }
@@ -491,6 +507,9 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
                     instructions,
                     status,
                     active_run_id,
+                    active_since_ms,
+                    elapsed_ms,
+                    total_tokens,
                     permission_mode,
                     context_messages_json,
                     models_json,
@@ -531,6 +550,9 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
                     instructions = excluded.instructions,
                     status = excluded.status,
                     active_run_id = excluded.active_run_id,
+                    active_since_ms = excluded.active_since_ms,
+                    elapsed_ms = excluded.elapsed_ms,
+                    total_tokens = excluded.total_tokens,
                     permission_mode = excluded.permission_mode,
                     context_messages_json = excluded.context_messages_json,
                     models_json = excluded.models_json,
@@ -571,6 +593,9 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
                 state.instructions ?? null,
                 state.status,
                 state.activeRunId ?? null,
+                state.activeSince ?? null,
+                state.elapsedMs ?? 0,
+                state.totalTokens ?? 0,
                 state.permissionMode,
                 state.contextMessages === undefined ? null : JSON.stringify(state.contextMessages),
                 JSON.stringify(state.models),
@@ -699,6 +724,9 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
                 instructions TEXT,
                 status TEXT NOT NULL,
                 active_run_id TEXT,
+                active_since_ms INTEGER,
+                elapsed_ms INTEGER NOT NULL DEFAULT 0,
+                total_tokens INTEGER NOT NULL DEFAULT 0,
                 last_event_id TEXT,
                 permission_mode TEXT NOT NULL DEFAULT 'workspace_write',
                 context_messages_json TEXT,
@@ -775,6 +803,9 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
         this.#ensureSessionColumn("parent_tool_call_id", "TEXT");
         this.#ensureSessionColumn("task_name", "TEXT");
         this.#ensureSessionColumn("description", "TEXT");
+        this.#ensureSessionColumn("active_since_ms", "INTEGER");
+        this.#ensureSessionColumn("elapsed_ms", "INTEGER NOT NULL DEFAULT 0");
+        this.#ensureSessionColumn("total_tokens", "INTEGER NOT NULL DEFAULT 0");
         this.#ensureSessionColumn("context_messages_json", "TEXT");
         this.#ensureSessionColumn("service_tier", "TEXT");
         this.#ensureSessionColumn("permission_mode", "TEXT NOT NULL DEFAULT 'workspace_write'");
@@ -882,6 +913,7 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
         const metadataUpdatedAt = readOptionalNumber(row, "metadata_updated_at_ms");
         const metadataRunId = readOptionalString(row, "metadata_run_id");
         const activeRunId = readOptionalString(row, "active_run_id");
+        const activeSince = readOptionalNumber(row, "active_since_ms");
         const contextMessagesJson = readOptionalString(row, "context_messages_json");
         const permissionMode = parsePermissionMode(readString(row, "permission_mode"));
         const parentSessionId = readOptionalString(row, "parent_session_id");
@@ -900,9 +932,11 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
             ...(taskName !== undefined ? { taskName } : {}),
         };
         const restore: PersistedSessionState = {
+            ...(activeSince !== undefined ? { activeSince } : {}),
             agent,
             agentId: readString(row, "agent_id"),
             cwd: readString(row, "cwd"),
+            elapsedMs: readNumber(row, "elapsed_ms"),
             ...(dockerJson !== undefined
                 ? { docker: JSON.parse(dockerJson) as DockerExecutionConfig }
                 : {}),
@@ -935,6 +969,7 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
             ...(metadataUpdatedAt !== undefined ? { metadataUpdatedAt } : {}),
             ...(metadataRunId !== undefined ? { metadataRunId } : {}),
             titleStatus: readString(row, "title_status") as SessionTitleStatus,
+            totalTokens: readNumber(row, "total_tokens"),
             tools: JSON.parse(readString(row, "tools_json")) as string[],
         };
         if (activeRunId !== undefined) {

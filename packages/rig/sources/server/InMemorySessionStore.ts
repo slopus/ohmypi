@@ -123,7 +123,14 @@ export class InMemorySessionStore implements SessionStore {
 
     listSubagents(parentSessionId: string): readonly SubagentSummary[] {
         return [...this.#sessions.values()]
-            .filter((session) => session.agentMetadata().parentSessionId === parentSessionId)
+            .filter((session) => {
+                let ancestorId = session.agentMetadata().parentSessionId;
+                while (ancestorId !== undefined) {
+                    if (ancestorId === parentSessionId) return true;
+                    ancestorId = this.#sessions.get(ancestorId)?.agentMetadata().parentSessionId;
+                }
+                return false;
+            })
             .map((session) => session.subagentSummary())
             .sort((left, right) => left.createdAt - right.createdAt);
     }

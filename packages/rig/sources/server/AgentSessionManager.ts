@@ -55,6 +55,14 @@ export class AgentSessionManager {
         return this.#repository.get(session.agentMetadata().rootSessionId) ?? session;
     }
 
+    recordChanged(child: InMemorySession): void {
+        let parent = this.#parentFor(child);
+        while (parent !== undefined) {
+            parent.recordSubagentChanged(child.subagentSummary());
+            parent = this.#parentFor(parent);
+        }
+    }
+
     async changeSubagentPermissionModes(
         parentSessionId: string,
         permissionMode: PermissionMode,
@@ -75,7 +83,7 @@ export class AgentSessionManager {
         this.#stoppedExplicitly.delete(child.id);
         const submitted = child.submit({ text: message });
         const parent = this.#parentFor(child);
-        parent?.recordSubagentChanged(child.subagentSummary());
+        this.recordChanged(child);
         this.#startBackgroundMonitor(parent, child, submitted.runId);
         return this.#managedSubagent(child);
     }
@@ -86,7 +94,7 @@ export class AgentSessionManager {
         void this.stopDescendants(child.id);
         if (child.subagentSummary().status === "suspended") child.clearSuspension();
         void Promise.resolve(child.abort({ pauseDescendants: false })).catch(() => undefined);
-        this.#parentFor(child)?.recordSubagentChanged(child.subagentSummary());
+        this.recordChanged(child);
         return previous;
     }
 
@@ -99,7 +107,7 @@ export class AgentSessionManager {
         await Promise.all(
             active.map(async (child) => {
                 await child.suspendByParent();
-                this.#parentFor(child)?.recordSubagentChanged(child.subagentSummary());
+                this.recordChanged(child);
             }),
         );
         parent.recordSubagentsSuspended(active.map((child) => this.#managedSubagent(child)));
@@ -110,7 +118,7 @@ export class AgentSessionManager {
         const child = this.#resolveTarget(parentSessionId, target);
         const submitted = child.resumeSuspended();
         const parent = this.#parentFor(child);
-        parent?.recordSubagentChanged(child.subagentSummary());
+        this.recordChanged(child);
         this.#startBackgroundMonitor(parent, child, submitted.runId);
         return this.#managedSubagent(child);
     }
@@ -120,13 +128,13 @@ export class AgentSessionManager {
         for (const child of this.#descendantsOf(parentSessionId)) {
             if (child.subagentSummary().status !== "suspended") continue;
             child.clearSuspension();
-            this.#parentFor(child)?.recordSubagentChanged(child.subagentSummary());
+            this.recordChanged(child);
         }
         for (const child of active) this.#stoppedExplicitly.add(child.id);
         await Promise.all(
             active.map(async (child) => {
                 await child.abort({ pauseDescendants: false });
-                this.#parentFor(child)?.recordSubagentChanged(child.subagentSummary());
+                this.recordChanged(child);
             }),
         );
         return active.length;
@@ -221,7 +229,7 @@ export class AgentSessionManager {
                       )
                     : this.#repository.createSubagent(childRequest, metadata);
             submitted = child.submit({ text: request.prompt });
-            parent.recordSubagentChanged(child.subagentSummary());
+            this.recordChanged(child);
         } finally {
             releaseSlot();
         }
@@ -245,7 +253,7 @@ export class AgentSessionManager {
                 void Promise.resolve(child.abort()).catch(() => undefined);
             }
             const completion = await child.waitForRun(submitted.runId);
-            parent.recordSubagentChanged(child.subagentSummary());
+            this.recordChanged(child);
             return {
                 output: this.#completionOutput(child, completion.status, completion.errorMessage),
                 path: this.#pathFor(child),
@@ -377,7 +385,7 @@ export class AgentSessionManager {
     ): Promise<void> {
         try {
             const completion = await child.waitForRun(runId);
-            parent?.recordSubagentChanged(child.subagentSummary());
+            this.recordChanged(child);
             if (completion.status === "aborted" && child.consumeSuspendedRun(runId)) return;
             if (child.subagentSummary().status === "suspended") return;
             if (this.#stoppedExplicitly.delete(child.id)) return;
@@ -406,7 +414,7 @@ export class AgentSessionManager {
                 ].join("\n"),
             });
         } catch {
-            parent?.recordSubagentChanged(child.subagentSummary());
+            this.recordChanged(child);
         }
     }
 

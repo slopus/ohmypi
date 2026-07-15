@@ -5,9 +5,28 @@ import { stripAnsi } from "./testing/stripAnsi.js";
 
 describe("renderSubagentSummary", () => {
     it("uses compact grammar and truncates to the terminal width", () => {
-        expect(renderSubagentSummary(0, 80)).toBeUndefined();
-        expect(renderSubagentSummary(1, 80)).toContain("1 agent running · /agents to view");
-        expect(renderSubagentSummary(2, 80)).toContain("2 agents running · /agents to view");
-        expect(stripAnsi(renderSubagentSummary(2, 20) ?? "").length).toBeLessThanOrEqual(20);
+        expect(
+            renderSubagentSummary({ count: 0, elapsedMs: 0, totalTokens: 0, width: 80 }),
+        ).toBeUndefined();
+        expect(
+            stripAnsi(
+                renderSubagentSummary({
+                    count: 1,
+                    elapsedMs: 65_000,
+                    totalTokens: 1_250,
+                    width: 80,
+                }) ?? "",
+            ).trimEnd(),
+        ).toBe("  1 agent running · 1m 5s · 1.3k tokens · /agents to view");
+        expect(
+            stripAnsi(
+                renderSubagentSummary({
+                    count: 2,
+                    elapsedMs: 7_000,
+                    totalTokens: 999,
+                    width: 20,
+                }) ?? "",
+            ).length,
+        ).toBeLessThanOrEqual(20);
     });
 });

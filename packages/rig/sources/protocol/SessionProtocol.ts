@@ -142,10 +142,12 @@ export interface ProtocolSession {
 }
 
 export interface SubagentSummary {
+    activeSince?: number;
     agentId: string;
     createdAt: number;
     depth: number;
     description: string;
+    elapsedMs?: number;
     id: string;
     latestText?: string;
     modelId: string;
@@ -154,6 +156,7 @@ export interface SubagentSummary {
     prompt?: string;
     status: SessionStatus;
     taskName?: string;
+    totalTokens?: number;
     updatedAt: number;
 }
 
