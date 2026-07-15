@@ -38,16 +38,35 @@ describe("Escape with pending steering", () => {
 
         submit(gym, firstPending);
         submit(gym, secondPending);
-        await gym.terminal.waitUntil(
+        const pending = await gym.terminal.waitUntil(
             (snapshot) =>
                 snapshot.text.includes("Messages to be submitted after next tool call") &&
+                snapshot.text.includes("(esc to send now)") &&
                 snapshot.text.includes(`↳ ${firstPending}`) &&
                 snapshot.text.includes(`↳ ${secondPending}`),
             "both pending steering messages",
             30_000,
         );
+        expect(rowContaining(pending.rows, "Messages to be submitted")).toMatch(/^ • /u);
+        expect(rowContaining(pending.rows, `↳ ${firstPending}`)).toMatch(/^ ↳ /u);
+        expect(rowContaining(pending.rows, `↳ ${secondPending}`)).toMatch(/^ ↳ /u);
         await screenshot(gym, "before-escape.png");
 
+        gym.terminal.resize(48, 36);
+        const narrow = await gym.terminal.waitUntil(
+            (snapshot) =>
+                snapshot.text.includes("Messages to be submitted") &&
+                snapshot.text.includes(firstPending) &&
+                snapshot.text.includes(secondPending),
+            "dedented pending steering at narrow width",
+            30_000,
+        );
+        expect(rowContaining(narrow.rows, "Messages to be submitted")).toMatch(/^ • /u);
+        expect(rowContaining(narrow.rows, `↳ ${firstPending}`)).toMatch(/^ ↳ /u);
+        expect(rowContaining(narrow.rows, `↳ ${secondPending}`)).toMatch(/^ ↳ /u);
+
+        gym.terminal.resize(100, 36);
+        await gym.terminal.waitForText(`↳ ${secondPending}`, 30_000);
         gym.terminal.press("escape");
         const interrupted = await gym.terminal.waitUntil(
             (snapshot) =>
@@ -76,6 +95,12 @@ describe("Escape with pending steering", () => {
 function submit(gym: Gym, text: string): void {
     gym.terminal.type(text);
     gym.terminal.press("enter");
+}
+
+function rowContaining(rows: readonly string[], text: string): string {
+    const row = rows.find((candidate) => candidate.includes(text));
+    expect(row).toBeDefined();
+    return row ?? "";
 }
 
 function assertDeliveredExactlyOnce(

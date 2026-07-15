@@ -13,13 +13,13 @@ export function renderPendingSteeringMessages(
     const safeWidth = Math.max(1, width);
     const lines = [
         truncateToWidth(
-            `${DIM}  • Messages to be submitted after next tool call${RESET}`,
+            `${DIM} • Messages to be submitted after next tool call (esc to send now)${RESET}`,
             safeWidth,
             "",
             true,
         ),
     ];
-    const prefix = "  ↳ ";
+    const prefix = " ↳ ";
     const indent = " ".repeat(visibleWidth(prefix));
     for (const message of messages) {
         const wrapped = wrapTextWithAnsi(
