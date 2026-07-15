@@ -4010,6 +4010,122 @@ describe("CodingAssistantApp", () => {
         expect(afterRunError).toContain("Interrupted.");
     });
 
+    it("keeps reverse-completing parallel MCP calls live until durable ordered results arrive", () => {
+        const model = defineModel({
+            defaultThinkingLevel: "off",
+            id: "openai/gpt-test",
+            name: "GPT Test",
+            thinkingLevels: ["off"],
+        });
+        const provider = defineProvider({
+            id: "codex",
+            models: [model],
+            stream: () => streamText("unused"),
+        });
+        const harness = createJustBashToolHarness();
+        const app = new CodingAssistantApp({
+            agent: new Agent({
+                context: harness.context,
+                modelId: model.id,
+                printToConsole: false,
+                provider,
+            }),
+            cwd: harness.context.fs.cwd,
+            processManager: new NativeProxessManager(),
+            tui: fakeTui(),
+        });
+        const calls = [
+            { arguments: {}, id: "slow", name: "mcp__service__slow", type: "tool_call" as const },
+            {
+                arguments: {},
+                id: "fast",
+                name: "mcp__service__fast_empty",
+                type: "tool_call" as const,
+            },
+        ];
+        app.applySessionEvent({
+            createdAt: 1,
+            data: { message: { blocks: calls, id: "calls", role: "agent" }, runId: "run-1" },
+            id: "calls-event",
+            sessionId: "session-1",
+            type: "agent_message",
+        });
+        for (const [index, call] of calls.entries()) {
+            app.applySessionEvent({
+                createdAt: 2 + index,
+                data: {
+                    event: {
+                        toolCall: { ...call, type: "toolCall" },
+                        type: "tool_execution_start",
+                    },
+                    runId: "run-1",
+                },
+                id: `start-${call.id}`,
+                sessionId: "session-1",
+                type: "agent_event",
+            });
+        }
+        const result = (
+            call: (typeof calls)[number],
+            rendered: Array<{ text: string; type: "text" }>,
+        ) => ({
+            display: call.id,
+            isError: false,
+            rendered,
+            toolCallId: call.id,
+            toolName: call.name,
+            type: "tool_result" as const,
+        });
+        for (const [index, item] of [
+            result(calls[1]!, []),
+            result(calls[0]!, [{ type: "text", text: "slow result" }]),
+        ].entries()) {
+            app.applySessionEvent({
+                createdAt: 4 + index,
+                data: { event: { result: item, type: "tool_execution_end" }, runId: "run-1" },
+                id: `end-${item.toolCallId}`,
+                sessionId: "session-1",
+                type: "agent_event",
+            });
+        }
+
+        const staged = stripAnsi(app.render(100).join("\n"));
+        expect(staged).toContain("◦ Calling service.slow({})");
+        expect(staged).toContain("◦ Calling service.fast_empty({})");
+        expect(staged).not.toContain("• Called service.fast_empty({})");
+
+        app.applySessionEvent({
+            createdAt: 6,
+            data: {
+                message: {
+                    blocks: [
+                        result(calls[0]!, [{ type: "text", text: "slow result" }]),
+                        result(calls[1]!, []),
+                    ],
+                    id: "results",
+                    role: "agent",
+                },
+                runId: "run-1",
+            },
+            id: "results-event",
+            sessionId: "session-1",
+            type: "agent_message",
+        });
+
+        const finalRows = stripAnsi(app.render(100).join("\n")).split("\n");
+        const slowIndex = finalRows.findIndex((row) => row.includes("Called service.slow"));
+        const fastIndex = finalRows.findIndex((row) => row.includes("Called service.fast_empty"));
+        expect(slowIndex).toBeGreaterThanOrEqual(0);
+        expect(fastIndex).toBeGreaterThan(slowIndex);
+        expect(finalRows.slice(fastIndex, fastIndex + 2)).toEqual([
+            "• Called service.fast_empty({})",
+            "  └ (empty result)",
+        ]);
+        expect(
+            finalRows.slice(fastIndex, fastIndex + 2).filter((row) => row.includes("└")),
+        ).toHaveLength(1);
+    });
+
     it("replays durable syntax-highlighted file diffs and never presents failed changes", () => {
         const model = defineModel({
             id: "openai/gpt-test",

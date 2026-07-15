@@ -2210,8 +2210,16 @@ export class CodingAssistantApp implements Component, Focusable {
             this.#runningToolCallIds.add(event.toolCall.id);
             this.#refreshToolActivityStatus();
         } else if (event.type === "tool_execution_end") {
-            this.#finishToolResult(event.result);
-            this.#markConcreteWorkCompleted(event.result);
+            const entry = this.#entries.find(
+                (candidate) => candidate.id === event.result.toolCallId,
+            );
+            if (entry?.mcpToolCall === undefined) {
+                this.#finishToolResult(event.result);
+                this.#markConcreteWorkCompleted(event.result);
+            } else {
+                this.#runningToolCallIds.delete(event.result.toolCallId);
+                this.#toolStatusByCallId.delete(event.result.toolCallId);
+            }
             this.#refreshToolActivityStatus();
         } else if (event.type === "tool_execution_progress") {
             const entry = this.#entries.find((candidate) => candidate.id === event.toolCallId);
@@ -2377,6 +2385,7 @@ export class CodingAssistantApp implements Component, Focusable {
         }
 
         flushText();
+        this.#refreshToolActivityStatus();
         this.#requestRender();
     }
 
