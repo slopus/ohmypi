@@ -18,6 +18,7 @@ import { CodingAssistantApp } from "./CodingAssistantApp.js";
 import { type CreateCodingAssistantAgentOptions } from "./createCodingAssistantAgent.js";
 import { createSerialTaskQueue } from "./createSerialTaskQueue.js";
 import { createStopOnceHandler } from "./createStopOnceHandler.js";
+import { createStartupStatusCardModel } from "./createStartupStatusCardModel.js";
 import { ensureSessionCanResume } from "./ensureSessionCanResume.js";
 import { readPackageVersion } from "./readPackageVersion.js";
 import { resolveTerminalTheme } from "./resolveTerminalTheme.js";
@@ -168,6 +169,7 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
         session: session.session,
     });
     const resumeCommand = `rig resume ${session.session.id}`;
+    const version = readPackageVersion();
     const app = new CodingAssistantApp({
         agent,
         cwd: sessionCwd,
@@ -262,9 +264,15 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
         durableGlobalEventQueue,
         showReasoning,
         showUsage,
+        startupStatus: createStartupStatusCardModel({
+            model: agent.model,
+            resumed: options.resumeSessionId !== undefined,
+            session: session.session,
+            version,
+        }),
         theme,
         tui,
-        version: readPackageVersion(),
+        version,
     });
     let terminalThemeRefresh = 0;
     const stopWatchingTerminalTheme = tui.onTerminalColorSchemeChange((colorScheme) => {

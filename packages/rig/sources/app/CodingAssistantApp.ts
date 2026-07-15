@@ -69,6 +69,7 @@ import { formatSessionUsageSummary } from "./formatSessionUsageSummary.js";
 import { formatToolResultForDisplay } from "./formatToolResultForDisplay.js";
 import { humanizeReasoningLevel } from "./humanizeReasoningLevel.js";
 import { humanizePermissionMode } from "./humanizePermissionMode.js";
+import { humanizeProviderId } from "./humanizeProviderId.js";
 import { humanizeGoalStatus } from "./humanizeGoalStatus.js";
 import { humanizeToolName } from "./humanizeToolName.js";
 import { humanizeMcpServerName } from "./humanizeMcpServerName.js";
@@ -91,6 +92,7 @@ import { renderNoticeWithChildren } from "./renderNoticeWithChildren.js";
 import { renderExecCommand } from "./renderExecCommand.js";
 import { renderPendingSteeringMessages } from "./renderPendingSteeringMessages.js";
 import { renderRigBanner } from "./renderRigBanner.js";
+import { renderStartupStatusCard } from "./renderStartupStatusCard.js";
 import { sanitizeTerminalText } from "./sanitizeTerminalText.js";
 import { subagentElapsedMs } from "./subagentElapsedMs.js";
 import { renderSubagentSummary } from "./renderSubagentSummary.js";
@@ -100,6 +102,7 @@ import { TranscriptEntryRenderCache } from "./TranscriptEntryRenderCache.js";
 import { upsertSubagentSummary } from "./upsertSubagentSummary.js";
 import { applyWorkflowRunUpdate } from "./applyWorkflowRunUpdate.js";
 import type { TerminalTheme } from "./TerminalTheme.js";
+import type { StartupStatusCardModel } from "./StartupStatusCardModel.js";
 
 const RESET = "\x1b[0m";
 const BOLD = "\x1b[1m";
@@ -166,6 +169,7 @@ export interface CodingAssistantAppOptions {
     durableGlobalEventQueue?: boolean;
     showReasoning?: boolean;
     showUsage?: boolean;
+    startupStatus?: StartupStatusCardModel;
     version?: string;
     theme?: TerminalTheme;
 }
@@ -272,6 +276,7 @@ export class CodingAssistantApp implements Component, Focusable {
     ) => Promise<ClipboardImage | undefined>;
     readonly #tui: TUI;
     readonly #theme: TerminalTheme;
+    readonly #startupStatus: StartupStatusCardModel;
     readonly #version: string;
     readonly #exitPromise: Promise<void>;
 
@@ -382,6 +387,25 @@ export class CodingAssistantApp implements Component, Focusable {
         this.#tui = options.tui;
         this.#theme = { ...(options.theme ?? DEFAULT_TERMINAL_THEME) };
         this.#version = options.version ?? "0.0.0";
+        const snapshot = options.agent.snapshot();
+        const startupStatus = {
+            access: humanizePermissionMode(options.agent.permissionMode),
+            environment: "Local",
+            fast: snapshot.serviceTier === "fast",
+            model: options.agent.model.name,
+            provider: humanizeProviderId(options.agent.provider.id),
+            reasoning: humanizeReasoningLevel(
+                snapshot.effort ?? options.agent.model.defaultThinkingLevel,
+            ),
+            session: "New session",
+            version: this.#version,
+            workspace: options.cwd,
+            ...options.startupStatus,
+        };
+        this.#startupStatus = {
+            ...startupStatus,
+            ...(startupStatus.usage === undefined ? {} : { usage: { ...startupStatus.usage } }),
+        };
         this.#editor = new Editor(this.#tui, createEditorTheme(this.#theme), { paddingX: 0 });
         this.#fileMentionAutocomplete =
             options.searchFiles === undefined
@@ -2642,14 +2666,17 @@ export class CodingAssistantApp implements Component, Focusable {
                 width,
             }),
             "",
+            ...renderStartupStatusCard({
+                model: this.#startupStatus,
+                theme: this.#theme,
+                width,
+            }),
+            "",
         ];
     }
 
     #renderTranscript(width: number): string[] {
-        const sourceEntries =
-            this.#entries.length === 0 && this.#showHeaderInFrame
-                ? [{ id: "ready", role: "system" as const, text: "Ready." }]
-                : this.#entries.slice(this.#transcriptStartIndex);
+        const sourceEntries = this.#entries.slice(this.#transcriptStartIndex);
         const entries = this.#showReasoning
             ? sourceEntries
             : sourceEntries.filter((entry) => entry.role !== "thinking");

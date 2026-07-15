@@ -61,8 +61,10 @@ describe("CodingAssistantApp", () => {
         expect(rendered).toContain("  ╚═╝  ╚═╝╚═╝ ╚═════╝    ╚═╝╚═╝╚══════╝╚═╝╚═════╝  ");
         expect(rendered).not.toContain("Agentic coding CLI");
         expect(rendered).not.toContain("private local daemon");
-        expect(rendered).not.toContain("Model: GPT Test");
-        expect(rendered).not.toContain("Provider: Codex");
+        expect(rendered).toContain("Rig 1.2.3 · New session");
+        expect(rendered).toContain("Model: GPT Test · Reasoning: Off · Provider: Codex");
+        expect(rendered).toContain("Workspace: /workspace · Environment: Local");
+        expect(rendered).toContain("Access: Full access");
         expect(rendered).not.toContain("Directory:");
         expect(rendered).toContain("Ask Rig to do anything");
         expect(renderedLines[0]).toBe("");
@@ -525,7 +527,7 @@ describe("CodingAssistantApp", () => {
         });
 
         const rendered = stripAnsi(app.render(80).join("\n"));
-        expect(rendered).not.toContain("Model: GPT-5.5");
+        expect(rendered).toContain("Model: GPT-5.5");
         expect(rendered).toContain("gpt-5.5 off · /workspace");
         expect(rendered).not.toContain("gpt-5-5");
         expect(rendered).not.toContain("reasoning off");
@@ -3728,7 +3730,7 @@ describe("CodingAssistantApp", () => {
         expect(rendered).toContain("• Ran printf 'line one\\nline two\\n'");
         expect(rendered).toContain("  └ line one");
         expect(rendered).toContain("    line two");
-        expect(rendered).not.toContain("│");
+        expect(rendered.slice(rendered.indexOf("› status"))).not.toContain("│");
         const resultLines = rendered.split("\n").filter((line) => /^[ ]+└ /u.test(line));
         expect(resultLines).toHaveLength(1);
         expect(contexts[1]?.messages[2]).toMatchObject({
