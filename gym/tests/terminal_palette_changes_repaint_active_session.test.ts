@@ -21,7 +21,7 @@ afterEach(async () => {
 });
 
 describe("terminal palette changes during an active session", () => {
-    it("repaints retained text and the composer from light to dark and back to light", async () => {
+    it("repaints the live surface without rewriting retained transcript rows", async () => {
         const gym = await createGym({
             cols: terminalWidth,
             inference: [
@@ -44,8 +44,8 @@ describe("terminal palette changes during an active session", () => {
         const light = await transition(gym, "light");
         await captureProof(light, "light");
 
-        assertCompletePalette(dark, "dark");
-        assertCompletePalette(light, "light");
+        assertStablePalette(dark, "dark");
+        assertStablePalette(light, "light");
         expect(dark.scroll.atBottom).toBe(true);
         expect(light.scroll.atBottom).toBe(true);
     });
@@ -84,17 +84,16 @@ function paletteDiagnostics(snapshot: TerminalSnapshot): object {
 
 function hasCompletePalette(snapshot: TerminalSnapshot, colorScheme: TerminalColorScheme): boolean {
     try {
-        assertCompletePalette(snapshot, colorScheme);
+        assertStablePalette(snapshot, colorScheme);
         return true;
     } catch {
         return false;
     }
 }
 
-function assertCompletePalette(snapshot: TerminalSnapshot, colorScheme: TerminalColorScheme): void {
+function assertStablePalette(snapshot: TerminalSnapshot, colorScheme: TerminalColorScheme): void {
     const light = colorScheme === "light";
     const expectedSurface = light ? 254 : 235;
-    const staleSurface = light ? 235 : 254;
     const expectedForeground = light ? 0x0d : 0xee;
     const expectedBackground = light ? 0xee : 0x0d;
     expect(snapshot.synchronizedOutputActive).toBe(false);
@@ -119,13 +118,14 @@ function assertCompletePalette(snapshot: TerminalSnapshot, colorScheme: Terminal
     const explicitBackgrounds = snapshot.cells
         .map((cell) => cell.background)
         .filter((background): background is NonNullable<typeof background> => background !== null);
-    expect(explicitBackgrounds).not.toContainEqual({ kind: "palette", index: staleSurface });
     expect(
         explicitBackgrounds.filter(
             (background) =>
                 !(
                     background.kind === "palette" &&
-                    (background.index === expectedSurface || background.index === 244)
+                    (background.index === expectedSurface ||
+                        background.index === 254 ||
+                        background.index === 244)
                 ),
         ),
     ).toEqual([]);
@@ -137,7 +137,7 @@ function assertCompletePalette(snapshot: TerminalSnapshot, colorScheme: Terminal
 
     const promptRow = rowContaining(snapshot, prompt);
     expect(cellsOnRow(snapshot, promptRow)).toHaveLength(terminalWidth);
-    expect(rowBackgroundIndexes(snapshot, promptRow)).toEqual([expectedSurface]);
+    expect(rowBackgroundIndexes(snapshot, promptRow)).toEqual([254]);
     const composerRow = rowContaining(snapshot, composerPlaceholder);
     expect(cellsOnRow(snapshot, composerRow)).toHaveLength(terminalWidth);
     expect(rowBackgroundIndexes(snapshot, composerRow)).toEqual(

@@ -1147,7 +1147,7 @@ describe("CodingAssistantApp", () => {
         );
     });
 
-    it("repaints retained input and the composer when the terminal theme changes", async () => {
+    it("keeps retained input immutable while repainting the live composer theme", async () => {
         const model = defineModel({
             id: "openai/gpt-test",
             name: "GPT Test",
@@ -1188,8 +1188,8 @@ describe("CodingAssistantApp", () => {
         const updated = app.render(80).join("\n");
         expect(updated).toContain("Change the palette.");
         expect(updated).toContain("\x1b[48;5;254m");
-        expect(updated).not.toContain("\x1b[48;5;235m");
-        expect(tui.requestRender).toHaveBeenCalledWith(true);
+        expect(updated).toContain("\x1b[48;5;235m");
+        expect(tui.requestRender).toHaveBeenCalledWith(false);
     });
 
     it("opens Codex-style backtracking on Escape and restores the selected prompt", async () => {

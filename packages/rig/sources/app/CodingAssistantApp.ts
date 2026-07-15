@@ -296,6 +296,7 @@ export class CodingAssistantApp implements Component, Focusable {
     #entries: AppTranscriptEntry[] = [];
     readonly #assistantStreamingRender = new AppendOnlyStreamingRender<AppTranscriptEntry>();
     readonly #entryRenderCache = new TranscriptEntryRenderCache();
+    readonly #headerLinesByWidth = new Map<number, readonly string[]>();
     #showHeaderInFrame = true;
     #transcriptStartIndex = 0;
     #exiting = false;
@@ -1197,10 +1198,8 @@ export class CodingAssistantApp implements Component, Focusable {
 
     setTheme(theme: TerminalTheme): void {
         Object.assign(this.#theme, theme);
-        this.#assistantStreamingRender.clear();
-        this.#entryRenderCache.clear();
         this.invalidate();
-        this.#requestRender(true);
+        this.#requestRender();
     }
 
     render(width: number): string[] {
@@ -2837,7 +2836,9 @@ export class CodingAssistantApp implements Component, Focusable {
     }
 
     #renderHeader(width: number): string[] {
-        return [
+        const cached = this.#headerLinesByWidth.get(width);
+        if (cached !== undefined) return [...cached];
+        const lines = [
             "",
             ...renderRigBanner({
                 brand: this.#theme.brand,
@@ -2853,6 +2854,8 @@ export class CodingAssistantApp implements Component, Focusable {
             }),
             "",
         ];
+        this.#headerLinesByWidth.set(width, lines);
+        return lines;
     }
 
     #renderTranscript(width: number): string[] {
