@@ -165,12 +165,7 @@ describe("aggregateSessionUsage", () => {
                 usage: usage(10),
             },
         ]);
-        expect(result.currentContext).toMatchObject({
-            approximate: false,
-            modelId: "openai/gpt-5.6",
-            providerId: "codex",
-            totalTokens: 40,
-        });
+        expect(result.currentContext).toBeUndefined();
     });
 
     it("tracks exact inference context and approximate compaction context for the active model", () => {

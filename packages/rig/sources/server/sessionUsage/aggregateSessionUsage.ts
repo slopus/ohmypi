@@ -105,6 +105,7 @@ export function aggregateSessionUsage(
                 ...earlierGroup,
                 usage: addUsage(earlierGroup.usage, message.usage),
             };
+            currentContext = undefined;
             continue;
         }
 
