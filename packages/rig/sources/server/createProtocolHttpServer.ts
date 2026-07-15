@@ -41,6 +41,7 @@ import type {
 } from "../protocol/index.js";
 import { getDaemonIdentity } from "../daemon/index.js";
 import { InMemorySessionStore } from "./InMemorySessionStore.js";
+import { latestObservedProviderQuotas } from "./latestObservedProviderQuotas.js";
 import { createModelCatalog } from "./createModelCatalog.js";
 import { FileSearchService, type FileSearchServiceContract } from "./FileSearchService.js";
 import type { SessionEventLog } from "./SessionEventLog.js";
@@ -354,15 +355,23 @@ async function handleRequest(
                 currentProviderId,
             ]),
         ];
+        const observedQuotas = latestObservedProviderQuotas(session.events.since(undefined) ?? []);
         const quotas = (
             await Promise.all(
                 providerIds.map(async (providerId) => {
-                    const quota =
+                    const loadedQuota =
                         getProviderQuota === undefined
                             ? providerId === currentProviderId
                                 ? await session.providerQuota()
                                 : undefined
                             : await getProviderQuota(providerId);
+                    const observedQuota = observedQuotas.get(providerId);
+                    const quota =
+                        observedQuota !== undefined &&
+                        (loadedQuota === undefined ||
+                            observedQuota.capturedAt >= loadedQuota.capturedAt)
+                            ? observedQuota
+                            : loadedQuota;
                     return quota === undefined ? undefined : { providerId, quota };
                 }),
             )
