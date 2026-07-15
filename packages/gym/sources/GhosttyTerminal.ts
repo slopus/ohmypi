@@ -31,6 +31,7 @@ export class GhosttyTerminal {
     #closed = false;
     #helper: ChildProcessWithoutNullStreams;
     #nextId = 1;
+    #outputHandlers = new Set<(data: string) => void>();
     #outputRevision = 0;
     #pending = new Map<
         number,
@@ -83,6 +84,11 @@ export class GhosttyTerminal {
         return () => this.#ptyWriteHandlers.delete(handler);
     }
 
+    onOutput(handler: (data: string) => void): () => void {
+        this.#outputHandlers.add(handler);
+        return () => this.#outputHandlers.delete(handler);
+    }
+
     scrollBy(rows: number): void {
         this.#send({ type: "scroll_by", rows });
     }
@@ -105,6 +111,7 @@ export class GhosttyTerminal {
 
     write(data: string): void {
         this.#outputRevision += 1;
+        for (const handler of this.#outputHandlers) handler(data);
         this.#send({ type: "write", data: Buffer.from(data).toString("base64") });
     }
 

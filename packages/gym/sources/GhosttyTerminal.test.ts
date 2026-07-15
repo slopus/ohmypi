@@ -55,6 +55,22 @@ describe("GhosttyTerminal cell styles", () => {
         expect(responses.join("")).toContain("\x1b]10;");
         expect(responses.join("")).toContain("\x1b]11;");
     });
+
+    it("observes application output separately from terminal replies", async () => {
+        const terminal = await GhosttyTerminal.create(20, 4);
+        running.add(terminal);
+        const output: string[] = [];
+        const replies: string[] = [];
+        terminal.onOutput((data) => output.push(data));
+        terminal.onPtyWrite((data) => replies.push(data));
+
+        terminal.write("visible\x1b]11;?\x07");
+        await terminal.snapshot();
+
+        expect(output).toEqual(["visible\x1b]11;?\x07"]);
+        expect(replies.join("")).toContain("\x1b]11;");
+        expect(output.join("")).not.toContain("rgb:");
+    });
 });
 
 describe("GhosttyTerminal scroll tracking", () => {

@@ -21,6 +21,7 @@ export type GymKey = keyof typeof KEYS;
 
 export class GymTerminal {
     #ghostty: GhosttyTerminal;
+    #inputRevision = 0;
     #pty: IPty;
 
     constructor(pty: IPty, ghostty: GhosttyTerminal) {
@@ -28,11 +29,17 @@ export class GymTerminal {
         this.#ghostty = ghostty;
     }
 
+    get inputRevision(): number {
+        return this.#inputRevision;
+    }
+
     press(key: GymKey): void {
+        this.#inputRevision += 1;
         this.#pty.write(KEYS[key]);
     }
 
     paste(text: string): void {
+        this.#inputRevision += 1;
         this.#pty.write(`\x1b[200~${text}\x1b[201~`);
     }
 
@@ -53,6 +60,10 @@ export class GymTerminal {
         this.#ghostty.scrollToTop();
     }
 
+    onOutput(handler: (data: string) => void): () => void {
+        return this.#ghostty.onOutput(handler);
+    }
+
     snapshot(): Promise<TerminalSnapshot> {
         return this.#ghostty.snapshot();
     }
@@ -62,10 +73,12 @@ export class GymTerminal {
     }
 
     type(text: string): void {
+        this.#inputRevision += 1;
         this.#pty.write(text);
     }
 
     write(data: string): void {
+        this.#inputRevision += 1;
         this.#pty.write(data);
     }
 

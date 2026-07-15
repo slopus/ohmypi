@@ -103,6 +103,8 @@ export function createGymProvider(options: CreateGymProviderOptions) {
                         contentIndex,
                         message,
                         block,
+                        reply.textDeltaChunkSize,
+                        reply.textDeltaDelayMs,
                         reply.toolCallDeltaDelayMs,
                         streamOptions,
                     );
@@ -140,12 +142,31 @@ async function* eventsForBlock(
     contentIndex: number,
     message: AssistantMessage,
     block: AssistantMessage["content"][number],
+    textDeltaChunkSize: number | undefined,
+    textDeltaDelayMs: number | undefined,
     toolCallDeltaDelayMs: number | undefined,
     streamOptions: StreamOptions,
 ): AsyncGenerator<AssistantMessageEvent> {
     if (block.type === "text") {
         yield { type: "text_start", contentIndex, partial: message };
-        yield { type: "text_delta", contentIndex, delta: block.text, partial: message };
+        const requestedChunkSize = Math.floor(textDeltaChunkSize ?? block.text.length);
+        const chunkSize = Number.isFinite(requestedChunkSize)
+            ? Math.max(1, requestedChunkSize)
+            : Math.max(1, block.text.length);
+        if (block.text.length === 0) {
+            yield { type: "text_delta", contentIndex, delta: "", partial: message };
+        }
+        for (let offset = 0; offset < block.text.length; offset += chunkSize) {
+            yield {
+                type: "text_delta",
+                contentIndex,
+                delta: block.text.slice(offset, offset + chunkSize),
+                partial: message,
+            };
+            if (textDeltaDelayMs !== undefined && offset + chunkSize < block.text.length) {
+                await delay(textDeltaDelayMs, streamOptions);
+            }
+        }
         yield { type: "text_end", contentIndex, content: block.text, partial: message };
         return;
     }

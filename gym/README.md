@@ -372,6 +372,8 @@ interface GymInferenceResponse {
     errorMessage?: string;
     responseModel?: string;
     stopReason?: StopReason;
+    textDeltaChunkSize?: number;
+    textDeltaDelayMs?: number;
     toolCallDeltaDelayMs?: number;
     usage?: Usage;
 }
@@ -381,6 +383,8 @@ interface GymInferenceResponse {
 - `completionDelayMs` delays the final provider result after content has streamed. It intentionally
   continues through cancellation so tests can reproduce a completion already in flight.
 - `delayMs` delays the response inside the container-side provider and respects abort signals. Use it for interruption and concurrency scenarios.
+- `textDeltaChunkSize` splits text blocks into deterministic streaming deltas of at most that many UTF-16 code units.
+- `textDeltaDelayMs` pauses between those text deltas and respects abort signals. Pair it with `textDeltaChunkSize` for live text-stream rendering scenarios.
 - `toolCallDeltaDelayMs` pauses after `toolcall_start` and before the arguments delta. Use it to exercise the live streamed-tool-call UI deterministically.
 - `stopReason` defaults to `toolUse` when any content block is a tool call, otherwise `stop`.
 - `errorMessage` populates the assistant message error field.
