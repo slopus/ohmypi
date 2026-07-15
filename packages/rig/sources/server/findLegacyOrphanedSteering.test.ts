@@ -115,6 +115,22 @@ describe("findLegacyOrphanedSteering", () => {
             ]),
         ).toEqual([{ events: [current], runId: "current-run" }]);
     });
+
+    it("does not treat a startup interruption as proof that steering reached inference", () => {
+        const active = steerSubmitted("active-message", "active-run", 2);
+        expect(
+            findLegacyOrphanedSteering([
+                event("run_started", 1, { runId: "active-run" }),
+                active,
+                event("run_error", 3, {
+                    errorMessage: "The server restarted.",
+                    modelLocked: true,
+                    runId: "active-run",
+                    startupInterruption: true,
+                }),
+            ]),
+        ).toEqual([]);
+    });
 });
 
 function steerSubmitted(

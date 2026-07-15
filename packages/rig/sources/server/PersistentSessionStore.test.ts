@@ -772,9 +772,99 @@ describe("PersistentSessionStore", () => {
                             )
                             .get(state.id),
                     ).toEqual({ count: 0 });
+                    const restartErrors = verify
+                        .prepare(
+                            "SELECT data_json FROM session_events WHERE session_id = ? AND type = 'run_error'",
+                        )
+                        .all(state.id) as { data_json: string }[];
+                    expect(restartErrors.map((row) => JSON.parse(row.data_json))).toEqual([
+                        expect.objectContaining({
+                            runId: "active-run",
+                            startupInterruption: true,
+                        }),
+                    ]);
                 } finally {
                     verify.close();
                 }
+            }
+        } finally {
+            await cleanup();
+        }
+    });
+
+    it("does not promote suspended subagent steering on the second restart", async () => {
+        const { cleanup, databasePath } = await createDatabasePath();
+        try {
+            const active = textUserMessage("suspended-orphan", "not applied before suspension");
+            const store = new PersistentSessionStore({
+                databasePath,
+                modelCatalog: testModelCatalog(),
+            });
+            store.saveSession(sessionState());
+            const state = sessionState({
+                activeRunId: "suspended-run",
+                agent: {
+                    depth: 1,
+                    description: "Wait for more work",
+                    parentSessionId: "session-1",
+                    rootSessionId: "session-1",
+                    type: "subagent",
+                },
+                agentId: "subagent-agent",
+                id: "subagent-1",
+                status: "suspended",
+            });
+            store.saveSession(state);
+            store.close();
+            const database = new DatabaseSync(databasePath);
+            insertEvent(database, state.id, "suspended-start", "run_started", 1, {
+                runId: "suspended-run",
+            });
+            insertEvent(database, state.id, "suspended-submit", "message_submitted", 2, {
+                delivery: "steer",
+                displayText: "not applied before suspension",
+                message: active,
+                runId: "suspended-run",
+            });
+            database.close();
+
+            for (let open = 0; open < 2; open += 1) {
+                const restored = new PersistentSessionStore({
+                    databasePath,
+                    modelCatalog: testModelCatalog(),
+                });
+                restored.close();
+            }
+
+            const verify = new DatabaseSync(databasePath);
+            try {
+                expect(
+                    verify
+                        .prepare(
+                            "SELECT COUNT(*) AS count FROM session_messages WHERE session_id = ? AND message_id = ?",
+                        )
+                        .get(state.id, active.id),
+                ).toEqual({ count: 0 });
+                expect(
+                    verify
+                        .prepare(
+                            "SELECT COUNT(*) AS count FROM session_events WHERE session_id = ? AND type = 'steering_applied'",
+                        )
+                        .get(state.id),
+                ).toEqual({ count: 0 });
+                const restartError = verify
+                    .prepare(
+                        "SELECT data_json FROM session_events WHERE session_id = ? AND type = 'run_error'",
+                    )
+                    .get(state.id) as { data_json: string };
+                expect(JSON.parse(restartError.data_json)).toEqual(
+                    expect.objectContaining({
+                        runId: "suspended-run",
+                        startupInterruption: true,
+                    }),
+                );
+            } finally {
+                verify.close();
             }
         } finally {
             await cleanup();

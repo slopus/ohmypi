@@ -49,7 +49,12 @@ export function findLegacyOrphanedSteering(
             continue;
         }
 
-        if (event.type !== "run_finished" && event.type !== "run_error") continue;
+        if (
+            event.type !== "run_finished" &&
+            (event.type !== "run_error" || event.data.startupInterruption === true)
+        ) {
+            continue;
+        }
         const pending = pendingByRunId.get(event.data.runId);
         if (startedRunIds.has(event.data.runId) && pending !== undefined && pending.length > 0) {
             orphaned.push({ events: pending, runId: event.data.runId });

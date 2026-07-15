@@ -1307,6 +1307,7 @@ export class InMemorySession {
                     errorMessage: interruption.message,
                     modelLocked: this.#modelLocked(),
                     runId,
+                    startupInterruption: true,
                 });
             }
             this.#latestMetadataBoundaryRunId = interruptedRunIds.at(-1);
@@ -1337,6 +1338,7 @@ export class InMemorySession {
                 errorMessage: message,
                 modelLocked: this.#modelLocked(),
                 runId,
+                startupInterruption: true,
             });
         }
         this.#status = "suspended";

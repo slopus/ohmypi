@@ -471,6 +471,7 @@ export type RunErrorEvent = BaseSessionEvent<
         errorMessage: string;
         modelLocked: boolean;
         runId: string;
+        startupInterruption?: true;
     }
 >;
 
