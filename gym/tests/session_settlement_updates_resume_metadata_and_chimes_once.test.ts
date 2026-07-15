@@ -88,7 +88,9 @@ describe("settled session metadata", () => {
         await expect
             .poll(() => metadataRequestCount(gym), { interval: 250, timeout: 75_000 })
             .toBe(2);
-        expect(standaloneBellCount(rawOutput)).toBe(2);
+        await expect
+            .poll(() => standaloneBellCount(rawOutput), { interval: 50, timeout: 5_000 })
+            .toBe(2);
         const metadataRequests = gym.inference.requests.filter((request) =>
             request.options.sessionId?.endsWith(":title"),
         );
