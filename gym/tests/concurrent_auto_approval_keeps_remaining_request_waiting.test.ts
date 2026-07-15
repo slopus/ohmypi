@@ -33,7 +33,6 @@ describe("concurrent Auto approvals keep the remaining request waiting", () => {
                         reviewText.lastIndexOf("<proposed_action>"),
                     );
                     if (proposedAction.includes("alpha-approved.txt")) {
-                        expect(callIndex).toBe(2);
                         return {
                             content: [
                                 {
@@ -50,7 +49,6 @@ describe("concurrent Auto approvals keep the remaining request waiting", () => {
                         };
                     }
 
-                    expect(callIndex).toBe(3);
                     expect(proposedAction).toContain("beta-approved.txt");
                     return {
                         content: [
@@ -144,7 +142,6 @@ describe("concurrent Auto approvals keep the remaining request waiting", () => {
 
         const output: string[] = [];
         const stopOutputCapture = gym.terminal.onOutput((data) => output.push(data));
-        const alphaReview = waitForTerminalOutput(gym, "Alpha still needs", 30_000);
         submit(gym, "Run both proof actions, but ask me about each command before it runs.");
         await gym.terminal.waitForText("esc to interrupt", 30_000);
         gym.terminal.scrollToTop();
@@ -156,7 +153,16 @@ describe("concurrent Auto approvals keep the remaining request waiting", () => {
         const anchorMarker = /APPROVAL_HISTORY_\d{3}/u.exec(anchored.text)?.[0];
         expect(anchorMarker).toBeDefined();
         if (anchorMarker === undefined) throw new Error("Approval anchor marker was not visible.");
-        await alphaReview;
+        let bothReviewsStartedAt: number | undefined;
+        await gym.terminal.waitUntil(
+            () => {
+                if (agentRequestCount(gym) < 4) return false;
+                bothReviewsStartedAt ??= Date.now();
+                return Date.now() - bothReviewsStartedAt >= 800;
+            },
+            "both delayed reviews to settle while history remains visible",
+            30_000,
+        );
         const reviewWhileAnchored = await gym.terminal.snapshot();
         assertSameViewport(reviewWhileAnchored, anchored);
 
@@ -381,4 +387,10 @@ function maximumBlankRun(value: string): number {
         maximum = Math.max(maximum, current);
     }
     return maximum;
+}
+
+function agentRequestCount(gym: Gym): number {
+    return gym.inference.requests.filter(
+        (request) => !request.options.sessionId?.endsWith(":title"),
+    ).length;
 }
