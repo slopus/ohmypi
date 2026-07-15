@@ -126,7 +126,7 @@ describe("restarted suspended subagent", () => {
         await gym.terminal.waitUntil(
             (snapshot) =>
                 snapshot.text.includes(
-                    'Background work "Restart audit" stopped when the local server restarted.',
+                    '"Restart audit" stopped when the local server restarted.',
                 ) && snapshot.text.includes("Ask Rig to do anything"),
             "the restarted parent session",
             30_000,
@@ -143,7 +143,7 @@ describe("restarted suspended subagent", () => {
         const restarted = await gym.terminal.waitUntil(
             (snapshot) =>
                 snapshot.text.includes(
-                    'Background work "Restart audit" stopped when the local server restarted.',
+                    '"Restart audit" stopped when the local server restarted.',
                 ) && snapshot.text.includes("Ask Rig to do anything"),
             "the restarted parent with a durable stopped-work notification",
             30_000,
@@ -159,7 +159,7 @@ describe("restarted suspended subagent", () => {
         const recovered = await gym.terminal.waitUntil(
             (snapshot) =>
                 snapshot.text.includes("PARENT_RESUMED_RESTARTED_CHILD") &&
-                snapshot.text.includes('Background work "Restart audit" completed.'),
+                snapshot.text.includes('"Restart audit" completed in'),
             "resume_agent to recover the restarted suspended child",
             30_000,
         );

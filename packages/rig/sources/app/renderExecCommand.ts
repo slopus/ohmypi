@@ -2,6 +2,7 @@ import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@earendil-works
 
 import type { ExecCommandPresentation } from "../agent/ToolResultPresentation.js";
 import { highlightShellCommand } from "./highlightShellCommand.js";
+import { renderChildRows, type ChildRow } from "./renderChildRows.js";
 import { sanitizeTerminalText } from "./sanitizeTerminalText.js";
 
 const RESET = "\x1b[0m";
@@ -23,7 +24,7 @@ export function renderExecCommand(
 ): string[] {
     const width = Math.max(1, options.width);
     const headerPrefix = `${options.status}•${RESET} ${options.brand}${BOLD}${options.verb}${NOT_BOLD}${RESET} `;
-    const continuationPrefix = `${DIM}  │ ${RESET}`;
+    const continuationPrefix = " ".repeat(visibleWidth(headerPrefix));
     const command = sanitizeTerminalText(presentation.command).replaceAll("\t", "    ");
     const highlighted = highlightShellCommand(command.length === 0 ? "command" : command);
     const commandWidth = Math.max(1, width - visibleWidth(headerPrefix));
@@ -37,24 +38,17 @@ export function renderExecCommand(
         ),
     );
 
+    const childRows: ChildRow[] = [];
     if (options.review !== undefined) {
-        const prefix = `${DIM}  ├ ${RESET}${DIM}`;
-        const reviewWidth = Math.max(1, width - visibleWidth(prefix));
-        const wrappedReview = wrapTextWithAnsi(options.review, reviewWidth);
-        const indent = `${" ".repeat(visibleWidth(prefix))}${DIM}`;
-        lines.push(
-            ...wrappedReview.map((line, index) =>
-                truncateToWidth(`${index === 0 ? prefix : indent}${line}${RESET}`, width, "", true),
-            ),
-        );
+        childRows.push({ prefix: DIM, suffix: RESET, text: options.review });
     }
-
     const outputLines = selectOutputLines(presentation.output);
-    for (const [index, output] of outputLines.entries()) {
-        const final = index === outputLines.length - 1;
-        const prefix = `${DIM}  ${final ? "└" : "│"} ${RESET}${DIM}`;
-        lines.push(truncateToWidth(`${prefix}${output}${RESET}`, width, "", true));
-    }
+    childRows.push(
+        ...outputLines.map((output) => ({ prefix: DIM, suffix: RESET, text: output, wrap: true })),
+    );
+    lines.push(
+        ...renderChildRows(childRows, { afterMarker: `${RESET}${DIM}`, markerStyle: DIM, width }),
+    );
     return lines;
 }
 

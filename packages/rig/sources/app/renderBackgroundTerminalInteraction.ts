@@ -1,7 +1,8 @@
-import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
+import { truncateToWidth } from "@earendil-works/pi-tui";
 
 import type { BackgroundTerminalInteractionPresentation } from "../agent/ToolResultPresentation.js";
 import { sanitizeTerminalText } from "./sanitizeTerminalText.js";
+import { renderChildRows } from "./renderChildRows.js";
 
 const RESET = "\x1b[0m";
 const BOLD = "\x1b[1m";
@@ -21,14 +22,12 @@ export function renderBackgroundTerminalInteraction(
 
     const input = sanitizeTerminalText(interaction.input).replaceAll("\r", "");
     if (input.length === 0) return lines;
-    const inputPrefix = `${DIM}  └ ${RESET}`;
-    const inputWidth = Math.max(1, width - visibleWidth(inputPrefix));
-    const wrapped = wrapTextWithAnsi(input, inputWidth);
-    const indent = " ".repeat(visibleWidth(inputPrefix));
     lines.push(
-        ...wrapped.map((line, index) =>
-            truncateToWidth(`${index === 0 ? inputPrefix : indent}${line}`, width, "", true),
-        ),
+        ...renderChildRows([{ text: input }], {
+            afterMarker: RESET,
+            markerStyle: DIM,
+            width,
+        }),
     );
     return lines;
 }

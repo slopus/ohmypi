@@ -3,6 +3,7 @@ import type { AppTranscriptEntry } from "./AppTranscriptEntry.js";
 interface CachedEntryRender {
     readonly backgroundTerminalCompletion: string | undefined;
     readonly backgroundTerminalInteraction: AppTranscriptEntry["backgroundTerminalInteraction"];
+    readonly childText: boolean | undefined;
     readonly detail: string | undefined;
     readonly dynamicState: string;
     readonly execCommand: AppTranscriptEntry["execCommand"];
@@ -35,6 +36,7 @@ export class TranscriptEntryRenderCache {
         this.#entries.set(entry, {
             backgroundTerminalCompletion: entry.backgroundTerminalCompletion,
             backgroundTerminalInteraction: entry.backgroundTerminalInteraction,
+            childText: entry.childText,
             detail: entry.detail,
             dynamicState: options.dynamicState,
             execCommand: entry.execCommand,
@@ -67,6 +69,7 @@ function matches(
     return (
         cached.backgroundTerminalCompletion === entry.backgroundTerminalCompletion &&
         cached.backgroundTerminalInteraction === entry.backgroundTerminalInteraction &&
+        cached.childText === entry.childText &&
         cached.detail === entry.detail &&
         cached.dynamicState === options.dynamicState &&
         cached.execCommand === entry.execCommand &&

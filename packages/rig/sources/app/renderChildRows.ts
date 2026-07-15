@@ -1,0 +1,35 @@
+import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
+
+export interface ChildRow {
+    prefix?: string;
+    suffix?: string;
+    text: string;
+    wrap?: boolean;
+}
+
+export function renderChildRows(
+    rows: readonly ChildRow[],
+    options: {
+        afterMarker?: string;
+        markerStyle?: string;
+        width: number;
+    },
+): string[] {
+    if (rows.length === 0) return [];
+
+    const width = Math.max(1, options.width);
+    const firstPrefix = `  ${options.markerStyle ?? ""}└${options.afterMarker ?? ""} `;
+    const continuationPrefix = " ".repeat(visibleWidth(firstPrefix));
+    const contentWidth = Math.max(1, width - visibleWidth(firstPrefix));
+    const renderedRows = rows.flatMap((row) =>
+        row.text.split("\n").flatMap((logicalLine) => {
+            const lines =
+                row.wrap === false ? [logicalLine] : wrapTextWithAnsi(logicalLine, contentWidth);
+            return lines.map((line) => `${row.prefix ?? ""}${line}${row.suffix ?? ""}`);
+        }),
+    );
+
+    return renderedRows.map((row, index) =>
+        truncateToWidth(`${index === 0 ? firstPrefix : continuationPrefix}${row}`, width, "", true),
+    );
+}

@@ -19,6 +19,7 @@ export type AppTranscriptRole =
 export interface AppTranscriptEntry {
     backgroundTerminalCompletion?: string;
     backgroundTerminalInteraction?: BackgroundTerminalInteractionPresentation;
+    childText?: boolean;
     execCommand?: ExecCommandPresentation;
     fileDiffs?: readonly FileDiff[];
     omittedFileDiffs?: number;

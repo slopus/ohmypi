@@ -1771,8 +1771,11 @@ describe("CodingAssistantApp", () => {
 
         const statusTransition = stripAnsi(app.render(100).join("\n"));
         expect(statusTransition).not.toContain("agent running · /agents to view");
-        expect(statusTransition).toContain(
-            'Background work "Inspect the implementation" completed in 1m 5s · 1.3k tokens.',
+        expect(statusTransition.split("\n").map((line) => line.trimEnd())).toEqual(
+            expect.arrayContaining([
+                "• Background work",
+                '  └ "Inspect the implementation" completed in 1m 5s · 1.3k tokens.',
+            ]),
         );
         app.applySessionEvent({
             createdAt: 3,
@@ -1792,17 +1795,19 @@ describe("CodingAssistantApp", () => {
         });
         const completed = stripAnsi(app.render(100).join("\n"));
         expect(completed).not.toContain("agent running · /agents to view");
-        expect(completed).toContain(
-            'Background work "Inspect the implementation" completed in 1m 5s · 1.3k tokens.',
-        );
-        expect(
-            completed.match(/Background work "Inspect the implementation" completed/gu),
-        ).toHaveLength(1);
+        expect(completed.match(/"Inspect the implementation" completed/gu)).toHaveLength(1);
 
         submit(app, "/agents");
 
-        expect(stripAnsi(app.render(100).join("\n"))).toContain(
-            "Completed · Inspect the implementation · 1m 5s · 1.3k tokens",
+        expect(
+            stripAnsi(app.render(100).join("\n"))
+                .split("\n")
+                .map((line) => line.trimEnd()),
+        ).toEqual(
+            expect.arrayContaining([
+                "• Subagents",
+                "  └ Completed · Inspect the implementation · 1m 5s · 1.3k tokens",
+            ]),
         );
     });
 
@@ -3614,10 +3619,11 @@ describe("CodingAssistantApp", () => {
         expect(raw).toContain("\x1b[38;5;75mprintf\x1b[39m");
         expect(raw).toContain("\x1b[38;5;71m'line one\\nline two\\n'\x1b[39m");
         expect(rendered).toContain("• Ran printf 'line one\\nline two\\n'");
-        expect(rendered).toContain("│ line one");
-        expect(rendered).toContain("└ line two");
-        const resultLines = rendered.split("\n").filter((line) => /^[ ]+[│└] /u.test(line));
-        expect(resultLines).toHaveLength(2);
+        expect(rendered).toContain("  └ line one");
+        expect(rendered).toContain("    line two");
+        expect(rendered).not.toContain("│");
+        const resultLines = rendered.split("\n").filter((line) => /^[ ]+└ /u.test(line));
+        expect(resultLines).toHaveLength(1);
         expect(contexts[1]?.messages[2]).toMatchObject({
             role: "toolResult",
             toolCallId: "tool-call-1",

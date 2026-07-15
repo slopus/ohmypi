@@ -146,7 +146,7 @@ describe("delayed subagent completion does not add blank scrollback", () => {
         releaseFirstChild.resolve();
         const notified = await gym.terminal.waitUntil(
             (snapshot) =>
-                snapshot.text.includes('Background work "First delayed audit" completed.') &&
+                snapshot.text.includes('"First delayed audit" completed in') &&
                 snapshot.text.includes("1 agent running · /agents to view") &&
                 snapshot.scroll.atBottom,
             "delayed child completion notice",
@@ -164,7 +164,7 @@ describe("delayed subagent completion does not add blank scrollback", () => {
             "parent acknowledgement after delayed child completion",
             30_000,
         );
-        expect(completed.text).toContain('Background work "First delayed audit" completed.');
+        expect(completed.text).toContain('"First delayed audit" completed in');
         expect(completed.text).toContain("1 agent running · /agents to view");
         expect(completed.text).toContain("gym off · /workspace");
         expect(rowContaining(completed, "Ask Rig to do anything")).toBe(stableComposerRow);
@@ -172,7 +172,7 @@ describe("delayed subagent completion does not add blank scrollback", () => {
         releaseSecondChild.resolve();
         const allCompleted = await gym.terminal.waitUntil(
             (snapshot) =>
-                snapshot.text.includes('Background work "Second delayed audit" completed.') &&
+                snapshot.text.includes('"Second delayed audit" completed in') &&
                 snapshot.text.includes("PARENT_ACKNOWLEDGED_SECOND_CHILD") &&
                 !snapshot.text.includes("agent running · /agents to view") &&
                 snapshot.text.includes("Ask Rig to do anything") &&
@@ -185,15 +185,8 @@ describe("delayed subagent completion does not add blank scrollback", () => {
         const scrollbackRows = await collectScrollbackRows(gym);
         expect(countRowsContaining(scrollbackRows, "PARENT_RESPONSE_BEGIN")).toBe(1);
         expect(countRowsContaining(scrollbackRows, "PARENT_FINISHED_BEFORE_CHILD")).toBe(1);
-        expect(
-            countRowsContaining(scrollbackRows, 'Background work "First delayed audit" completed.'),
-        ).toBe(1);
-        expect(
-            countRowsContaining(
-                scrollbackRows,
-                'Background work "Second delayed audit" completed.',
-            ),
-        ).toBe(1);
+        expect(countRowsContaining(scrollbackRows, '"First delayed audit" completed in')).toBe(1);
+        expect(countRowsContaining(scrollbackRows, '"Second delayed audit" completed in')).toBe(1);
         expect(maxConsecutiveBlankRows(scrollbackRows)).toBeLessThanOrEqual(4);
     }, 120_000);
 });

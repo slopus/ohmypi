@@ -1,7 +1,12 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { resolve } from "node:path";
 
-import { createGym, type Gym } from "../../packages/gym/sources/index.js";
+import {
+    createGym,
+    renderTerminalSnapshotPng,
+    type Gym,
+    type TerminalSnapshot,
+} from "../../packages/gym/sources/index.js";
 import type { Usage } from "../../packages/rig/sources/providers/types.js";
 
 const running = new Set<Gym>();
@@ -98,6 +103,25 @@ describe("subagent observability across a nested lifecycle", () => {
                     };
                 }
 
+                if (lastText.includes("Show wrapped tool output.")) {
+                    return {
+                        content: [
+                            {
+                                arguments: {
+                                    cmd: "printf '%s\\n' 'WRAPPED_TOOL_OUTPUT_abcdefghijklmnopqrstuvwxyz_ABCDEFGHIJKLMNOPQRSTUVWXYZ_0123456789_reaches_the_next_terminal_row'",
+                                },
+                                id: "wrapped-tool-output",
+                                name: "exec_command",
+                                type: "toolCall",
+                            },
+                        ],
+                    };
+                }
+
+                if (lastMessage?.role === "toolResult" && lastMessage.toolName === "exec_command") {
+                    return { content: [{ text: "WRAPPED_TOOL_OUTPUT_DONE", type: "text" }] };
+                }
+
                 expect(sessionId).toBe(parentSessionId);
                 expect(lastMessage).toMatchObject({ role: "toolResult", toolName: "spawn_agent" });
                 return { content: [{ text: "PARENT_READY_WITH_AGENTS", type: "text" }] };
@@ -112,31 +136,29 @@ describe("subagent observability across a nested lifecycle", () => {
             (snapshot) =>
                 /Running · Top observer · [1-9]\d*s · 300 tokens/u.test(snapshot.text) &&
                 snapshot.text.includes("  Running · Nested observer · 0s · 0 tokens") &&
-                snapshot.text.includes("300 tokens · /agents to view") &&
+                snapshot.text.includes("/agents to view ·") &&
+                snapshot.text.includes("300 tokens") &&
                 snapshot.scroll.atBottom,
             "running nested agents with live metrics",
             30_000,
         );
-        await screenshot(active, "running-agents.png", gym);
+        await screenshot(active, "running-agents.png");
 
         releaseTop.resolve();
         const completion = await gym.terminal.waitUntil(
             (snapshot) =>
-                /Background work "Top observer" completed in \d+s · 1\.5k tokens\./u.test(
-                    snapshot.text,
-                ) && snapshot.text.includes("1 agent running"),
+                /"Top observer" completed in \d+s · 1\.5k tokens\./u.test(snapshot.text) &&
+                snapshot.text.includes("1 agent running"),
             "top-level completion notice with final metrics",
             30_000,
         );
-        await screenshot(completion, "completion-notice.png", gym);
+        await screenshot(completion, "completion-notice.png");
 
         releaseNested.resolve();
         await gym.terminal.waitUntil(
             (snapshot) =>
                 snapshot.text.includes("PARENT_ACKNOWLEDGED_TOP") &&
-                /Background work "Top observer" completed in \d+s · 1\.6k tokens\./u.test(
-                    snapshot.text,
-                ) &&
+                /"Top observer" completed in \d+s · 1\.6k tokens\./u.test(snapshot.text) &&
                 !snapshot.text.includes("agent running ·") &&
                 snapshot.scroll.atBottom,
             "all nested agent work completed",
@@ -157,7 +179,23 @@ describe("subagent observability across a nested lifecycle", () => {
         expect(completed.text.match(/Completed · Nested observer/gu)).toHaveLength(1);
         expect(topSessionId).toBeTypeOf("string");
         expect(nestedSessionId).toBeTypeOf("string");
-        await screenshot(completed, "completed-agents.png", gym);
+        await screenshot(completed, "completed-agents.png");
+
+        submit(gym, "Show wrapped tool output.");
+        const wrappedTool = await gym.terminal.waitUntil(
+            (snapshot) =>
+                snapshot.text.includes("WRAPPED_TOOL_OUTPUT_DONE") &&
+                snapshot.text.includes("└ WRAPPED_TOOL_OUTPUT_") &&
+                snapshot.text.includes("_next_terminal_row") &&
+                snapshot.scroll.atBottom,
+            "wrapped tool output with one branch marker",
+            30_000,
+        );
+        expect(
+            wrappedTool.rows.filter((row) => row.includes("└ WRAPPED_TOOL_OUTPUT_")),
+        ).toHaveLength(1);
+        expect(wrappedTool.text).not.toContain("│");
+        await screenshot(wrappedTool, "wrapped-tool-output.png");
     }, 120_000);
 });
 
@@ -200,13 +238,9 @@ function usage(totalTokens: number): Usage {
     };
 }
 
-async function screenshot(
-    snapshot: Awaited<ReturnType<Gym["terminal"]["snapshot"]>>,
-    name: string,
-    gym: Gym,
-): Promise<void> {
+async function screenshot(snapshot: TerminalSnapshot, name: string): Promise<void> {
     const directory = process.env.RIG_GYM_SCREENSHOT_DIR;
     if (directory === undefined) return;
-    await gym.terminal.screenshot(resolve(directory, name));
+    await renderTerminalSnapshotPng(snapshot, resolve(directory, name));
     expect(snapshot.rows).toHaveLength(36);
 }

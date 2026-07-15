@@ -109,7 +109,7 @@ describe("Escape pauses delegated work with the parent", () => {
         gym.terminal.press("escape");
         const paused = await gym.terminal.waitUntil(
             (snapshot) =>
-                snapshot.text.includes('Background work "Paused audit" was suspended.') &&
+                snapshot.text.includes('"Paused audit" was suspended in') &&
                 snapshot.text.includes("Subagents suspended") &&
                 snapshot.text.includes("1 subagent was suspended: Paused audit") &&
                 !snapshot.text.includes("agent running · /agents to view") &&
@@ -130,7 +130,7 @@ describe("Escape pauses delegated work with the parent", () => {
             (snapshot) =>
                 snapshot.text.includes("PARENT_RESUMED_CHILD") &&
                 childRunCount === 2 &&
-                snapshot.text.includes('Background work "Paused audit" completed.') &&
+                snapshot.text.includes('"Paused audit" completed in') &&
                 !snapshot.text.includes("agent running · /agents to view"),
             "the next parent turn to resume and complete the retained child",
             30_000,

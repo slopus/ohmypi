@@ -158,7 +158,7 @@ describe("background subagent completion routes to its parent", () => {
 
         const completed = await gym.terminal.waitUntil(
             (snapshot) =>
-                snapshot.text.includes('Background work "Inspect workspace" completed.') &&
+                snapshot.text.includes('"Inspect workspace" completed in') &&
                 snapshot.text.includes("PARENT_ACKNOWLEDGED_SUBAGENT_RESULT") &&
                 snapshot.text.includes("Ask Rig to do anything") &&
                 snapshot.scroll.atBottom,
@@ -174,10 +174,11 @@ describe("background subagent completion routes to its parent", () => {
         expect(completed.scroll.bottomDepartureCount).toBe(baseline.bottomDepartureCount);
         expect(completed.scroll.topArrivalCount).toBe(baseline.topArrivalCount);
         expect(completed.text).toContain("gym off · /workspace");
-        expect(completed.text).toContain('• Background work "Inspect workspace" completed.');
-        expect(completed.text).not.toContain('› Background work "Inspect workspace" completed.');
+        expect(completed.text).toContain("• Background work");
+        expect(completed.text).toContain('└ "Inspect workspace" completed in');
+        expect(completed.text).not.toContain('› "Inspect workspace" completed');
         const notificationRow = completed.rows.findIndex((row) =>
-            row.includes('Background work "Inspect workspace" completed.'),
+            row.includes('"Inspect workspace" completed in'),
         );
         expect(
             completed.cells

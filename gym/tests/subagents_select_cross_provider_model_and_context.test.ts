@@ -87,8 +87,8 @@ describe("subagent provider, model, and context selection", () => {
         const completed = await gym.terminal.waitUntil(
             (snapshot) =>
                 snapshot.text.includes("PARENT_SPAWNED_BOTH") &&
-                snapshot.text.includes('Background work "Parent context child" completed.') &&
-                snapshot.text.includes('Background work "Task only child" completed.'),
+                snapshot.text.includes('"Parent context child" completed in') &&
+                snapshot.text.includes('"Task only child" completed in'),
             "both cross-provider subagents to complete",
             30_000,
         );

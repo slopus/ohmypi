@@ -83,6 +83,7 @@ import { renderAgentMarkdown } from "./renderAgentMarkdown.js";
 import { renderBackgroundTerminalCompletion } from "./renderBackgroundTerminalCompletion.js";
 import { renderBackgroundTerminalInteraction } from "./renderBackgroundTerminalInteraction.js";
 import { renderBackgroundTerminalSummary } from "./renderBackgroundTerminalSummary.js";
+import { renderChildRows, type ChildRow } from "./renderChildRows.js";
 import { renderCodexFileDiff } from "./renderCodexFileDiff.js";
 import { renderCodexMcpToolCall } from "./renderCodexMcpToolCall.js";
 import { renderNoticeWithChildren } from "./renderNoticeWithChildren.js";
@@ -511,6 +512,7 @@ export class CodingAssistantApp implements Component, Focusable {
                 this.#recordUserInput(event.createdAt);
             }
             this.#appendEntry({
+                ...(event.data.source === "notification" ? { childText: true } : {}),
                 id: event.data.message.id,
                 role: event.data.source === "notification" ? "event" : "user",
                 text:
@@ -1615,6 +1617,7 @@ export class CodingAssistantApp implements Component, Focusable {
             return;
         }
         this.#appendEntry({
+            childText: true,
             role: "event",
             title: "Subagents",
             text: formatSubagentRows(this.#subagents, this.#now()).join("\n"),
@@ -2504,6 +2507,9 @@ export class CodingAssistantApp implements Component, Focusable {
         if (entry.backgroundTerminalInteraction !== undefined) {
             completeEntry.backgroundTerminalInteraction = entry.backgroundTerminalInteraction;
         }
+        if (entry.childText !== undefined) {
+            completeEntry.childText = entry.childText;
+        }
         if (entry.execCommand !== undefined) {
             completeEntry.execCommand = entry.execCommand;
         }
@@ -2702,6 +2708,7 @@ export class CodingAssistantApp implements Component, Focusable {
                 entry.text,
                 width,
                 this.#theme.warning,
+                entry.childText === true,
             );
         }
 
@@ -3684,35 +3691,26 @@ export class CodingAssistantApp implements Component, Focusable {
         if (toolName === "Write stdin" && active) return [];
         const title = `${dot}•${RESET} ${this.#theme.brand}${BOLD}${verb}${NOT_BOLD_OR_DIM}${this.#theme.primary} ${displayText}${RESET}`;
         const lines = [this.#fitLine(title, width)];
+        const childRows: ChildRow[] = [];
         if (entry.permissionReview !== undefined && width >= 5) {
-            const reviewPrefix = `  ${DIM}${entry.detail === undefined ? "└" : "├"}${RESET} ${DIM}`;
-            const reviewWidth = Math.max(1, width - visibleWidth(reviewPrefix));
-            const reviewLines = wrapTextWithAnsi(entry.permissionReview, reviewWidth);
-            const reviewIndent = `${" ".repeat(visibleWidth(reviewPrefix))}${DIM}`;
-            lines.push(
-                ...reviewLines.map((line, index) =>
-                    this.#fitLine(
-                        `${index === 0 ? reviewPrefix : reviewIndent}${line}${RESET}`,
-                        width,
-                    ),
-                ),
-            );
+            childRows.push({ prefix: DIM, suffix: RESET, text: entry.permissionReview });
         }
         if (entry.detail !== undefined) {
             const detailText = entry.detail.length > 0 ? entry.detail : "(empty result)";
-            const detailPrefix = `  ${DIM}└${RESET} ${DIM}`;
-            const detailWidth = Math.max(1, width - visibleWidth(detailPrefix));
-            const detailLines = isError ? wrapTextWithAnsi(detailText, detailWidth) : [detailText];
-            const detailIndent = `${" ".repeat(visibleWidth(detailPrefix))}${DIM}`;
-            lines.push(
-                ...detailLines.map((line, index) =>
-                    this.#fitLine(
-                        `${index === 0 ? detailPrefix : detailIndent}${line}${RESET}`,
-                        width,
-                    ),
-                ),
-            );
+            childRows.push({
+                prefix: DIM,
+                suffix: RESET,
+                text: detailText,
+                wrap: isError,
+            });
         }
+        lines.push(
+            ...renderChildRows(childRows, {
+                afterMarker: `${RESET}${DIM}`,
+                markerStyle: DIM,
+                width,
+            }),
+        );
         return lines;
     }
 
@@ -3763,17 +3761,16 @@ export class CodingAssistantApp implements Component, Focusable {
             this.#theme.isLight === true ? CODEX_LIGHT_DIFF_PALETTE : CODEX_DARK_DIFF_PALETTE;
         const lines: string[] = [];
         if (entry.permissionReview !== undefined && width >= 5) {
-            const prefix = "  └ ";
-            const review = wrapTextWithAnsi(
-                sanitizeTerminalText(entry.permissionReview),
-                Math.max(1, width - prefix.length),
-            );
             lines.push(
-                ...review.map((line, index) =>
-                    this.#fitLine(
-                        `${DIM}${index === 0 ? prefix : " ".repeat(prefix.length)}${line}${NOT_BOLD_OR_DIM}`,
-                        width,
-                    ),
+                ...renderChildRows(
+                    [
+                        {
+                            prefix: DIM,
+                            suffix: NOT_BOLD_OR_DIM,
+                            text: sanitizeTerminalText(entry.permissionReview),
+                        },
+                    ],
+                    { markerStyle: DIM, width },
                 ),
             );
         }
@@ -3807,9 +3804,24 @@ export class CodingAssistantApp implements Component, Focusable {
         return visible;
     }
 
-    #renderNoticeEntry(title: string, text: string, width: number, color: string): string[] {
+    #renderNoticeEntry(
+        title: string,
+        text: string,
+        width: number,
+        color: string,
+        childText = false,
+    ): string[] {
         const safeTitle = this.#singleLine(title);
         const safeText = sanitizeTerminalText(text);
+        if (childText) {
+            return [
+                this.#fitLine(`${color}•${RESET} ${BOLD}${safeTitle}${RESET}`, width),
+                ...renderChildRows(
+                    safeText.split("\n").map((line) => ({ text: line })),
+                    { afterMarker: RESET, markerStyle: DIM, width },
+                ),
+            ];
+        }
         const prefix = `${color}•${RESET} ${BOLD}${safeTitle}${NOT_BOLD_OR_DIM} `;
         const prefixWidth = visibleWidth(prefix);
         const wrapped = wrapTextWithAnsi(
@@ -3996,6 +4008,7 @@ export class CodingAssistantApp implements Component, Focusable {
             if (oldest !== undefined) this.#renderedCompletionNotices.delete(oldest);
         }
         this.#appendEntry({
+            childText: title === "Background work",
             role: "event",
             title,
             text: displayText.startsWith(prefix) ? displayText.slice(prefix.length) : displayText,

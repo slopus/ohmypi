@@ -24,8 +24,10 @@ describe("renderExecCommand", () => {
         expect(rendered.join("\n")).toContain("\x1b[38;5;75mgit\x1b[39m");
         expect(rendered.join("\n")).toContain("\x1b[38;5;168m--stat\x1b[39m");
         expect(plain[0]).toContain("• Ran git show --stat HEAD; printf");
-        expect(plain).toContain("  │ … +4 lines");
-        expect(plain.at(-1)).toBe("  └ output 14");
+        expect(plain).toContain("    … +4 lines");
+        expect(plain.find((line) => line.includes("output 1"))).toBe("  └ output 1");
+        expect(plain.at(-1)).toBe("    output 14");
+        expect(plain.join("\n")).not.toContain("│");
     });
 
     it("keeps an automatic permission review attached to the command", () => {
@@ -43,8 +45,8 @@ describe("renderExecCommand", () => {
 
         expect(rendered).toEqual([
             "• Ran printf ok",
-            "  ├ Approved automatically: Low-risk local command.",
-            "  └ ok",
+            "  └ Approved automatically: Low-risk local command.",
+            "    ok",
         ]);
     });
 });
