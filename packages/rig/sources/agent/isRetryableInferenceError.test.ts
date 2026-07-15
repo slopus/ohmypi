@@ -6,6 +6,7 @@ describe("isRetryableInferenceError", () => {
     it.each([
         new TypeError("fetch failed"),
         Object.assign(new Error("request failed"), { cause: { code: "ECONNRESET" } }),
+        new Error("WebSocket error"),
         new Error("Stream disconnected before completion"),
         new Error("Provider returned HTTP 503"),
         new Error(

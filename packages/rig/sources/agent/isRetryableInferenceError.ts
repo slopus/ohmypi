@@ -19,6 +19,7 @@ const RETRYABLE_MESSAGE_PATTERNS = [
     /\bnetwork error\b/iu,
     /\bconnection (?:closed|failed|lost|reset)\b/iu,
     /\bsocket (?:closed|disconnected|hang up)\b/iu,
+    /\bWebSocket error\b/iu,
     /\bstream disconnected\b/iu,
     /\bpremature close\b/iu,
     /\bterminated\b/iu,
