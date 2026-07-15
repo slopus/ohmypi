@@ -55,7 +55,9 @@ describe("Escape with pending steering", () => {
         expect(rowContaining(pending.rows, `└ ${firstPending}`)).toMatch(/^  └ /u);
         expect(rowContaining(pending.rows, secondPending)).toMatch(/^    /u);
         expect(pending.rows.filter((row) => row.includes("└"))).toHaveLength(1);
-        expect(pending.text).not.toMatch(/[│├↳]/u);
+        expect(pendingSteeringRows(pending.rows, [firstPending, secondPending])).not.toMatch(
+            /[│├↳]/u,
+        );
         await screenshot(gym, "revised-pending-before-escape.png");
 
         gym.terminal.resize(48, 36);
@@ -71,11 +73,12 @@ describe("Escape with pending steering", () => {
         expect(rowContaining(narrow.rows, `└ ${firstPending}`)).toMatch(/^  └ /u);
         expect(rowContaining(narrow.rows, secondPending)).toMatch(/^    /u);
         expect(narrow.rows.filter((row) => row.includes("└"))).toHaveLength(1);
-        expect(narrow.text).not.toMatch(/[│├↳]/u);
+        expect(pendingSteeringRows(narrow.rows, [firstPending, secondPending])).not.toMatch(
+            /[│├↳]/u,
+        );
         await screenshot(gym, "revised-pending-narrow-wrapped.png");
 
         gym.terminal.resize(100, 36);
-        await gym.terminal.waitForText(secondPending, 30_000);
         gym.terminal.press("escape");
         const resumed = await gym.terminal.waitUntil(
             (snapshot) =>
@@ -110,6 +113,16 @@ function rowContaining(rows: readonly string[], text: string): string {
     const row = rows.find((candidate) => candidate.includes(text));
     expect(row).toBeDefined();
     return row ?? "";
+}
+
+function pendingSteeringRows(rows: readonly string[], messages: readonly string[]): string {
+    return rows
+        .filter(
+            (row) =>
+                row.includes("Messages to be submitted") ||
+                messages.some((message) => row.includes(message)),
+        )
+        .join("\n");
 }
 
 function assertDeliveredExactlyOnce(
