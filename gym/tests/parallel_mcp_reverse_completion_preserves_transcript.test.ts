@@ -21,7 +21,7 @@ server.registerTool(
     "slow",
     { annotations: { readOnlyHint: true }, description: "Return a delayed result." },
     async () => {
-        await new Promise((resolve) => setTimeout(resolve, 4_000));
+        await new Promise((resolve) => setTimeout(resolve, 8_000));
         return { content: [{ type: "text", text: "SLOW_RESULT" }] };
     },
 );

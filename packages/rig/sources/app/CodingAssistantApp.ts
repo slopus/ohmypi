@@ -3562,7 +3562,9 @@ export class CodingAssistantApp implements Component, Focusable {
                 }
             }
             if (existing.mcpToolCall !== undefined) {
-                const result = formatCodexMcpToolResult(block.rendered);
+                const result =
+                    formatCodexMcpToolResult(block.rendered) ??
+                    (block.isError === true ? undefined : "(empty result)");
                 existing.mcpToolCall = {
                     invocation: existing.mcpToolCall.invocation,
                     ...(result === undefined

@@ -9,7 +9,7 @@ export function mcpResultToContentBlocks(result: unknown): readonly ContentBlock
     if (result.structuredContent !== undefined) {
         return [{ type: "text", text: JSON.stringify(result.structuredContent) }];
     }
-    return [{ type: "text", text: "The MCP tool completed without returning content." }];
+    return [{ type: "text", text: "(empty result)" }];
 }
 
 function contentToBlocks(content: unknown): ContentBlock[] {
