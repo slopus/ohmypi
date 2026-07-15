@@ -13,6 +13,14 @@ describe("concurrent Auto approvals keep the remaining request waiting", () => {
     it("does not imply all machine work is running after only the first command is allowed", async () => {
         const alphaCommand = "printf 'alpha approved\\n' > alpha-approved.txt";
         const betaCommand = "printf 'beta approved\\n' > beta-approved.txt";
+        const history = [
+            "APPROVAL_HISTORY_BEGIN",
+            ...Array.from(
+                { length: 110 },
+                (_, index) => `APPROVAL_HISTORY_${String(index).padStart(3, "0")} stable row`,
+            ),
+            "APPROVAL_HISTORY_END",
+        ].join("\n");
         const gym = await createGym({
             cols: 110,
             inference(request, callIndex) {
@@ -25,6 +33,7 @@ describe("concurrent Auto approvals keep the remaining request waiting", () => {
                         reviewText.lastIndexOf("<proposed_action>"),
                     );
                     if (proposedAction.includes("alpha-approved.txt")) {
+                        expect(callIndex).toBe(2);
                         return {
                             content: [
                                 {
@@ -37,9 +46,11 @@ describe("concurrent Auto approvals keep the remaining request waiting", () => {
                                     type: "text",
                                 },
                             ],
+                            delayMs: 300,
                         };
                     }
 
+                    expect(callIndex).toBe(3);
                     expect(proposedAction).toContain("beta-approved.txt");
                     return {
                         content: [
@@ -58,6 +69,10 @@ describe("concurrent Auto approvals keep the remaining request waiting", () => {
                 }
 
                 if (callIndex === 0) {
+                    return { content: [{ text: history, type: "text" }] };
+                }
+
+                if (callIndex === 1) {
                     expect(messageText(lastMessage)).toContain("ask me about each command");
                     return {
                         content: [
@@ -87,7 +102,7 @@ describe("concurrent Auto approvals keep the remaining request waiting", () => {
                     };
                 }
 
-                if (callIndex === 3) {
+                if (callIndex === 4) {
                     const results = request.context.messages.filter(
                         (message) => message.role === "toolResult",
                     );
@@ -98,7 +113,7 @@ describe("concurrent Auto approvals keep the remaining request waiting", () => {
                     };
                 }
 
-                expect(callIndex).toBe(4);
+                expect(callIndex).toBe(5);
                 expect(messageText(lastMessage)).toContain("Confirm approval handling recovered");
                 return {
                     content: [{ text: "CONCURRENT_APPROVAL_FOLLOW_UP_OK", type: "text" }],
@@ -109,6 +124,16 @@ describe("concurrent Auto approvals keep the remaining request waiting", () => {
         running.add(gym);
         const baseline = (await gym.terminal.snapshot()).scroll;
 
+        submit(gym, "Create approval history.");
+        await gym.terminal.waitUntil(
+            (snapshot) =>
+                snapshot.text.includes("APPROVAL_HISTORY_END") &&
+                snapshot.text.includes("Ask Rig to do anything") &&
+                snapshot.scroll.atBottom,
+            "approval history at the bottom",
+            30_000,
+        );
+
         submit(gym, "/permissions");
         await gym.terminal.waitForText("Choose Permissions");
         gym.terminal.press("up");
@@ -118,6 +143,23 @@ describe("concurrent Auto approvals keep the remaining request waiting", () => {
         await gym.terminal.waitForText("Permissions changed to Auto.");
 
         submit(gym, "Run both proof actions, but ask me about each command before it runs.");
+        await gym.terminal.waitForText("esc to interrupt", 30_000);
+        gym.terminal.scrollToTop();
+        gym.terminal.scrollBy(46);
+        const anchored = await gym.terminal.snapshot();
+        expect(anchored.scroll.atTop).toBe(false);
+        expect(anchored.scroll.atBottom).toBe(false);
+        expect(anchored.text).toContain("APPROVAL_HISTORY_");
+        const anchorMarker = /APPROVAL_HISTORY_\d{3}/u.exec(anchored.text)?.[0];
+        expect(anchorMarker).toBeDefined();
+        if (anchorMarker === undefined) throw new Error("Approval anchor marker was not visible.");
+        const output: string[] = [];
+        const stopOutputCapture = gym.terminal.onOutput((data) => output.push(data));
+        await waitForTerminalOutput(gym, "Alpha still needs your explicit approval.", 30_000);
+        const reviewWhileAnchored = await gym.terminal.snapshot();
+        assertSameViewport(reviewWhileAnchored, anchored);
+
+        gym.terminal.scrollToBottom();
         const bothPending = await gym.terminal.waitUntil(
             (snapshot) =>
                 snapshot.text.includes("Alpha still needs your explicit approval.") &&
@@ -139,9 +181,21 @@ describe("concurrent Auto approvals keep the remaining request waiting", () => {
         expect(bothPending.text).not.toContain("exec_command");
         await expect(gym.readFile("alpha-approved.txt")).rejects.toMatchObject({ code: "ENOENT" });
         await expect(gym.readFile("beta-approved.txt")).rejects.toMatchObject({ code: "ENOENT" });
-        assertTerminalHealth(bothPending, baseline);
+        assertTerminalHealth(bothPending, baseline, 1);
 
+        const betaReplacement = waitForTerminalOutput(
+            gym,
+            "Beta still needs your explicit approval.",
+            30_000,
+        );
         gym.terminal.press("enter");
+        gym.terminal.scrollToTop();
+        gym.terminal.scrollBy(46);
+        await betaReplacement;
+        const betaWhileAnchored = await gym.terminal.snapshot();
+        assertSameViewport(betaWhileAnchored, anchored, 1);
+
+        gym.terminal.scrollToBottom();
         const betaStillPending = await gym.terminal.waitUntil(
             (snapshot) =>
                 normalizeWhitespace(snapshot.text).includes(
@@ -158,9 +212,15 @@ describe("concurrent Auto approvals keep the remaining request waiting", () => {
         expect(betaStillPending.text).not.toContain("• Running printf 'beta approved");
         await expect(gym.readFile("alpha-approved.txt")).resolves.toBe("alpha approved\n");
         await expect(gym.readFile("beta-approved.txt")).rejects.toMatchObject({ code: "ENOENT" });
-        assertTerminalHealth(betaStillPending, baseline);
+        assertTerminalHealth(betaStillPending, baseline, 2);
 
+        const completedOutput = waitForTerminalOutput(
+            gym,
+            "BOTH_APPROVED_COMMANDS_FINISHED",
+            30_000,
+        );
         gym.terminal.press("enter");
+        await completedOutput;
         const completed = await gym.terminal.waitUntil(
             (snapshot) =>
                 snapshot.text.includes("BOTH_APPROVED_COMMANDS_FINISHED") &&
@@ -177,7 +237,10 @@ describe("concurrent Auto approvals keep the remaining request waiting", () => {
         expect(completed.text).not.toContain("concurrent-beta-approval");
         expect(completed.text).not.toContain("exec_command");
         await expect(gym.readFile("beta-approved.txt")).resolves.toBe("beta approved\n");
-        assertTerminalHealth(completed, baseline);
+        assertTerminalHealth(completed, baseline, 2);
+        expect(output.join("")).not.toContain("\x1b[3J");
+        expect(output.join("")).not.toContain("\x1b[2J\x1b[H");
+        stopOutputCapture();
 
         submit(gym, "Confirm approval handling recovered normally.");
         const followUp = await gym.terminal.waitUntil(
@@ -188,7 +251,13 @@ describe("concurrent Auto approvals keep the remaining request waiting", () => {
             "a healthy follow-up after concurrent approvals",
             30_000,
         );
-        assertTerminalHealth(followUp, baseline);
+        assertTerminalHealth(followUp, baseline, 2);
+
+        const scrollback = await captureScrollback(gym);
+        expect(countOccurrences(scrollback, anchorMarker)).toBe(1);
+        expect(countOccurrences(scrollback, "BOTH_APPROVED_COMMANDS_FINISHED")).toBe(1);
+        expect(countOccurrences(scrollback, "CONCURRENT_APPROVAL_FOLLOW_UP_OK")).toBe(1);
+        expect(maximumBlankRun(scrollback)).toBeLessThanOrEqual(4);
     }, 150_000);
 });
 
@@ -225,15 +294,85 @@ function visibleExact(value: string): string {
 function assertTerminalHealth(
     snapshot: Awaited<ReturnType<Gym["terminal"]["snapshot"]>>,
     baseline: Awaited<ReturnType<Gym["terminal"]["snapshot"]>>["scroll"],
+    transitionDelta = 0,
 ): void {
     expect(snapshot.rows).toHaveLength(36);
     expect(snapshot.scroll.visibleRows).toBe(36);
     expect(snapshot.scroll.atBottom).toBe(true);
-    expect(snapshot.scroll.bottomDepartureCount).toBe(baseline.bottomDepartureCount);
-    expect(snapshot.scroll.topArrivalCount).toBe(baseline.topArrivalCount);
+    expect(snapshot.scroll.bottomDepartureCount).toBe(
+        baseline.bottomDepartureCount + transitionDelta,
+    );
+    expect(snapshot.scroll.topArrivalCount).toBe(baseline.topArrivalCount + transitionDelta);
     expect(snapshot.cursor.x).toBeLessThan(110);
     expect(snapshot.cursor.y).toBeLessThan(36);
     expect(snapshot.text).toContain("gym off");
     expect(snapshot.text).toContain("/workspace");
     expect(snapshot.text).not.toContain("�");
+}
+
+function assertSameViewport(
+    actual: Awaited<ReturnType<Gym["terminal"]["snapshot"]>>,
+    expected: Awaited<ReturnType<Gym["terminal"]["snapshot"]>>,
+    transitionDelta = 0,
+): void {
+    expect(actual.rows).toEqual(expected.rows);
+    expect(actual.text).toBe(expected.text);
+    expect(actual.scroll.offset).toBe(expected.scroll.offset);
+    expect(actual.scroll.bottomDepartureCount).toBe(
+        expected.scroll.bottomDepartureCount + transitionDelta,
+    );
+    expect(actual.scroll.topArrivalCount).toBe(expected.scroll.topArrivalCount + transitionDelta);
+}
+
+function waitForTerminalOutput(gym: Gym, text: string, timeoutMs: number): Promise<void> {
+    return new Promise((resolvePromise, reject) => {
+        let output = "";
+        const stop = gym.terminal.onOutput((data) => {
+            output += data;
+            if (!output.includes(text)) return;
+            clearTimeout(timer);
+            stop();
+            resolvePromise();
+        });
+        const timer = setTimeout(() => {
+            stop();
+            reject(new Error(`Timed out waiting for terminal output ${JSON.stringify(text)}.`));
+        }, timeoutMs);
+    });
+}
+
+async function captureScrollback(gym: Gym): Promise<string> {
+    gym.terminal.scrollToTop();
+    let snapshot = await gym.terminal.snapshot();
+    const rows = new Map<number, string>();
+    for (;;) {
+        snapshot.rows.forEach((row, index) => rows.set(snapshot.scroll.offset + index, row));
+        if (snapshot.scroll.atBottom) break;
+        const maximumOffset = snapshot.scroll.totalRows - snapshot.scroll.visibleRows;
+        const nextOffset = Math.min(
+            snapshot.scroll.offset + snapshot.scroll.visibleRows,
+            maximumOffset,
+        );
+        gym.terminal.scrollBy(nextOffset - snapshot.scroll.offset);
+        snapshot = await gym.terminal.snapshot();
+    }
+    gym.terminal.scrollToBottom();
+    return [...rows.entries()]
+        .sort(([left], [right]) => left - right)
+        .map(([, row]) => row)
+        .join("\n");
+}
+
+function countOccurrences(value: string, search: string): number {
+    return value.split(search).length - 1;
+}
+
+function maximumBlankRun(value: string): number {
+    let maximum = 0;
+    let current = 0;
+    for (const row of value.split("\n")) {
+        current = row.trim().length === 0 ? current + 1 : 0;
+        maximum = Math.max(maximum, current);
+    }
+    return maximum;
 }
