@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { Component, Terminal } from "@earendil-works/pi-tui";
+import type { Terminal } from "@earendil-works/pi-tui";
 
 import { ScrollbackPreservingTUI } from "./ScrollbackPreservingTUI.js";
 

@@ -350,7 +350,8 @@ function waitForTerminalOutput(gym: Gym, text: string, timeoutMs: number): Promi
 }
 
 function normalizeTerminalOutput(value: string): string {
-    return value.replace(/\x1b\[[0-?]*[ -/]*[@-~]/gu, "").replace(/\s+/gu, " ");
+    const ansiCsiPattern = new RegExp(`${String.fromCodePoint(27)}\\[[0-?]*[ -/]*[@-~]`, "gu");
+    return value.replace(ansiCsiPattern, "").replace(/\s+/gu, " ");
 }
 
 async function captureScrollback(gym: Gym): Promise<string> {

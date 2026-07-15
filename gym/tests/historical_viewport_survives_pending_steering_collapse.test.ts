@@ -147,7 +147,7 @@ describe("pending local and external steering while reading history", () => {
         releaseToolBoundary.resolve();
         await completionOutput;
         const externalQueueWaiting = await gym.terminal.waitUntil(
-            (snapshot) => agentRequestCount(gym) === 4,
+            () => agentRequestCount(gym) === 4,
             "the external queued turn to reach its inference gate",
             30_000,
         );
