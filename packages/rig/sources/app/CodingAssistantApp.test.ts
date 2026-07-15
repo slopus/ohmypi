@@ -235,6 +235,43 @@ describe("CodingAssistantApp", () => {
         expect(rendered).not.toContain("Session interrupted");
     });
 
+    it("clears a draft on double Escape and retrieves it with Up", () => {
+        const model = defineModel({
+            id: "openai/gpt-test",
+            name: "GPT Test",
+            thinkingLevels: ["off"],
+            defaultThinkingLevel: "off",
+        });
+        const provider = defineProvider({
+            id: "codex",
+            models: [model],
+            stream() {
+                return streamText("unused");
+            },
+        });
+        const harness = createJustBashToolHarness();
+        const app = new CodingAssistantApp({
+            agent: new Agent({
+                provider,
+                modelId: model.id,
+                context: harness.context,
+                printToConsole: false,
+            }),
+            cwd: harness.context.fs.cwd,
+            now: () => 100,
+            processManager: new NativeProxessManager(),
+            tui: fakeTui(),
+        });
+
+        app.handleInput("Recover this draft");
+        app.handleInput("\x1b");
+        expect(stripAnsi(app.render(100).join("\n"))).toContain("› Recover this draft");
+        app.handleInput("\x1b");
+        expect(stripAnsi(app.render(100).join("\n"))).toContain("› Ask Rig to do anything");
+        app.handleInput("\x1b[A");
+        expect(stripAnsi(app.render(100).join("\n"))).toContain("› Recover this draft");
+    });
+
     it("uses the idle abort command to stop session background processes", async () => {
         const model = defineModel({
             defaultThinkingLevel: "off",

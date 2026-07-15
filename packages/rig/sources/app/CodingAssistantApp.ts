@@ -106,6 +106,7 @@ const INPUT_PLACEHOLDER = "Ask Rig to do anything";
 const INPUT_PROMPT = "› ";
 const INPUT_LINE_INDENT = "  ";
 const PENDING_TOOL_CALL_TITLE = "Working";
+const DOUBLE_ESCAPE_WINDOW_MS = 750;
 const ACTIVITY_ANIMATION_MS = 120;
 const REASONING_DOWN_RAW_KEYS = new Set(["\x1b,", "\x1b[1;2B"]);
 const REASONING_UP_RAW_KEYS = new Set(["\x1b.", "\x1b[1;2A"]);
@@ -293,6 +294,7 @@ export class CodingAssistantApp implements Component, Focusable {
     #pendingPrompts: PendingPrompt[] = [];
     #pendingSteeringMessages: PendingSteeringMessage[] = [];
     #sendingPendingSteering = false;
+    #lastEscapeAtMs: number | undefined;
     #compacting = false;
     #pastedImagesById = new Map<number, PastedImage>();
     #selectionPanel: Component | undefined;
@@ -788,6 +790,9 @@ export class CodingAssistantApp implements Component, Focusable {
             return;
         }
 
+        const escapePressed = matchesKey(data, "escape");
+        if (!escapePressed) this.#lastEscapeAtMs = undefined;
+
         if (this.#selectionPanel !== undefined) {
             if (matchesKey(data, "ctrl+c") || data === "\x03") {
                 this.#selectionPanel.handleInput?.("\x1b");
@@ -838,7 +843,7 @@ export class CodingAssistantApp implements Component, Focusable {
             return;
         }
 
-        if (this.#running && matchesKey(data, "escape")) {
+        if (this.#running && escapePressed) {
             this.#handleEscape();
             this.#requestRender();
             return;
@@ -871,9 +876,11 @@ export class CodingAssistantApp implements Component, Focusable {
             return;
         }
 
-        if (matchesKey(data, "escape")) {
+        if (escapePressed) {
             this.#markTypingActivity();
-            if (!this.#openBacktrackMenu()) this.#handleEscape();
+            if (this.#editor.getText().trim().length > 0 || !this.#openBacktrackMenu()) {
+                this.#handleEscape();
+            }
             this.#requestRender();
             return;
         }
@@ -1123,6 +1130,7 @@ export class CodingAssistantApp implements Component, Focusable {
         this.#editor.setText("");
 
         if (prompt.startsWith("/skill:")) {
+            this.#editor.addToHistory(prompt);
             await this.#submitSkillCommand(prompt);
             this.#requestRender();
             return;
@@ -1138,6 +1146,8 @@ export class CodingAssistantApp implements Component, Focusable {
             this.#requestRender();
             return;
         }
+
+        this.#editor.addToHistory(prompt);
 
         if (!this.#sessionBacked) this.#recordUserInput(this.#now());
         this.#modelLocked = true;
@@ -1872,6 +1882,9 @@ export class CodingAssistantApp implements Component, Focusable {
     }
 
     #handleEscape(): void {
+        const doubleEscape = this.#registerEscapePress();
+        if (doubleEscape) this.#clearComposerDraftToHistory();
+
         if (
             this.#running &&
             this.#pendingSteeringMessages.length > 0 &&
@@ -1879,6 +1892,10 @@ export class CodingAssistantApp implements Component, Focusable {
             this.#agent.abort !== undefined
         ) {
             this.#sendPendingSteeringNow();
+            return;
+        }
+
+        if (!this.#running && !doubleEscape && this.#editor.getText().trim().length > 0) {
             return;
         }
 
@@ -1892,6 +1909,25 @@ export class CodingAssistantApp implements Component, Focusable {
                 this.#requestRender();
             });
         }
+    }
+
+    #registerEscapePress(): boolean {
+        const now = this.#now();
+        const doubleEscape =
+            this.#lastEscapeAtMs !== undefined &&
+            now - this.#lastEscapeAtMs <= DOUBLE_ESCAPE_WINDOW_MS;
+        this.#lastEscapeAtMs = doubleEscape ? undefined : now;
+        return doubleEscape;
+    }
+
+    #clearComposerDraftToHistory(): void {
+        const draft = this.#editor.getText().trim();
+        if (draft.length === 0) return;
+        this.#editor.addToHistory(draft);
+        this.#editor.setText("");
+        this.#fileMentionAutocomplete?.clear();
+        this.#dismissedSlashCommandText = undefined;
+        this.#pastedImagesById.clear();
     }
 
     #sendPendingSteeringNow(): void {
@@ -4463,6 +4499,7 @@ export class CodingAssistantApp implements Component, Focusable {
         const submission = this.#createPromptSubmission(this.#editor.getText());
         if (submission === undefined) return false;
         this.#editor.setText("");
+        this.#editor.addToHistory(submission.displayText);
         this.#fileMentionAutocomplete?.clear();
         this.#modelLocked = true;
         this.#pendingPrompts.push(submission);

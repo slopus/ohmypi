@@ -42,4 +42,14 @@ describe("createTerminalInputBurstHandler", () => {
 
         expect(received).toEqual(["text", "\x1b[A"]);
     });
+
+    it("forwards coalesced Escape presses individually", () => {
+        vi.useFakeTimers();
+        const received: string[] = [];
+        const handler = createTerminalInputBurstHandler((data) => received.push(data));
+
+        handler.handle("\x1b\x1b");
+
+        expect(received).toEqual(["\x1b", "\x1b"]);
+    });
 });

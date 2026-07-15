@@ -42,6 +42,10 @@ export function createTerminalInputBurstHandler(
         handle(data: string): void {
             if (!isTextInput(data)) {
                 flush();
+                if (/^\x1b{2,}$/u.test(data)) {
+                    for (const _escape of data) onInput("\x1b");
+                    return;
+                }
                 onInput(data);
                 return;
             }
