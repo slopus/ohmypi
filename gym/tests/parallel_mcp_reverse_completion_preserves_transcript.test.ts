@@ -12,27 +12,39 @@ const artifacts = resolve(
 const running = new Set<Gym>();
 
 const MCP_SERVER = `
-import { writeFile } from "node:fs/promises";
+import { access, writeFile } from "node:fs/promises";
 import { McpServer } from "/app/packages/rig/node_modules/@modelcontextprotocol/sdk/dist/esm/server/mcp.js";
 import { StdioServerTransport } from "/app/packages/rig/node_modules/@modelcontextprotocol/sdk/dist/esm/server/stdio.js";
 
-const server = new McpServer({ name: "parallel-service", version: "1.0.0" });
-server.registerTool(
-    "slow",
-    { annotations: { readOnlyHint: true }, description: "Return a delayed result." },
-    async () => {
-        await new Promise((resolve) => setTimeout(resolve, 8_000));
-        return { content: [{ type: "text", text: "SLOW_RESULT" }] };
-    },
-);
-server.registerTool(
-    "fast_empty",
-    { annotations: { readOnlyHint: true }, description: "Return an empty result immediately." },
-    async () => {
-        await writeFile("/workspace/fast.done", "done");
-        return { content: [] };
-    },
-);
+const mode = process.argv[2];
+const server = new McpServer({ name: mode + "-service", version: "1.0.0" });
+if (mode === "slow") {
+    server.registerTool(
+        "slow",
+        { annotations: { readOnlyHint: true }, description: "Return a held result." },
+        async () => {
+            await writeFile("/workspace/slow.started", "started");
+            for (;;) {
+                try {
+                    await access("/workspace/release-slow");
+                    break;
+                } catch {
+                    await new Promise((resolve) => setTimeout(resolve, 50));
+                }
+            }
+            return { content: [{ type: "text", text: "SLOW_RESULT" }] };
+        },
+    );
+} else {
+    server.registerTool(
+        "fast_empty",
+        { annotations: { readOnlyHint: true }, description: "Return an empty result immediately." },
+        async () => {
+            await writeFile("/workspace/fast.done", "done");
+            return { content: [] };
+        },
+    );
+}
 await server.connect(new StdioServerTransport());
 `;
 
@@ -50,7 +62,7 @@ describe("parallel MCP reverse completion", () => {
         const gym = await createGym({
             cols: 110,
             homeFiles: {
-                ".config/rig/config.toml": `[mcp_servers."Parallel Service"]\ncommand = "node"\nargs = ["parallel-mcp.mjs"]\nstartup_timeout_sec = 10\ntool_timeout_sec = 10\n`,
+                ".config/rig/config.toml": `[mcp_servers."Slow Service"]\ncommand = "node"\nargs = ["parallel-mcp.mjs", "slow"]\nstartup_timeout_sec = 10\ntool_timeout_sec = 30\n\n[mcp_servers."Fast Service"]\ncommand = "node"\nargs = ["parallel-mcp.mjs", "fast"]\nstartup_timeout_sec = 10\ntool_timeout_sec = 30\n`,
                 "parallel-mcp.mjs": MCP_SERVER,
             },
             inference(request, callIndex) {
@@ -60,13 +72,13 @@ describe("parallel MCP reverse completion", () => {
                             {
                                 arguments: {},
                                 id: "slow-call",
-                                name: "mcp__Parallel_Service__slow",
+                                name: "mcp__Slow_Service__slow",
                                 type: "toolCall",
                             },
                             {
                                 arguments: {},
                                 id: "fast-call",
-                                name: "mcp__Parallel_Service__fast_empty",
+                                name: "mcp__Fast_Service__fast_empty",
                                 type: "toolCall",
                             },
                         ],
@@ -89,22 +101,22 @@ describe("parallel MCP reverse completion", () => {
         const baseline = (await gym.terminal.snapshot()).scroll;
 
         submit(gym, "Run both Parallel Service tools together.");
-        await gym.terminal.waitForText("Trust MCP server", 30_000);
-        gym.terminal.press("enter");
+        await approveMcpServers(gym, 2);
         await waitForFile(gym, "fast.done", 30_000);
 
         const staged = await gym.terminal.snapshot();
-        expect(staged.text).toContain("◦ Calling Parallel_Service.slow({})");
-        expect(staged.text).toContain("◦ Calling Parallel_Service.fast_empty({})");
-        expect(staged.text).not.toContain("• Called Parallel_Service.fast_empty({})");
+        expect(staged.text).toContain("◦ Calling Slow_Service.slow({})");
+        expect(staged.text).toContain("◦ Calling Fast_Service.fast_empty({})");
+        expect(staged.text).not.toContain("• Called Fast_Service.fast_empty({})");
         assertHealthyTerminal(staged, baseline);
+        await gym.runInContainer("touch", ["release-slow"]);
 
         const completed = await gym.terminal.waitForText("PARALLEL_MCP_COMPLETE", 30_000);
         const slowIndex = completed.rows.findIndex((row) =>
-            row.includes("Called Parallel_Service.slow"),
+            row.includes("Called Slow_Service.slow"),
         );
         const fastIndex = completed.rows.findIndex((row) =>
-            row.includes("Called Parallel_Service.fast_empty"),
+            row.includes("Called Fast_Service.fast_empty"),
         );
         expect(slowIndex).toBeGreaterThanOrEqual(0);
         expect(fastIndex).toBeGreaterThan(slowIndex);
@@ -118,6 +130,21 @@ describe("parallel MCP reverse completion", () => {
 function submit(gym: Gym, text: string): void {
     gym.terminal.type(text);
     gym.terminal.press("enter");
+}
+
+async function approveMcpServers(gym: Gym, count: number): Promise<void> {
+    let outputRevision = -1;
+    for (let index = 0; index < count; index += 1) {
+        const prompt = await gym.terminal.waitUntil(
+            (snapshot) =>
+                snapshot.outputRevision > outputRevision &&
+                snapshot.text.includes("Trust MCP server"),
+            `MCP trust prompt ${index + 1}`,
+            30_000,
+        );
+        outputRevision = prompt.outputRevision;
+        gym.terminal.press("enter");
+    }
 }
 
 async function waitForFile(gym: Gym, path: string, timeoutMs: number): Promise<void> {

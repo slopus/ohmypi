@@ -113,7 +113,7 @@ describe("account quota observations", () => {
                     text.includes("Claude") &&
                     text.includes("5-hour: 55% left") &&
                     text.includes("Weekly: 75% left") &&
-                    text.includes("Observed remaining: 5h -3% · week -1% (approx.)") &&
+                    text.includes("Observed remaining: 5h -7% · week -4% (approx.)") &&
                     text.includes("Observed remaining: 5h -2% · week -2% (approx.)") &&
                     text.includes("Session total: 300") &&
                     !screen.synchronizedOutputActive
@@ -146,10 +146,10 @@ describe("account quota observations", () => {
             30_000,
         );
         const resumedText = normalizeTerminalText(resumed.text);
-        expect(resumedText).toContain("Observed remaining: 5h -3% · week -1% (approx.)");
+        expect(resumedText).toContain("Observed remaining: 5h -7% · week -4% (approx.)");
         expect(resumedText).toContain("Observed remaining: 5h -2% · week -2% (approx.)");
-        expect(resumedText).not.toContain("5h -6%");
-        expect(resumedText).not.toContain("week -4%");
+        expect(resumedText).not.toContain("5h -14%");
+        expect(resumedText).not.toContain("week -8%");
         await gym.terminal.screenshot(`${artifacts}/quota-resume-no-double-count.png`);
         await repaint(gym);
 
