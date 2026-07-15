@@ -192,6 +192,53 @@ describe("ProtocolHttpClient", () => {
             await rm(directory, { recursive: true, force: true });
         }
     });
+
+    it("waits for the current event application before an abort completes the stream", async () => {
+        const directory = await mkdtemp(join(tmpdir(), "rig-client-test-"));
+        const socketPath = join(directory, "server.sock");
+        const event = sessionResetEvent("018bcfe5-6800-7001-8000-000000000001");
+        const server = createServer((_request, response) => {
+            response.writeHead(200, { "content-type": "text/event-stream; charset=utf-8" });
+            writeSseEvent(response, event);
+        });
+
+        try {
+            await new Promise<void>((resolve) => server.listen(socketPath, resolve));
+            const client = new ProtocolHttpClient({ socketPath, token: "test-token" });
+            const controller = new AbortController();
+            const applicationStarted = deferred<void>();
+            const releaseApplication = deferred<void>();
+            const applied: string[] = [];
+            let watchingCompleted = false;
+
+            const watching = client.watchSessionEvents({
+                sessionId: "session-1",
+                signal: controller.signal,
+                async onEvent(received) {
+                    applicationStarted.resolve(undefined);
+                    controller.abort();
+                    await releaseApplication.promise;
+                    applied.push(received.id);
+                },
+            });
+            void watching.then(() => {
+                watchingCompleted = true;
+            });
+
+            await applicationStarted.promise;
+            await Promise.resolve();
+            expect(watchingCompleted).toBe(false);
+            expect(applied).toEqual([]);
+
+            releaseApplication.resolve(undefined);
+            await watching;
+            expect(watchingCompleted).toBe(true);
+            expect(applied).toEqual([event.id]);
+        } finally {
+            await new Promise<void>((resolve) => server.close(() => resolve()));
+            await rm(directory, { recursive: true, force: true });
+        }
+    });
 });
 
 function sessionResetEvent(id: string): SessionEvent {
