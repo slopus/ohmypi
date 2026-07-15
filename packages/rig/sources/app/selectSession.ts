@@ -1,6 +1,9 @@
 import { createInterface } from "node:readline/promises";
 
 import type { SessionSummary } from "../protocol/index.js";
+import { sanitizeTerminalText } from "./sanitizeTerminalText.js";
+
+const MAX_RECAP_DISPLAY_CHARS = 160;
 
 export async function selectSession(
     sessions: readonly SessionSummary[],
@@ -20,6 +23,8 @@ export async function selectSession(
         const title = session.title ?? "Untitled session";
         const date = new Date(session.lastMessageAt ?? session.updatedAt).toLocaleString();
         output.write(`${index + 1}. ${title}\n   ${session.cwd} · ${date}\n`);
+        const recap = oneLineRecap(session.recap);
+        if (recap !== undefined) output.write(`   ${recap}\n`);
     });
     const readline = createInterface({
         input,
@@ -44,4 +49,13 @@ export async function selectSession(
     } finally {
         readline.close();
     }
+}
+
+function oneLineRecap(recap: string | undefined): string | undefined {
+    if (recap === undefined) return undefined;
+    const line = sanitizeTerminalText(recap).replace(/\s+/gu, " ").trim();
+    if (line.length === 0) return undefined;
+    return line.length <= MAX_RECAP_DISPLAY_CHARS
+        ? line
+        : `${line.slice(0, MAX_RECAP_DISPLAY_CHARS - 1)}…`;
 }
