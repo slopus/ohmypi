@@ -160,6 +160,10 @@ This file tracks known defects, verified coverage gaps, and concrete follow-up w
     - Show current-session, weekly all-model, and model-specific progress bars with local timezone reset labels; mark unavailable provider data clearly instead of estimating it as fact.
     - Add an explicitly approximate local contribution section based only on persisted sessions on this machine, including high-context usage guidance without claiming it covers other devices or provider web clients.
     - Preserve a compact narrow-terminal layout and add provider-available/provider-unavailable screenshots plus deterministic rendering tests.
+    - On every new or resumed session, show one compact provider-specific quota line with the remaining percentage in the current five-hour window and a plain-language countdown to reset, for example `Codex usage: 68% left · resets in 2h 14m`.
+    - Keep the startup/resume line to one terminal row where possible, reflow cleanly at narrow widths, and omit it when the selected provider cannot report authoritative five-hour-window data.
+    - Refresh the displayed quota when the provider/model changes and when a completed response returns newer limit metadata.
+    - Require real Gym/provider-boundary screenshots for new session, resumed session, narrow width, provider change, and unavailable usage data.
 
 - [ ] Wrap long lines in edit previews.
     - Inspect the pinned Codex implementation first, then make Rig edit/apply-patch previews wrap to the available terminal width instead of clipping or overflowing.
