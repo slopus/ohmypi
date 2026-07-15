@@ -70,7 +70,8 @@ describe("parallel tool settlement while reading terminal history", () => {
         submit(gym, "Run both parallel tools and wait for the first one.");
         await waitForTerminalOutput(gym, "SECOND_PARALLEL_TOOL_COMPLETE", 30_000);
 
-        gym.terminal.scrollBy(-70);
+        gym.terminal.scrollToTop();
+        gym.terminal.scrollBy(70);
         const anchored = await gym.terminal.snapshot();
         expect(anchored.scroll.atTop).toBe(false);
         expect(anchored.scroll.atBottom).toBe(false);
@@ -78,10 +79,31 @@ describe("parallel tool settlement while reading terminal history", () => {
         await writeProof(gym, "parallel-settlement-01-anchored.png");
         const outputStart = output.length;
 
+        gym.terminal.scrollToBottom();
+        const liveToolBottom = await gym.terminal.waitUntil(
+            (snapshot) =>
+                snapshot.text.includes("• Running read -r _ < .release-first-tool") &&
+                snapshot.text.includes("esc to interrupt") &&
+                !snapshot.text.includes("FIRST_PARALLEL_TOOL_COMPLETE") &&
+                snapshot.scroll.atBottom,
+            "the current live tail while the first tool remains gated",
+            30_000,
+        );
+        expect(liveToolBottom.scroll.offset + liveToolBottom.scroll.visibleRows).toBe(
+            liveToolBottom.scroll.totalRows,
+        );
+
+        gym.terminal.scrollToTop();
+        gym.terminal.scrollBy(anchor.offset);
+        const anchoredAgain = await gym.terminal.snapshot();
+        expect(anchoredAgain.rows).toEqual(anchor.rows);
+        expect(anchoredAgain.text).toBe(anchor.text);
+        const settlementAnchor = historicalAnchor(anchoredAgain);
+
         await gym.runInContainer("sh", ["-c", "printf 'release\\n' > .release-first-tool"]);
         await waitForTerminalOutput(gym, "PARALLEL_SETTLEMENT_ASSISTANT_COMPLETE", 30_000);
         const settledWhileReading = await gym.terminal.snapshot();
-        assertHistoricalAnchor(settledWhileReading, anchor);
+        assertHistoricalAnchor(settledWhileReading, settlementAnchor);
         const settlementOutput = output.slice(outputStart).join("");
         expect(settlementOutput).not.toContain("\x1b[3J");
         expect(settlementOutput).not.toContain("\x1b[2J\x1b[H");
