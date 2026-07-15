@@ -16,7 +16,7 @@ describe("provider error recovers and terminal exits cleanly", () => {
         const gym = await createGym({
             cols: COLS,
             inference: [
-                { body: "RECOVERABLE_PROVIDER_OUTAGE", httpStatus: 503 },
+                { disconnect: true },
                 { content: [{ text: "RECOVERY_TURN_OK", type: "text" }] },
             ],
             rows: ROWS,
@@ -37,7 +37,7 @@ describe("provider error recovers and terminal exits cleanly", () => {
             30_000,
         );
         expect(recovered.text).toContain("RECOVERY_TURN_OK");
-        expect(recovered.text).not.toContain("RECOVERABLE_PROVIDER_OUTAGE");
+        expect(recovered.text).not.toContain("fetch failed");
         assertHealthyInteractiveTerminal(recovered, initialScroll);
 
         const agentRequests = gym.inference.requests.filter(
@@ -85,7 +85,7 @@ describe("provider error recovers and terminal exits cleanly", () => {
         expect(final.cursor.x).toBeLessThan(COLS);
         expect(final.cursor.y).toBeLessThan(ROWS);
         expect(final.title).toContain("Rig");
-        expect(final.text).not.toContain("RECOVERABLE_PROVIDER_OUTAGE");
+        expect(final.text).not.toContain("fetch failed");
         expect(final.text).toContain("RECOVERY_TURN_OK");
         expect(final.text).not.toContain("UNSENT_DRAFT_MUST_CLEAR");
         expect(gym.inference.requests.filter(isAgentRequest)).toHaveLength(2);

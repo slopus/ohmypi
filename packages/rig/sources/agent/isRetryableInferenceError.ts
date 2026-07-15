@@ -1,11 +1,14 @@
 import type { AssistantMessage } from "../providers/types.js";
 
 const RETRYABLE_ERROR_CODES = new Set([
+    "EAI_AGAIN",
+    "ECONNABORTED",
     "ECONNREFUSED",
     "ECONNRESET",
     "EHOSTUNREACH",
     "ENETDOWN",
     "ENETUNREACH",
+    "ENOTFOUND",
     "EPIPE",
     "ETIMEDOUT",
     "UND_ERR_BODY_TIMEOUT",
@@ -14,21 +17,20 @@ const RETRYABLE_ERROR_CODES = new Set([
     "UND_ERR_SOCKET",
 ]);
 
-const RETRYABLE_MESSAGE_PATTERNS = [
-    /\bfetch failed\b/iu,
-    /\bnetwork error\b/iu,
-    /\bconnection (?:closed|failed|lost|reset)\b/iu,
-    /\bsocket (?:closed|disconnected|hang up)\b/iu,
-    /\bWebSocket error\b/iu,
-    /\bstream disconnected\b/iu,
-    /\bpremature close\b/iu,
-    /\bterminated\b/iu,
-    /\btimed? ?out\b/iu,
-    /\bHTTP (?:408|429|5\d\d)\b/iu,
-    /\bstatus(?: code)?[ :=]+(?:408|429|5\d\d)\b/iu,
-    /\bAn error occurred while processing your request\. You can retry your request\b/iu,
+const TRANSPORT_MESSAGE_PATTERNS = [
+    /^fetch failed$/iu,
+    /^WebSocket error$/iu,
+    /^WebSocket closed(?: 1006)?$/iu,
+    /^stream disconnected before completion(?:: .+)?$/iu,
 ];
 
+/**
+ * Classifies only low-level inference transport failures.
+ *
+ * Provider HTTP responses, retry guidance, and generic timeout or termination
+ * prose are outcomes from above the transport boundary and are deliberately
+ * excluded. Callers must also refuse retries after response content begins.
+ */
 export function isRetryableInferenceError(value: unknown): boolean {
     if (isAbortError(value)) return false;
 
@@ -37,7 +39,7 @@ export function isRetryableInferenceError(value: unknown): boolean {
 
     const message = errorMessage(value);
     return (
-        message !== undefined && RETRYABLE_MESSAGE_PATTERNS.some((pattern) => pattern.test(message))
+        message !== undefined && TRANSPORT_MESSAGE_PATTERNS.some((pattern) => pattern.test(message))
     );
 }
 
