@@ -22,6 +22,24 @@ This file tracks known defects, verified coverage gaps, and concrete follow-up w
     - Preserve stable wrapping, terminal-width bounds, input order, and immutable transcript behavior.
     - Add exact wide/narrow row assertions and a two-server real Gym regression.
 
+- [ ] Simplify nested terminal layouts to a single final child connector.
+    - Replace continuous `│` rails in wrapped tool output and subagent/status lists with one `└` connector at the start of the child block; align later wrapped lines with spaces.
+    - Apply the same visual grammar to tool output, `/agents`, blocked MCP servers, and other parent-with-children rows without changing durable event grouping.
+    - Add exact wide/narrow rendering assertions and real Gym screenshots for tool and agent layouts.
+
+- [ ] Dedent pending steering messages by one terminal cell.
+    - Move `Messages to be submitted after next tool call` and its `↳` children one column left while preserving the order between live status and composer.
+    - Add a concise `(esc to send now)` hint while pending messages exist.
+    - Pressing Escape must interrupt the current response, promote every pending message into durable conversation exactly once, and send it on the continued turn instead of dropping it.
+    - Reproduce the reported Escape-and-continue loss through a real PTY test before changing production code.
+    - Add exact row-position coverage at normal and narrow widths.
+
+- [ ] Show active agents first with elapsed time and token usage.
+    - Sort `/agents` with running, waiting, and suspended agents before completed agents while retaining stable ordering within each group.
+    - Show current elapsed time and cumulative model tokens for active agents; persist and show final elapsed time and total tokens for completed agents and completion notices.
+    - Use human-readable compact values and include nested descendants without double-counting usage.
+    - Add protocol/persistence coverage plus a real parent/subagent Gym scenario for live and completed states.
+
 - [ ] Support a trusted machine-level permission ceiling.
     - Let machine/runtime configuration cap selectable session modes, including a ceiling of Auto that forbids Full access.
     - Enforce the ceiling server-side for creation, protocol changes, spawn, restore, and descendants; filter forbidden modes from the UI.
