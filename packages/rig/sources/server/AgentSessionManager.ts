@@ -38,6 +38,8 @@ export class AgentSessionManager {
     readonly maxDepth: number;
 
     readonly #repository: AgentSessionRepository;
+    readonly #latestBackgroundRunBySession = new Map<string, string>();
+    readonly #pendingBackgroundRuns = new Map<string, string>();
     readonly #slotReservations = new Map<string, number>();
     readonly #stoppedExplicitly = new Set<string>();
     readonly #taskDrain: TaskDrain | undefined;
@@ -383,24 +385,30 @@ export class AgentSessionManager {
         child: InMemorySession,
         runId: string,
     ): Promise<void> {
+        const monitorId = `${child.id}:${runId}`;
+        this.#latestBackgroundRunBySession.set(child.id, runId);
+        this.#pendingBackgroundRuns.set(monitorId, child.id);
         try {
             const completion = await child.waitForRun(runId);
             this.recordChanged(child);
             if (completion.status === "aborted" && child.consumeSuspendedRun(runId)) return;
-            if (child.subagentSummary().status === "suspended") return;
+            const status = await this.#waitForSettledSubtree(child);
+            this.recordChanged(child);
+            if (status === "suspended") return;
             if (this.#stoppedExplicitly.delete(child.id)) return;
             if (parent === undefined || parent.isClosing?.() === true) return;
+            if (this.#latestBackgroundRunBySession.get(child.id) !== runId) return;
             const output = this.#completionOutput(
                 child,
-                completion.status,
-                completion.errorMessage,
+                status,
+                status === completion.status ? completion.errorMessage : undefined,
             );
             const taskName = child.agentMetadata().taskName ?? child.id;
             const description = child.subagentSummary().description;
             const outcome =
-                completion.status === "completed"
+                status === "completed"
                     ? "completed"
-                    : completion.status === "aborted"
+                    : status === "aborted"
                       ? "was stopped"
                       : "failed";
             parent.deliverNotification({
@@ -408,13 +416,40 @@ export class AgentSessionManager {
                 text: [
                     "<subagent-notification>",
                     `Task: ${taskName}`,
-                    `Status: ${completion.status}`,
+                    `Status: ${status}`,
                     `Result: ${output}`,
                     "</subagent-notification>",
                 ].join("\n"),
             });
         } catch {
             this.recordChanged(child);
+        } finally {
+            this.#pendingBackgroundRuns.delete(monitorId);
+            if (this.#latestBackgroundRunBySession.get(child.id) === runId) {
+                this.#latestBackgroundRunBySession.delete(child.id);
+            }
+        }
+    }
+
+    async #waitForSettledSubtree(
+        child: InMemorySession,
+    ): Promise<Exclude<SubagentRunStatus, "running">> {
+        for (;;) {
+            const status = this.#runStatus(child.subagentSummary().status);
+            const descendants = this.#descendantsOf(child.id);
+            const descendantIds = new Set(descendants.map((descendant) => descendant.id));
+            const unsettledDescendant = descendants.some((descendant) => {
+                const descendantStatus = descendant.subagentSummary().status;
+                return (
+                    descendantStatus === "suspended" ||
+                    this.#runStatus(descendantStatus) === "running"
+                );
+            });
+            const pendingDescendant = [...this.#pendingBackgroundRuns.values()].some((sessionId) =>
+                descendantIds.has(sessionId),
+            );
+            if (status !== "running" && !unsettledDescendant && !pendingDescendant) return status;
+            await new Promise((resolve) => setTimeout(resolve, 10));
         }
     }
 

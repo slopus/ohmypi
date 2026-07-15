@@ -145,17 +145,18 @@ describe("subagent observability across a nested lifecycle", () => {
         await screenshot(active, "running-agents.png");
 
         releaseTop.resolve();
-        const completion = await gym.terminal.waitUntil(
+        const parentWaitingForDescendant = await gym.terminal.waitUntil(
             (snapshot) =>
-                /"Top observer" completed in \d+s · 1\.5k tokens\./u.test(snapshot.text) &&
-                snapshot.text.includes("1 agent running"),
-            "top-level completion notice with final metrics",
+                snapshot.text.includes("1 agent running") &&
+                snapshot.text.includes("1.5k tokens") &&
+                !snapshot.text.includes('"Top observer" completed in'),
+            "top-level completion delayed for its active descendant",
             30_000,
         );
-        await screenshot(completion, "completion-notice.png");
+        expect(parentWaitingForDescendant.text.match(/"Top observer" completed in/gu)).toBeNull();
 
         releaseNested.resolve();
-        await gym.terminal.waitUntil(
+        const completion = await gym.terminal.waitUntil(
             (snapshot) =>
                 snapshot.text.includes("PARENT_ACKNOWLEDGED_TOP") &&
                 /"Top observer" completed in \d+s · 1\.6k tokens\./u.test(snapshot.text) &&
@@ -164,6 +165,12 @@ describe("subagent observability across a nested lifecycle", () => {
             "all nested agent work completed",
             30_000,
         );
+        expect(completion.text.match(/"Top observer" completed in/gu)).toHaveLength(1);
+        expect(completion.text.match(/"Nested observer" completed in/gu)).toHaveLength(1);
+        expect(completion.text).not.toMatch(
+            /"Top observer" completed in [^.\n]+ · 1\.5k tokens\./u,
+        );
+        await screenshot(completion, "completion-notice.png");
         submit(gym, "/agents");
         const completed = await gym.terminal.waitUntil(
             (snapshot) =>
@@ -177,6 +184,9 @@ describe("subagent observability across a nested lifecycle", () => {
         );
         expect(completed.text.match(/Completed · Top observer/gu)).toHaveLength(1);
         expect(completed.text.match(/Completed · Nested observer/gu)).toHaveLength(1);
+        expect(completed.text.match(/"Top observer" completed in/gu)).toHaveLength(1);
+        expect(completed.text.match(/"Nested observer" completed in/gu)).toHaveLength(1);
+        expect(completed.text).not.toMatch(/"Top observer" completed in [^.\n]+ · 1\.5k tokens\./u);
         expect(topSessionId).toBeTypeOf("string");
         expect(nestedSessionId).toBeTypeOf("string");
         await screenshot(completed, "completed-agents.png");

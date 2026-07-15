@@ -132,6 +132,7 @@ describe("AgentSessionManager", () => {
             .mockReturnValueOnce({ eventId: "event-1", runId: "run-1", sessionId: "child-1" })
             .mockReturnValueOnce({ eventId: "event-2", runId: "run-2", sessionId: "child-1" });
         const abort = vi.fn(() => ({ aborted: true }));
+        const waitForRun = vi.fn(() => completion);
         const child = {
             abort,
             agentMetadata: () => ({
@@ -168,7 +169,7 @@ describe("AgentSessionManager", () => {
                 updatedAt: 3,
             }),
             submit: childSubmit,
-            waitForRun: () => completion,
+            waitForRun,
         } as unknown as InMemorySession;
         const deliverNotification = vi.fn();
         const parent = {
@@ -227,6 +228,8 @@ describe("AgentSessionManager", () => {
             sessionId: "child-1",
         });
         expect(childSubmit).toHaveBeenLastCalledWith({ text: "Check one more file." });
+        await vi.waitFor(() => expect(waitForRun).toHaveBeenCalledTimes(2));
+        await vi.waitFor(() => expect(deliverNotification).toHaveBeenCalledTimes(2));
         expect(manager.interrupt("root-1", "/root/inspect_code")).toMatchObject({
             status: "completed",
         });

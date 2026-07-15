@@ -338,6 +338,8 @@ export class CodingAssistantApp implements Component, Focusable {
     #streamedToolCallEntries = new Set<AppTranscriptEntry>();
     #deferredTurnSeparator = false;
     #workSegmentStartedAtMs: number | undefined;
+    #pendingSubagentCompletionIds = new Set<string>();
+    #recordedSubagentCompletionIds = new Set<string>();
     #renderedCompletionNotices = new Map<string, number>();
     #runningToolCallIds = new Set<string>();
     #stoppingBackgroundTerminals = false;
@@ -594,11 +596,28 @@ export class CodingAssistantApp implements Component, Focusable {
                 (subagent) => subagent.id === event.data.subagent.id,
             );
             this.#subagents = upsertSubagentSummary(this.#subagents, event.data.subagent);
-            if (
+            if (this.#isActiveSubagent(event.data.subagent)) {
+                this.#recordedSubagentCompletionIds.delete(event.data.subagent.id);
+            }
+            const becameInactive =
                 previous !== undefined &&
                 this.#isActiveSubagent(previous) &&
-                !this.#isActiveSubagent(event.data.subagent)
+                !this.#isActiveSubagent(event.data.subagent);
+            const hasActiveDescendant = this.#hasActiveSubagentDescendant(event.data.subagent.id);
+            if (becameInactive && hasActiveDescendant) {
+                this.#pendingSubagentCompletionIds.add(event.data.subagent.id);
+            }
+            if (
+                previous !== undefined &&
+                !this.#isActiveSubagent(event.data.subagent) &&
+                !this.#recordedSubagentCompletionIds.has(event.data.subagent.id) &&
+                !hasActiveDescendant &&
+                (becameInactive || this.#pendingSubagentCompletionIds.has(event.data.subagent.id))
             ) {
+                this.#pendingSubagentCompletionIds.delete(event.data.subagent.id);
+                if (event.data.subagent.status !== "suspended") {
+                    this.#recordedSubagentCompletionIds.add(event.data.subagent.id);
+                }
                 this.#recordSubagentCompletion(event.data.subagent);
             }
             this.#syncSubagentRefreshTimer();
@@ -2748,6 +2767,19 @@ export class CodingAssistantApp implements Component, Focusable {
             (subagent.status === "queued" || subagent.status === "running") &&
             !subagent.taskName?.startsWith("workflow_")
         );
+    }
+
+    #hasActiveSubagentDescendant(parentId: string): boolean {
+        const byId = new Map(this.#subagents.map((subagent) => [subagent.id, subagent]));
+        return this.#subagents.some((subagent) => {
+            if (!this.#isActiveSubagent(subagent)) return false;
+            let parent = byId.get(subagent.parentSessionId);
+            while (parent !== undefined) {
+                if (parent.id === parentId) return true;
+                parent = byId.get(parent.parentSessionId);
+            }
+            return false;
+        });
     }
 
     #activeWorkflowCount(): number {
