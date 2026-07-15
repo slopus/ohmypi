@@ -165,6 +165,13 @@ This file tracks known defects, verified coverage gaps, and concrete follow-up w
     - Refresh the displayed quota when the provider/model changes and when a completed response returns newer limit metadata.
     - Require real Gym/provider-boundary screenshots for new session, resumed session, narrow width, provider change, and unavailable usage data.
 
+- [ ] Show compaction progress and refresh context state.
+    - Inspect the pinned Codex implementation first, then show a compact live compaction message with a progress bar while automatic or manual compaction is running.
+    - Settle that live message into immutable transcript history when compaction finishes, preserving the existing compaction notice and adding human-readable elapsed time without moving older rows or jumping the composer.
+    - Refresh the footer/status context usage from the authoritative post-compaction conversation state immediately after compaction; verify main sessions and each subagent track their own current context without stale parent/child values.
+    - Remove the redundant `· main [default]` footer segment for the main agent; retain agent/model identity only where it distinguishes a subagent or a non-default selection.
+    - Add deterministic state/rendering coverage and real Gym screenshots for live compaction progress, settled elapsed history, post-compaction context usage, narrow width, and main-versus-subagent footers.
+
 - [ ] Wrap long lines in edit previews.
     - Inspect the pinned Codex implementation first, then make Rig edit/apply-patch previews wrap to the available terminal width instead of clipping or overflowing.
     - Preserve diff markers, indentation, syntax coloring, and readable continuation alignment at narrow widths.
