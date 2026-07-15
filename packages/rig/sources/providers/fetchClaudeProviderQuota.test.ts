@@ -45,11 +45,13 @@ describe("fetchClaudeProviderQuota", () => {
             source: "claude-sdk",
             windows: {
                 fiveHour: {
+                    capturedAt: 500,
                     resetsAt: Date.parse("2026-05-01T12:00:00.000Z"),
                     status: "available",
                     usedPercent: 62.25,
                 },
                 weekly: {
+                    capturedAt: 500,
                     resetsAt: Date.parse("2026-05-07T12:00:00.000Z"),
                     status: "available",
                     usedPercent: 21.5,
@@ -76,6 +78,7 @@ describe("fetchClaudeProviderQuota", () => {
             windows: {
                 fiveHour: { status: "unavailable" },
                 weekly: {
+                    capturedAt: 550,
                     resetsAt: Date.parse("2026-05-07T12:00:00.000Z"),
                     status: "available",
                     usedPercent: 18.75,

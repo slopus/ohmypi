@@ -1,6 +1,6 @@
 import type { Query } from "@anthropic-ai/claude-agent-sdk";
 
-import type { ProviderQuota } from "./providerQuota.js";
+import type { ProviderQuota, ProviderQuotaWindow } from "./providerQuota.js";
 import { unavailableProviderQuota } from "./unavailableProviderQuota.js";
 
 export type ClaudeQuotaQuery = Pick<
@@ -36,12 +36,13 @@ export async function fetchClaudeProviderQuota(
         if (!usage.rate_limits_available) {
             return unavailable();
         }
+        const capturedAt = now();
         return {
-            capturedAt: now(),
+            capturedAt,
             source: "claude-sdk",
             windows: {
-                fiveHour: parseClaudeQuotaWindow(usage.rate_limits?.five_hour),
-                weekly: parseClaudeQuotaWindow(usage.rate_limits?.seven_day),
+                fiveHour: parseClaudeQuotaWindow(usage.rate_limits?.five_hour, capturedAt),
+                weekly: parseClaudeQuotaWindow(usage.rate_limits?.seven_day, capturedAt),
             },
         };
     } catch {
@@ -57,7 +58,8 @@ export async function fetchClaudeProviderQuota(
 
 function parseClaudeQuotaWindow(
     window: { utilization: number | null; resets_at: string | null } | null | undefined,
-): ProviderQuota["windows"]["fiveHour"] {
+    capturedAt: number,
+): ProviderQuotaWindow {
     if (
         typeof window?.utilization !== "number" ||
         !Number.isFinite(window.utilization) ||
@@ -69,6 +71,6 @@ function parseClaudeQuotaWindow(
     }
     const resetsAt = Date.parse(window.resets_at);
     return Number.isFinite(resetsAt)
-        ? { status: "available", usedPercent: window.utilization, resetsAt }
+        ? { capturedAt, status: "available", usedPercent: window.utilization, resetsAt }
         : { status: "unavailable" };
 }

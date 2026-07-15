@@ -153,12 +153,14 @@ function quota(
         source,
         windows: {
             fiveHour: {
+                capturedAt: epoch - 1,
                 durationMs: 18_000_000,
                 resetsAt: epoch,
                 status: "available",
                 usedPercent: fiveHourUsed,
             },
             weekly: {
+                capturedAt: epoch - 1,
                 durationMs: 604_800_000,
                 resetsAt: epoch + 1,
                 status: "available",

@@ -24,7 +24,7 @@ export function aggregateSessionUsage(
     events: readonly SessionEvent[],
     metadata: SessionUsageMetadata,
 ): SessionUsageSummary {
-    if (metadata.type === "subagent") return { groups: [], quotaContributions: [] };
+    if (metadata.type === "subagent") return { groups: [], observedQuota: [] };
 
     let groups: SessionUsageGroup[] = [];
     let attributedGroupIndexes = new Map<string, number>();
@@ -150,6 +150,6 @@ export function aggregateSessionUsage(
     return {
         ...(currentContext === undefined ? {} : { currentContext }),
         groups,
-        quotaContributions: aggregateQuotaContributions(events),
+        observedQuota: aggregateQuotaContributions(events),
     };
 }

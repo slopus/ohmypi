@@ -36,7 +36,7 @@ export interface SessionContextUsage {
 export interface SessionUsageSummary {
     currentContext?: SessionContextUsage;
     groups: readonly SessionUsageGroup[];
-    quotaContributions: readonly SessionQuotaContribution[];
+    observedQuota: readonly SessionQuotaContribution[];
 }
 
 export interface SessionQuotaContribution {

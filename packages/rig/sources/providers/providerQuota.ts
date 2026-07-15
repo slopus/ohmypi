@@ -2,6 +2,7 @@ export type ProviderQuotaSource = "codex" | "claude-sdk";
 
 export type ProviderQuotaWindow =
     | {
+          capturedAt: number;
           status: "available";
           usedPercent: number;
           resetsAt: number;
@@ -15,7 +16,7 @@ export interface ProviderQuota {
     capturedAt: number;
     source: ProviderQuotaSource;
     windows: {
-        fiveHour: ProviderQuotaWindow;
-        weekly: ProviderQuotaWindow;
+        fiveHour?: ProviderQuotaWindow;
+        weekly?: ProviderQuotaWindow;
     };
 }

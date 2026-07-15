@@ -264,7 +264,7 @@ export interface GetSessionUsageResponse {
     currentProviderId: string;
     groups: readonly SessionUsageGroup[];
     context?: SessionContextUsage;
-    quotaContributions: readonly SessionQuotaContribution[];
+    observedQuota: readonly SessionQuotaContribution[];
     quotas: readonly SessionProviderQuota[];
 }
 

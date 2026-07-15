@@ -21,13 +21,12 @@ describe("formatSessionUsageSummary", () => {
                 "Codex",
                 "GPT-5.6 · 1,200 in · 100 out · 40 read · 30 write · 20 reasoning · 1,370 total",
                 "5-hour: 68% left · resets in 2h 14m",
-                "Observed while this session was active: +3.5%",
                 "Weekly: 79% left · resets in 6d 2h",
-                "Observed while this session was active: +1%",
+                "Observed while this session was active: 5h +3.5% · week +1% (approx.)",
                 "Context: 1,300 / 200,000 · 99% left",
                 "Earlier usage",
                 "Model unavailable · 5 in · 2 out · 0 read · 0 write · 7 total",
-                "Observed quota changes are account-wide and may include other activity.",
+                "Account usage may include other activity.",
                 "Overall session total: 1,377",
             ].join("\n"),
         );
@@ -49,12 +48,14 @@ describe("formatSessionUsageSummary", () => {
                 },
             },
         ];
-        value.quotaContributions = [];
+        value.observedQuota = [];
 
         const text = formatSessionUsageSummary(value, [{ model: codex, providerId: "codex" }]);
         expect(text).toContain("5-hour: unavailable");
         expect(text).toContain("Weekly: unavailable");
-        expect(text).toContain("Observed while this session was active: unavailable");
+        expect(text).toContain(
+            "Observed while this session was active: 5h unavailable · week unavailable (approx.)",
+        );
         expect(text).toContain("Context: ~1,300 / 200,000");
     });
 
@@ -73,8 +74,8 @@ describe("formatSessionUsageSummary", () => {
                 },
             },
         ];
-        value.quotaContributions = [
-            ...value.quotaContributions,
+        value.observedQuota = [
+            ...value.observedQuota,
             {
                 providerId: "claude-sdk",
                 windows: {
@@ -87,11 +88,10 @@ describe("formatSessionUsageSummary", () => {
         const text = formatSessionUsageSummary(value, [{ model: codex, providerId: "codex" }]);
         expect(text).toContain("anthropic/sonnet-4-6 · 100 in · 20 out");
         expect(text).toContain("120 total · $0.12");
-        expect(text).toContain("Observed while this session was active: no increase");
-        expect(text).toContain("Observed while this session was active: +2%");
         expect(text).toContain(
-            "Observed quota changes are account-wide and may include other activity.",
+            "Observed while this session was active: 5h +0% · week +2% (approx.)",
         );
+        expect(text).toContain("Account usage may include other activity.");
     });
 });
 
@@ -122,7 +122,7 @@ function summary(): GetSessionUsageResponse {
                 usage: usage(5, 2, 0, 0, 7),
             },
         ],
-        quotaContributions: [
+        observedQuota: [
             {
                 providerId: "codex",
                 windows: {
@@ -139,11 +139,13 @@ function summary(): GetSessionUsageResponse {
                     source: "codex",
                     windows: {
                         fiveHour: {
+                            capturedAt: 1_000,
                             resetsAt: 1_000 + (2 * 60 + 14) * 60_000,
                             status: "available",
                             usedPercent: 32,
                         },
                         weekly: {
+                            capturedAt: 1_000,
                             resetsAt: 1_000 + (6 * 24 + 2) * 60 * 60_000,
                             status: "available",
                             usedPercent: 21,

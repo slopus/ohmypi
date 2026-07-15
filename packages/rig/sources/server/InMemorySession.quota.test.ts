@@ -61,7 +61,7 @@ describe("InMemorySession quota observations", () => {
         expect(observations?.[0]?.data.observationId).toBe(observations?.[1]?.data.observationId);
         expect(quota).toHaveBeenNthCalledWith(1, { fresh: true });
         expect(quota).toHaveBeenNthCalledWith(2, { fresh: true });
-        expect(session.usage().quotaContributions).toEqual([
+        expect(session.usage().observedQuota).toEqual([
             {
                 providerId: "codex",
                 windows: {
@@ -79,12 +79,14 @@ function snapshot(fiveHourUsed: number, weeklyUsed: number): ProviderQuota {
         source: "codex",
         windows: {
             fiveHour: {
+                capturedAt: 1,
                 durationMs: 18_000_000,
                 resetsAt: 100,
                 status: "available",
                 usedPercent: fiveHourUsed,
             },
             weekly: {
+                capturedAt: 1,
                 durationMs: 604_800_000,
                 resetsAt: 200,
                 status: "available",

@@ -13,6 +13,7 @@ describe("createProviderQuotaCache", () => {
                 source: "codex",
                 windows: {
                     fiveHour: {
+                        capturedAt: 1,
                         status: "available",
                         usedPercent: 20,
                         resetsAt: 2_000_000,
@@ -79,6 +80,7 @@ describe("createProviderQuotaCache", () => {
                 source: "codex",
                 windows: {
                     fiveHour: {
+                        capturedAt: 2,
                         status: "available",
                         usedPercent: load.mock.calls.length,
                         resetsAt: 9,

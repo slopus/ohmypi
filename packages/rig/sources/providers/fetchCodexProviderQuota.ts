@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
 
-import type { ProviderQuota } from "./providerQuota.js";
+import type { ProviderQuota, ProviderQuotaWindow } from "./providerQuota.js";
 import { readCodexQuotaAuth } from "./readCodexQuotaAuth.js";
 import { unavailableProviderQuota } from "./unavailableProviderQuota.js";
 
@@ -51,12 +51,13 @@ export async function fetchCodexProviderQuota(
                 secondary_window?: CodexQuotaWindowPayload | null;
             } | null;
         };
-        const windows = parseCodexQuotaWindows([
-            body.rate_limit?.primary_window,
-            body.rate_limit?.secondary_window,
-        ]);
+        const capturedAt = now();
+        const windows = parseCodexQuotaWindows(
+            [body.rate_limit?.primary_window, body.rate_limit?.secondary_window],
+            capturedAt,
+        );
         return {
-            capturedAt: now(),
+            capturedAt,
             source: "codex",
             windows,
         };
@@ -73,6 +74,7 @@ interface CodexQuotaWindowPayload {
 
 function parseCodexQuotaWindows(
     payloads: readonly (CodexQuotaWindowPayload | null | undefined)[],
+    capturedAt: number,
 ): ProviderQuota["windows"] {
     const windows: ProviderQuota["windows"] = {
         fiveHour: { status: "unavailable" },
@@ -93,7 +95,9 @@ function parseCodexQuotaWindows(
             : durationMatches(durationSeconds, 7 * 24 * 60 * 60)
               ? "weekly"
               : undefined;
-        if (key !== undefined) windows[key] = parseCodexQuotaWindow(payload, durationSeconds);
+        if (key !== undefined) {
+            windows[key] = parseCodexQuotaWindow(payload, durationSeconds, capturedAt);
+        }
     }
     return windows;
 }
@@ -101,7 +105,8 @@ function parseCodexQuotaWindows(
 function parseCodexQuotaWindow(
     payload: CodexQuotaWindowPayload,
     durationSeconds: number,
-): ProviderQuota["windows"]["fiveHour"] {
+    capturedAt: number,
+): ProviderQuotaWindow {
     const usedPercent = payload?.used_percent;
     const resetAtSeconds = payload?.reset_at;
     if (
@@ -116,6 +121,7 @@ function parseCodexQuotaWindow(
         return { status: "unavailable" };
     }
     return {
+        capturedAt,
         status: "available",
         usedPercent,
         resetsAt: resetAtSeconds * 1_000,

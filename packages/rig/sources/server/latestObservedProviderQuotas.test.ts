@@ -44,7 +44,7 @@ function quota(
         capturedAt,
         source,
         windows: {
-            fiveHour: { resetsAt: 100, status: "available", usedPercent },
+            fiveHour: { capturedAt, resetsAt: 100, status: "available", usedPercent },
             weekly: { status: "unavailable" },
         },
     };

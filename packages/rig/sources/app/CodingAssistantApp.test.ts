@@ -3463,7 +3463,7 @@ describe("CodingAssistantApp", () => {
                             },
                         },
                     ],
-                    quotaContributions: [],
+                    observedQuota: [],
                     quotas: [
                         {
                             providerId: "codex",
@@ -3472,6 +3472,7 @@ describe("CodingAssistantApp", () => {
                                 source: "codex" as const,
                                 windows: {
                                     fiveHour: {
+                                        capturedAt: 1,
                                         resetsAt: 8_041_000,
                                         status: "available" as const,
                                         usedPercent: 32,

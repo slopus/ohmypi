@@ -29,7 +29,12 @@ describe("createProtocolHttpServer", () => {
                 capturedAt: 10,
                 source: "codex",
                 windows: {
-                    fiveHour: { resetsAt: 20, status: "available", usedPercent: 32 },
+                    fiveHour: {
+                        capturedAt: 10,
+                        resetsAt: 20,
+                        status: "available",
+                        usedPercent: 32,
+                    },
                     weekly: { status: "unavailable" },
                 },
             });
@@ -75,7 +80,7 @@ describe("createProtocolHttpServer", () => {
                         usage: { input: 10, output: 2, totalTokens: 19 },
                     },
                 ],
-                quotaContributions: [],
+                observedQuota: [],
                 quotas: [
                     {
                         providerId: "codex",
@@ -99,11 +104,13 @@ describe("createProtocolHttpServer", () => {
                 source: providerId === "codex" ? "codex" : "claude-sdk",
                 windows: {
                     fiveHour: {
+                        capturedAt: 10,
                         resetsAt: 100,
                         status: "available",
                         usedPercent: providerId === "codex" ? 30 : 40,
                     },
                     weekly: {
+                        capturedAt: 10,
                         resetsAt: 200,
                         status: "available",
                         usedPercent: providerId === "codex" ? 10 : 20,
@@ -120,8 +127,18 @@ describe("createProtocolHttpServer", () => {
                 capturedAt: 1,
                 source: "claude-sdk" as const,
                 windows: {
-                    fiveHour: { resetsAt: 100, status: "available" as const, usedPercent: 5 },
-                    weekly: { resetsAt: 200, status: "available" as const, usedPercent: 2 },
+                    fiveHour: {
+                        capturedAt: 1,
+                        resetsAt: 100,
+                        status: "available" as const,
+                        usedPercent: 5,
+                    },
+                    weekly: {
+                        capturedAt: 1,
+                        resetsAt: 200,
+                        status: "available" as const,
+                        usedPercent: 2,
+                    },
                 },
             };
             session.events.append({
@@ -189,7 +206,7 @@ describe("createProtocolHttpServer", () => {
                 expect.objectContaining({ providerId: "claude-sdk" }),
                 expect.objectContaining({ providerId: "codex" }),
             ]);
-            expect(response.quotaContributions).toEqual([
+            expect(response.observedQuota).toEqual([
                 {
                     providerId: "claude-sdk",
                     windows: {

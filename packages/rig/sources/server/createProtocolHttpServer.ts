@@ -351,7 +351,7 @@ async function handleRequest(
                 ...usage.groups.flatMap((group) =>
                     group.providerId === null ? [] : [group.providerId],
                 ),
-                ...usage.quotaContributions.map((contribution) => contribution.providerId),
+                ...usage.observedQuota.map((contribution) => contribution.providerId),
                 currentProviderId,
             ]),
         ];
@@ -379,7 +379,7 @@ async function handleRequest(
         sendJson<GetSessionUsageResponse>(response, 200, {
             currentProviderId,
             groups: usage.groups,
-            quotaContributions: usage.quotaContributions,
+            observedQuota: usage.observedQuota,
             quotas,
             ...(usage.currentContext === undefined ? {} : { context: usage.currentContext }),
         });

@@ -54,9 +54,9 @@ function observeWindow(
     epochs: Map<string, WindowEpoch>,
     providerId: string,
     windowName: "fiveHour" | "weekly",
-    window: ProviderQuotaWindow,
+    window: ProviderQuotaWindow | undefined,
 ): void {
-    if (window.status !== "available") return;
+    if (window?.status !== "available") return;
     const key = JSON.stringify([
         providerId,
         windowName,

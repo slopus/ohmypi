@@ -49,12 +49,14 @@ describe("fetchCodexProviderQuota", () => {
             source: "codex",
             windows: {
                 fiveHour: {
+                    capturedAt: 123_000,
                     durationMs: 18_000_000,
                     resetsAt: 1_735_689_600_000,
                     status: "available",
                     usedPercent: 37.5,
                 },
                 weekly: {
+                    capturedAt: 123_000,
                     durationMs: 604_800_000,
                     resetsAt: 1_736_208_000_000,
                     status: "available",
@@ -115,6 +117,7 @@ describe("fetchCodexProviderQuota", () => {
             windows: {
                 fiveHour: { status: "unavailable" },
                 weekly: {
+                    capturedAt: 44,
                     durationMs: 604_800_000,
                     resetsAt: 1_736_208_000_000,
                     status: "available",
