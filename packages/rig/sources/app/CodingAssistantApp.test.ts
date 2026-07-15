@@ -4339,7 +4339,7 @@ describe("CodingAssistantApp", () => {
         expect(stripAnsi(raw)).toContain("└ unsafe");
     });
 
-    it("renders a separator when the loop starts a second inference iteration", async () => {
+    it("renders one completion separator after the final response across tool cycles", async () => {
         const model = defineModel({
             id: "openai/gpt-test",
             name: "GPT Test",
@@ -4352,15 +4352,15 @@ describe("CodingAssistantApp", () => {
             models: [model],
             stream() {
                 streamCalls += 1;
-                if (streamCalls === 1) {
+                if (streamCalls <= 2) {
                     return streamMessage({
                         role: "assistant",
                         content: [
                             {
                                 type: "toolCall",
-                                id: "tool-call-1",
+                                id: `tool-call-${String(streamCalls)}`,
                                 name: "exec_command",
-                                arguments: { cmd: "printf ok" },
+                                arguments: { cmd: `printf tool-${String(streamCalls)}` },
                             },
                         ],
                         api: "test",
@@ -4393,13 +4393,289 @@ describe("CodingAssistantApp", () => {
         await app.waitForIdle();
 
         const rendered = stripAnsi(app.render(80).join("\n"));
-        expect(streamCalls).toBe(2);
-        expect(rendered).toContain("• Ran printf ok");
-        expect(rendered).toContain("└ ok");
-        expect(rendered).toContain(
-            "────────────────────────────────────────────────────────────────────────────────",
+        const separator =
+            "────────────────────────────────────────────────────────────────────────────────";
+        expect(streamCalls).toBe(3);
+        expect(rendered).toContain("• Ran printf tool-1");
+        expect(rendered).toContain("└ tool-1");
+        expect(rendered).toContain("• Ran printf tool-2");
+        expect(rendered).toContain("└ tool-2");
+        expect(rendered.match(new RegExp(separator, "gu"))).toHaveLength(1);
+        expect(rendered.indexOf("• after tools")).toBeLessThan(rendered.indexOf(separator));
+    });
+
+    it("places completion directly after the tool result when there is no final text", async () => {
+        const model = defineModel({
+            id: "openai/gpt-test",
+            name: "GPT Test",
+            thinkingLevels: ["off"],
+            defaultThinkingLevel: "off",
+        });
+        let now = 0;
+        let streamCalls = 0;
+        const provider = defineProvider({
+            id: "codex",
+            models: [model],
+            stream() {
+                streamCalls += 1;
+                if (streamCalls === 1) {
+                    return streamMessage({
+                        role: "assistant",
+                        content: [
+                            {
+                                type: "toolCall",
+                                id: "tool-call-no-final-text",
+                                name: "exec_command",
+                                arguments: { cmd: "printf tool-only" },
+                            },
+                        ],
+                        api: "test",
+                        provider: "codex",
+                        model: "openai/gpt-test",
+                        usage: zeroUsage(),
+                        stopReason: "toolUse",
+                        timestamp: 1,
+                    });
+                }
+
+                now = 65_000;
+                return streamMessage({
+                    role: "assistant",
+                    content: [],
+                    api: "test",
+                    provider: "codex",
+                    model: "openai/gpt-test",
+                    usage: zeroUsage(),
+                    stopReason: "stop",
+                    timestamp: 1,
+                });
+            },
+        });
+        const harness = createJustBashToolHarness();
+        const app = new CodingAssistantApp({
+            agent: new Agent({
+                provider,
+                modelId: model.id,
+                context: harness.context,
+                printToConsole: false,
+            }),
+            cwd: harness.context.fs.cwd,
+            now: () => now,
+            processManager: new NativeProxessManager(),
+            tui: fakeTui(),
+        });
+
+        submit(app, "use one tool");
+        await app.waitForIdle();
+
+        const rendered = stripAnsi(app.render(80).join("\n"));
+        expect(rendered.indexOf("└ tool-only")).toBeLessThan(rendered.indexOf("Worked for 1m 5s"));
+        expect(rendered.match(/Worked for/gu)).toHaveLength(1);
+    });
+
+    it("keeps completion before a queued follow-up turn", async () => {
+        const model = defineModel({
+            id: "openai/gpt-test",
+            name: "GPT Test",
+            thinkingLevels: ["off"],
+            defaultThinkingLevel: "off",
+        });
+        let now = 0;
+        let streamCalls = 0;
+        const gate = createBeforeTextStartStreamGate("first answer");
+        const provider = defineProvider({
+            id: "codex",
+            models: [model],
+            stream() {
+                streamCalls += 1;
+                if (streamCalls === 1) {
+                    return streamMessage({
+                        role: "assistant",
+                        content: [
+                            {
+                                type: "toolCall",
+                                id: "tool-before-queued-turn",
+                                name: "exec_command",
+                                arguments: { cmd: "printf queued-tool" },
+                            },
+                        ],
+                        api: "test",
+                        provider: "codex",
+                        model: "openai/gpt-test",
+                        usage: zeroUsage(),
+                        stopReason: "toolUse",
+                        timestamp: 1,
+                    });
+                }
+                if (streamCalls === 2) return gate.stream();
+                return streamText("queued answer");
+            },
+        });
+        const harness = createJustBashToolHarness();
+        const app = new CodingAssistantApp({
+            agent: new Agent({
+                provider,
+                modelId: model.id,
+                context: harness.context,
+                printToConsole: false,
+            }),
+            cwd: harness.context.fs.cwd,
+            now: () => now,
+            processManager: new NativeProxessManager(),
+            tui: fakeTui(),
+        });
+
+        submit(app, "use a tool first");
+        await gate.started;
+        app.handleInput("queued follow-up");
+        app.handleInput("\t");
+        now = 65_000;
+        gate.release();
+        await app.waitForIdle();
+
+        const rendered = stripAnsi(app.render(80).join("\n"));
+        const firstAnswer = rendered.indexOf("• first answer");
+        const completion = rendered.indexOf("Worked for 1m 5s");
+        const queuedUser = rendered.indexOf("› queued follow-up");
+        const queuedAnswer = rendered.indexOf("• queued answer");
+        expect([firstAnswer, completion, queuedUser, queuedAnswer]).toEqual(
+            [...new Set([firstAnswer, completion, queuedUser, queuedAnswer])].sort(
+                (left, right) => left - right,
+            ),
         );
-        expect(rendered).toContain("• after tools");
+        expect(rendered.match(/Worked for/gu)).toHaveLength(1);
+    });
+
+    it("does not leak deferred completion after a tool-using provider error", async () => {
+        const model = defineModel({
+            id: "openai/gpt-test",
+            name: "GPT Test",
+            thinkingLevels: ["off"],
+            defaultThinkingLevel: "off",
+        });
+        let now = 0;
+        let streamCalls = 0;
+        const provider = defineProvider({
+            id: "codex",
+            models: [model],
+            stream() {
+                streamCalls += 1;
+                if (streamCalls === 1) {
+                    return streamMessage({
+                        role: "assistant",
+                        content: [
+                            {
+                                type: "toolCall",
+                                id: "tool-before-error",
+                                name: "exec_command",
+                                arguments: { cmd: "printf before-error" },
+                            },
+                        ],
+                        api: "test",
+                        provider: "codex",
+                        model: "openai/gpt-test",
+                        usage: zeroUsage(),
+                        stopReason: "toolUse",
+                        timestamp: 1,
+                    });
+                }
+
+                now = 65_000;
+                return streamMessage({
+                    role: "assistant",
+                    content: [],
+                    api: "test",
+                    provider: "codex",
+                    model: "openai/gpt-test",
+                    usage: zeroUsage(),
+                    stopReason: "error",
+                    errorMessage: "SCRIPTED_PROVIDER_ERROR",
+                    timestamp: 1,
+                });
+            },
+        });
+        const harness = createJustBashToolHarness();
+        const app = new CodingAssistantApp({
+            agent: new Agent({
+                provider,
+                modelId: model.id,
+                context: harness.context,
+                printToConsole: false,
+            }),
+            cwd: harness.context.fs.cwd,
+            now: () => now,
+            processManager: new NativeProxessManager(),
+            tui: fakeTui(),
+        });
+
+        submit(app, "fail after the tool");
+        await app.waitForIdle();
+
+        const rendered = stripAnsi(app.render(80).join("\n"));
+        expect(rendered).toContain("SCRIPTED_PROVIDER_ERROR");
+        expect(rendered).not.toContain("Worked for");
+    });
+
+    it("does not leak deferred completion after a tool-using interruption", async () => {
+        const model = defineModel({
+            id: "openai/gpt-test",
+            name: "GPT Test",
+            thinkingLevels: ["off"],
+            defaultThinkingLevel: "off",
+        });
+        let now = 0;
+        let streamCalls = 0;
+        const started = deferred<void>();
+        const provider = defineProvider({
+            id: "codex",
+            models: [model],
+            stream(_model, _context, options) {
+                streamCalls += 1;
+                if (streamCalls === 1) {
+                    return streamMessage({
+                        role: "assistant",
+                        content: [
+                            {
+                                type: "toolCall",
+                                id: "tool-before-interruption",
+                                name: "exec_command",
+                                arguments: { cmd: "printf before-interruption" },
+                            },
+                        ],
+                        api: "test",
+                        provider: "codex",
+                        model: "openai/gpt-test",
+                        usage: zeroUsage(),
+                        stopReason: "toolUse",
+                        timestamp: 1,
+                    });
+                }
+                return streamAbortAfterSignal(options?.signal, () => started.resolve());
+            },
+        });
+        const harness = createJustBashToolHarness();
+        const app = new CodingAssistantApp({
+            agent: new Agent({
+                provider,
+                modelId: model.id,
+                context: harness.context,
+                printToConsole: false,
+            }),
+            cwd: harness.context.fs.cwd,
+            now: () => now,
+            processManager: new NativeProxessManager(),
+            tui: fakeTui(),
+        });
+
+        submit(app, "interrupt after the tool");
+        await started.promise;
+        now = 65_000;
+        app.handleInput("\x1b");
+        await app.waitForIdle();
+
+        const rendered = stripAnsi(app.render(80).join("\n"));
+        expect(rendered).toContain("Session interrupted");
+        expect(rendered).not.toContain("Worked for");
     });
 
     it("shows Working before second inference content starts", async () => {
