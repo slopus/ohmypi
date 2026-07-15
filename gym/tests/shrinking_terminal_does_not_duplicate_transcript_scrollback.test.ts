@@ -1,4 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
+import { mkdir, writeFile } from "node:fs/promises";
+import { resolve } from "node:path";
 
 import { createGym, type Gym } from "../../packages/gym/sources/index.js";
 
@@ -50,8 +52,10 @@ describe("shrinking terminal does not duplicate transcript scrollback", () => {
         expect(beforeResize.scroll.atBottom).toBe(true);
 
         gym.terminal.resize(60, 6);
+        const followUpOutput = waitForTerminalOutput(gym, "RESIZE_FOLLOW_UP_COMPLETE", 30_000);
         gym.terminal.type("prove the resized terminal remains usable");
         gym.terminal.press("enter");
+        await followUpOutput;
         await gym.terminal.waitUntil(
             (snapshot) =>
                 agentRequestCount(gym) === 3 &&
@@ -63,6 +67,7 @@ describe("shrinking terminal does not duplicate transcript scrollback", () => {
         await expect(gym.readFile("resize-ok.txt")).resolves.toBe("usable after resize\n");
 
         const scrollbackRows = await collectScrollbackRows(gym);
+        await writeProof(gym, scrollbackRows);
         expect.soft(countExactRow(scrollbackRows, "› seed shrink history")).toBe(1);
         expect.soft(countExactRow(scrollbackRows, "• SHRINK MARKER 00")).toBe(1);
         expect.soft(countExactRow(scrollbackRows, "SHRINK MARKER 29")).toBe(1);
@@ -106,4 +111,29 @@ async function collectScrollbackRows(gym: Gym): Promise<string[]> {
 
 function countExactRow(rows: readonly string[], value: string): number {
     return rows.filter((row) => row.trim() === value).length;
+}
+
+function waitForTerminalOutput(gym: Gym, text: string, timeoutMs: number): Promise<void> {
+    return new Promise((resolvePromise, reject) => {
+        let output = "";
+        const stop = gym.terminal.onOutput((data) => {
+            output += data;
+            if (!output.includes(text)) return;
+            clearTimeout(timer);
+            stop();
+            resolvePromise();
+        });
+        const timer = setTimeout(() => {
+            stop();
+            reject(new Error(`Timed out waiting for terminal output ${JSON.stringify(text)}.`));
+        }, timeoutMs);
+    });
+}
+
+async function writeProof(gym: Gym, rows: readonly string[]): Promise<void> {
+    const directory = process.env.RIG_GYM_PROOF_DIR;
+    if (directory === undefined) return;
+    await mkdir(directory, { recursive: true });
+    await writeFile(resolve(directory, "shrink-scrollback.txt"), `${rows.join("\n")}\n`);
+    await gym.terminal.screenshot(resolve(directory, "shrink-return-to-bottom.png"));
 }
