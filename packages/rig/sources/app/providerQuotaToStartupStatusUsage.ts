@@ -23,9 +23,10 @@ function mapWindow(
     now: number,
 ): StartupStatusCardUsageWindow | undefined {
     if (window?.status !== "available") return undefined;
+    const percentLeft = Math.max(0, Math.min(100, 100 - window.usedPercent));
     return {
         capturedAt: window.capturedAt,
-        percentLeft: Math.max(0, Math.min(100, 100 - window.usedPercent)),
+        percentLeft: Math.round(percentLeft * 10) / 10,
         resetsIn: formatResetDuration(window.resetsAt - now),
     };
 }

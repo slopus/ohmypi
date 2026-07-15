@@ -51,4 +51,11 @@ describe("formatStartupStatusUsageRows", () => {
             ),
         ).toEqual(["5h 68% left", "week 84% left"]);
     });
+
+    it("renders fractional remaining percentages cleanly at wide and narrow widths", () => {
+        const usage = { fiveHour: { percentLeft: 0.2 } };
+
+        expect(formatStartupStatusUsageRows(usage, 72)).toEqual(["Usage: 5h 0.2% left"]);
+        expect(formatStartupStatusUsageRows(usage, 15)).toEqual(["5h 0.2% left"]);
+    });
 });

@@ -54,6 +54,22 @@ describe("providerQuotaToStartupStatusUsage", () => {
         ).toBeUndefined();
         expect(providerQuotaToStartupStatusUsage(undefined)).toBeUndefined();
     });
+
+    it("rounds fractional remaining quota without exposing floating-point tails", () => {
+        expect(
+            providerQuotaToStartupStatusUsage(
+                quota({
+                    fiveHour: {
+                        capturedAt: 1_000,
+                        resetsAt: 2_000,
+                        status: "available",
+                        usedPercent: 99.8,
+                    },
+                }),
+                1_000,
+            ),
+        ).toEqual({ fiveHour: { capturedAt: 1_000, percentLeft: 0.2, resetsIn: "1m" } });
+    });
 });
 
 function quota(windows: ProviderQuota["windows"]): ProviderQuota {
