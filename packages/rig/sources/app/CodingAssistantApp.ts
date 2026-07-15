@@ -132,7 +132,6 @@ const FILE_MENTION_SEGMENTER = new Intl.Segmenter(undefined, { granularity: "gra
 const FAST_MODE_ON_MESSAGE = "Fast mode is on. Fast inference uses 2× plan usage.";
 const FAST_MODE_OFF_MESSAGE = "Fast mode is off.";
 
-const MAX_TRANSCRIPT_ENTRIES = 500;
 const MAX_DIFF_FILES_PER_TOOL = 20;
 const MAX_DIFF_ROWS_PER_TOOL = 120;
 
@@ -2815,14 +2814,6 @@ export class CodingAssistantApp implements Component, Focusable {
         }
 
         this.#entries.push(completeEntry);
-        if (this.#entries.length > MAX_TRANSCRIPT_ENTRIES) {
-            const removedEntryCount = this.#entries.length - MAX_TRANSCRIPT_ENTRIES;
-            this.#entries = this.#entries.slice(removedEntryCount);
-            this.#transcriptStartIndex = Math.max(
-                0,
-                this.#transcriptStartIndex - removedEntryCount,
-            );
-        }
         this.#requestRender();
         return completeEntry;
     }
