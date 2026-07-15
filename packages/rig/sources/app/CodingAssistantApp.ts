@@ -1,7 +1,7 @@
 /* eslint-disable no-control-regex -- Terminal rendering intentionally parses ANSI controls. */
 import { createId } from "@paralleldrive/cuid2";
 import { homedir } from "node:os";
-import { basename, join } from "node:path";
+import { join } from "node:path";
 import {
     CURSOR_MARKER,
     Editor,
@@ -81,6 +81,7 @@ import { renderBackgroundTerminalSummary } from "./renderBackgroundTerminalSumma
 import { renderCodexFileDiff } from "./renderCodexFileDiff.js";
 import { renderCodexMcpToolCall } from "./renderCodexMcpToolCall.js";
 import { renderExecCommand } from "./renderExecCommand.js";
+import { renderRigBanner } from "./renderRigBanner.js";
 import { sanitizeTerminalText } from "./sanitizeTerminalText.js";
 import { renderSubagentSummary } from "./renderSubagentSummary.js";
 import { renderTurnCompletionSeparator } from "./renderTurnCompletionSeparator.js";
@@ -2481,12 +2482,12 @@ export class CodingAssistantApp implements Component, Focusable {
 
     #renderHeader(width: number): string[] {
         return [
-            ...this.#renderStartupBox(width, [
-                `${this.#theme.brand}>_${RESET} ${BOLD}Rig${NOT_BOLD_OR_DIM} ${this.#version}`,
-                "Agentic coding CLI for local project work.",
-                "Keeps sessions in a private local daemon.",
-                `Directory: ${this.#directoryName()}`,
-            ]),
+            ...renderRigBanner({
+                brand: this.#theme.brand,
+                secondary: this.#theme.secondary,
+                version: this.#version,
+                width,
+            }),
             "",
         ];
     }
@@ -3474,32 +3475,6 @@ export class CodingAssistantApp implements Component, Focusable {
         return truncateToWidth(line, width, "", true);
     }
 
-    #truncateLine(line: string, width: number): string {
-        return truncateToWidth(line, width, "", false);
-    }
-
-    #renderStartupBox(width: number, rows: string[]): string[] {
-        const maxInnerWidth = Math.max(1, width - 4);
-        const contentWidth = rows
-            .map((row) => visibleWidth(row))
-            .reduce((maxWidth, rowWidth) => Math.max(maxWidth, rowWidth), 1);
-        const innerWidth = Math.min(maxInnerWidth, contentWidth);
-        const rule = "─".repeat(innerWidth + 2);
-        const top = `╭${rule}╮`;
-        const bottom = `╰${rule}╯`;
-        return [
-            this.#truncateLine(`${DIM}${top}${RESET}`, width),
-            ...rows.map((row) => {
-                const paddedText = this.#fitAndPadLine(row, innerWidth);
-                return this.#truncateLine(
-                    `${DIM}│ ${NOT_BOLD_OR_DIM}${paddedText}${DIM} │${RESET}`,
-                    width,
-                );
-            }),
-            this.#truncateLine(`${DIM}${bottom}${RESET}`, width),
-        ];
-    }
-
     #renderUserEntry(entry: AppTranscriptEntry, width: number): string[] {
         const prefix = `${BOLD}›${NOT_BOLD_OR_DIM} `;
         const prefixWidth = visibleWidth(prefix);
@@ -3958,10 +3933,6 @@ export class CodingAssistantApp implements Component, Focusable {
 
     #turnSeparator(width: number): string {
         return this.#fitLine(`${DIM}${"─".repeat(width)}${RESET}`, width);
-    }
-
-    #directoryName(): string {
-        return basename(this.#cwd) || this.#cwd;
     }
 
     #inputPrompt(): string {

@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { StartupStatusApp } from "./StartupStatusApp.js";
 
 describe("StartupStatusApp", () => {
-    it("renders the loading card without model details", () => {
+    it("renders the logo and version without model details", () => {
         const tui = fakeTui();
         const app = new StartupStatusApp({
             cwd: "/workspace",
@@ -14,10 +14,11 @@ describe("StartupStatusApp", () => {
         });
 
         const rendered = stripAnsi(app.render(80).join("\n"));
-        expect(rendered).toContain(">_ Rig 1.2.3");
-        expect(rendered).toContain("Agentic coding CLI for local project work.");
-        expect(rendered).toContain("Keeps sessions in a private local daemon.");
-        expect(rendered).toContain("Directory: workspace");
+        expect(rendered).toContain("  ██████╗ ██╗ ██████╗    ██╗   ██████╗    ██████╗  ");
+        expect(rendered).toContain("  ╚═╝  ╚═╝╚═╝ ╚═════╝    ╚═╝╚═╝╚══════╝╚═╝╚═════╝  ");
+        expect(rendered).not.toContain("Agentic coding CLI");
+        expect(rendered).not.toContain("private local daemon");
+        expect(rendered).not.toContain("Directory:");
         expect(rendered).toContain("Preparing local daemon.");
         expect(rendered).not.toContain("Model:");
         expect(rendered).not.toContain("Provider:");

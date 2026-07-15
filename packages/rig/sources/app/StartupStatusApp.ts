@@ -1,24 +1,16 @@
-import { basename } from "node:path";
-import {
-    truncateToWidth,
-    visibleWidth,
-    type Component,
-    type Focusable,
-    type TUI,
-} from "@earendil-works/pi-tui";
+import { truncateToWidth, type Component, type Focusable, type TUI } from "@earendil-works/pi-tui";
 
 import type { DaemonRestartRequest } from "../client/index.js";
 import { createSelectionPanel } from "./createSelectionPanel.js";
 import { formatActivityElapsedTime } from "./formatActivityElapsedTime.js";
 import { formatDaemonRestartMessage } from "./formatDaemonRestartMessage.js";
 import { renderActivityWave } from "./renderActivityWave.js";
+import { renderRigBanner } from "./renderRigBanner.js";
 import { DEFAULT_TERMINAL_THEME } from "./defaultTerminalTheme.js";
 import type { TerminalTheme } from "./TerminalTheme.js";
 
 const RESET = "\x1b[0m";
-const BOLD = "\x1b[1m";
 const DIM = "\x1b[2m";
-const NOT_BOLD_OR_DIM = "\x1b[22m";
 const ACTIVITY_ANIMATION_MS = 120;
 
 export interface StartupStatusAppOptions {
@@ -30,7 +22,6 @@ export interface StartupStatusAppOptions {
 }
 
 export class StartupStatusApp implements Component, Focusable {
-    readonly #cwd: string;
     readonly #now: () => number;
     readonly #tui: TUI;
     readonly #version: string;
@@ -44,7 +35,6 @@ export class StartupStatusApp implements Component, Focusable {
     #timer: ReturnType<typeof setInterval> | undefined;
 
     constructor(options: StartupStatusAppOptions) {
-        this.#cwd = options.cwd;
         this.#now = options.now ?? Date.now;
         this.#startedAtMs = this.#now();
         this.#tui = options.tui;
@@ -57,12 +47,12 @@ export class StartupStatusApp implements Component, Focusable {
     render(width: number): string[] {
         const safeWidth = Math.max(1, width);
         const lines = [
-            ...this.#renderStartupBox(safeWidth, [
-                `${this.#theme.brand}>_${RESET} ${BOLD}Rig${NOT_BOLD_OR_DIM} ${this.#version}`,
-                "Agentic coding CLI for local project work.",
-                "Keeps sessions in a private local daemon.",
-                `Directory: ${this.#directoryName()}`,
-            ]),
+            ...renderRigBanner({
+                brand: this.#theme.brand,
+                secondary: this.#theme.secondary,
+                version: this.#version,
+                width: safeWidth,
+            }),
             "",
             this.#renderStatusLine(safeWidth),
             "",
@@ -135,32 +125,6 @@ export class StartupStatusApp implements Component, Focusable {
         this.#tui.requestRender();
     }
 
-    #directoryName(): string {
-        return basename(this.#cwd) || this.#cwd;
-    }
-
-    #renderStartupBox(width: number, rows: string[]): string[] {
-        const maxInnerWidth = Math.max(1, width - 4);
-        const contentWidth = rows
-            .map((row) => visibleWidth(row))
-            .reduce((maxWidth, rowWidth) => Math.max(maxWidth, rowWidth), 1);
-        const innerWidth = Math.min(maxInnerWidth, contentWidth);
-        const rule = "─".repeat(innerWidth + 2);
-        const top = `╭${rule}╮`;
-        const bottom = `╰${rule}╯`;
-        return [
-            this.#truncateLine(`${DIM}${top}${RESET}`, width),
-            ...rows.map((row) => {
-                const paddedText = this.#fitAndPadLine(row, innerWidth);
-                return this.#truncateLine(
-                    `${DIM}│ ${NOT_BOLD_OR_DIM}${paddedText}${DIM} │${RESET}`,
-                    width,
-                );
-            }),
-            this.#truncateLine(`${DIM}${bottom}${RESET}`, width),
-        ];
-    }
-
     #renderStatusLine(width: number): string {
         const elapsed = formatActivityElapsedTime(this.#now() - this.#startedAtMs);
         const elapsedSuffix =
@@ -171,16 +135,7 @@ export class StartupStatusApp implements Component, Focusable {
         );
     }
 
-    #fitAndPadLine(line: string, width: number): string {
-        const fitted = this.#fitLine(line, width);
-        return `${fitted}${" ".repeat(Math.max(0, width - visibleWidth(fitted)))}`;
-    }
-
     #fitLine(line: string, width: number): string {
         return truncateToWidth(line, width, "", true);
-    }
-
-    #truncateLine(line: string, width: number): string {
-        return truncateToWidth(line, width, "", false);
     }
 }
