@@ -13,8 +13,8 @@ afterEach(async () => {
     running.clear();
 });
 
-describe("pending steering across an interrupted parent session", () => {
-    it("promotes it once into the first inference after reconnecting and continuing", async () => {
+describe("pending steering from an aborted parent run across session resume", () => {
+    it("promotes the same message ID once into the first inference after reconnecting", async () => {
         let parentSessionId: string | undefined;
         let childRunCount = 0;
         const gym = await createGym({
@@ -134,12 +134,33 @@ describe("pending steering across an interrupted parent session", () => {
         expect(reconnected.text.slice(reconnected.text.indexOf(RESUME_MARKER))).not.toContain(
             "STALE_CHILD_RESPONSE",
         );
+        // Before the abort-path correction, this same checkpoint contained the steer submission
+        // but no matching steering_applied event or stored message. Assert the repaired durable
+        // sequence before relying on the replayed UI or the next inference context.
         const persisted = JSON.parse(await gym.readFile("pending-steering-recovery.json")) as {
-            appliedCount: number;
+            appliedEventId: string;
+            appliedMessageIds: string[];
+            appliedRunId: string;
+            appliedSeq: number;
+            finishedEventId: string;
+            finishedRunId: string;
+            finishedSeq: number;
+            finishedStopReason: string;
             storedCount: number;
-            submittedCount: number;
+            submittedEventId: string;
+            submittedMessageId: string;
+            submittedRunId: string;
+            submittedSeq: number;
         };
-        expect(persisted).toEqual({ appliedCount: 1, storedCount: 1, submittedCount: 1 });
+        expect(persisted.appliedMessageIds).toEqual([persisted.submittedMessageId]);
+        expect(persisted.appliedRunId).toBe(persisted.submittedRunId);
+        expect(persisted.finishedRunId).toBe(persisted.submittedRunId);
+        expect(persisted.finishedStopReason).toBe("aborted");
+        expect(persisted.submittedEventId).not.toBe(persisted.appliedEventId);
+        expect(persisted.appliedEventId).not.toBe(persisted.finishedEventId);
+        expect(persisted.submittedSeq).toBeLessThan(persisted.appliedSeq);
+        expect(persisted.appliedSeq).toBeLessThan(persisted.finishedSeq);
+        expect(persisted.storedCount).toBe(1);
 
         submit(gym, "Continue the parent after reconnecting.");
         const resumed = await gym.terminal.waitUntil(
@@ -197,7 +218,7 @@ const sessionId = database
     .prepare("SELECT id FROM sessions WHERE parent_session_id IS NULL ORDER BY created_at_ms DESC LIMIT 1")
     .get().id;
 const events = database
-    .prepare("SELECT type, data_json FROM session_events WHERE session_id = ? ORDER BY seq")
+    .prepare("SELECT seq, event_id, type, data_json FROM session_events WHERE session_id = ? ORDER BY seq")
     .all(sessionId)
     .map((event) => ({ ...event, data: JSON.parse(event.data_json) }));
 const submitted = events.filter(
@@ -206,21 +227,49 @@ const submitted = events.filter(
         event.data.delivery === "steer" &&
         event.data.displayText === ${JSON.stringify(PENDING_MESSAGE)},
 );
-const messageId = submitted[0]?.data.message.id;
-const appliedCount = events.filter(
+if (submitted.length !== 1) {
+    throw new Error("Expected one pending steering submission, found " + submitted.length);
+}
+const submittedEvent = submitted[0];
+const messageId = submittedEvent.data.message.id;
+const applied = events.filter(
     (event) =>
         event.type === "steering_applied" &&
         event.data.messageIds.includes(messageId),
-).length;
-const storedCount =
-    messageId === undefined
-        ? 0
-        : database
-              .prepare("SELECT COUNT(*) AS count FROM session_messages WHERE session_id = ? AND message_id = ?")
-              .get(sessionId, messageId).count;
+);
+if (applied.length !== 1) {
+    throw new Error("Expected one steering application, found " + applied.length);
+}
+const appliedEvent = applied[0];
+const finished = events.filter(
+    (event) =>
+        event.type === "run_finished" &&
+        event.data.runId === submittedEvent.data.runId,
+);
+if (finished.length !== 1) {
+    throw new Error("Expected one terminal run event, found " + finished.length);
+}
+const finishedEvent = finished[0];
+const storedCount = database
+    .prepare("SELECT COUNT(*) AS count FROM session_messages WHERE session_id = ? AND message_id = ?")
+    .get(sessionId, messageId).count;
 database.close();
 writeFileSync(
     "/workspace/pending-steering-recovery.json",
-    JSON.stringify({ appliedCount, storedCount, submittedCount: submitted.length }),
+    JSON.stringify({
+        appliedEventId: appliedEvent.event_id,
+        appliedMessageIds: appliedEvent.data.messageIds,
+        appliedRunId: appliedEvent.data.runId,
+        appliedSeq: appliedEvent.seq,
+        finishedEventId: finishedEvent.event_id,
+        finishedRunId: finishedEvent.data.runId,
+        finishedSeq: finishedEvent.seq,
+        finishedStopReason: finishedEvent.data.stopReason,
+        storedCount,
+        submittedEventId: submittedEvent.event_id,
+        submittedMessageId: messageId,
+        submittedRunId: submittedEvent.data.runId,
+        submittedSeq: submittedEvent.seq,
+    }),
 );
 `;
