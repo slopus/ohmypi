@@ -19,18 +19,18 @@ This file tracks known defects, verified coverage gaps, and concrete follow-up w
     - Reproduce while the user is reading upper or middle scrollback and ordinary live state changes occur.
     - Confirmed triggers include copying selected historical text with Cmd-C and receiving streamed assistant output while the user remains scrolled up.
     - Gym must hold a middle historical viewport across streaming chunks, live status changes, background completion, and copy-key input, asserting both exact visible rows and scroll offset remain unchanged.
+    - The ordinary-prose Gym baseline preserves exact rows and offset, but native selection/Cmd-C is outside the harness and the reported real-terminal jump remains unmodeled. Keep the general issue open.
+    - Markdown-table streaming had a separate exact cause: repeated whole-table reflow made the mutable live tail exceed the viewport. In-progress table rendering is now height-bounded, and the table Gym regression preserves its historical anchor through streaming and background completion.
     - Identify the exact output/render sequence that changes the terminal viewport; preserve the visible anchor until the user explicitly returns to live output.
     - Keep resize-induced scrollback inflation as a related but distinct defect.
 
-- [ ] Prevent interrupted assistant text from being duplicated in the transcript.
-    - Pressing Escape during a streaming assistant message can append the already visible partial text again after the durable `Session interrupted` row.
-    - Preserve the append-only ordering while ensuring every streamed assistant fragment appears exactly once before interruption history settles.
-    - Add a real Gym regression that interrupts after observable partial output and checks exact text counts and row ordering.
+- [x] Prevent interrupted assistant text from being duplicated in the transcript.
+    - Interrupted stream finalization now reuses the live transcript entry instead of appending its partial text again.
+    - Gym interrupts after observable streamed text and verifies one exact fragment before the durable `Session interrupted` row.
 
-- [ ] Render messages submitted during active inference as queued, not as durable history.
-    - Match Codex ordering above the composer: live activity, active agents/workflows/background terminals, messages pending submission, composer.
-    - Do not append a normal user timeline entry until the queued turn actually begins and the model receives it.
-    - Cover messages submitted locally and through session-backed events or another client.
+- [x] Render messages submitted during active inference as queued, not as durable history.
+    - Steering acknowledgements now move local and remote messages from pending UI into durable history only when the agent loop consumes them.
+    - Gym verifies pending-message ordering beside active work and proves both clients' messages become durable exactly once after consumption.
 
 - [x] Prevent Escape from dropping a prompt during queue-to-run transition.
     - The queue retains ownership through asynchronous turn startup and removes the prompt only immediately before `agent.send()`.
@@ -105,10 +105,9 @@ This file tracks known defects, verified coverage gaps, and concrete follow-up w
 
 ## Backlog captured at the July 14 pause
 
-- [ ] React to system light/dark appearance changes during an active session.
-    - Detect when the terminal's effective foreground/background palette changes without requiring Rig to restart.
-    - Re-resolve the active theme and repaint the full interface, including the composer, so foreground and background colors remain readable.
-    - Reproduce the live light-mode transition shown in `CleanShot 2026-07-14 at 20.36.19@2x.png` and cover both light-to-dark and dark-to-light changes through a real PTY boundary.
+- [x] React to system light/dark appearance changes during an active session.
+    - Terminal palette notifications now re-query the effective background, re-resolve the configured theme, and force a settled full repaint including the composer.
+    - Real-PTY Gym coverage verifies both light-to-dark and dark-to-light changes during an active session, including synchronized-output settlement and stale-surface removal.
 
 - [ ] Plan and scope Podman support.
     - Identify the Docker-specific assumptions in Gym and normal Rig workflows, then define the smallest useful compatibility target before implementation.
