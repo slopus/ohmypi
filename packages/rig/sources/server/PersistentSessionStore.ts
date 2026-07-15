@@ -32,6 +32,7 @@ import { AgentSessionManager } from "./AgentSessionManager.js";
 import { createModelCatalog } from "./createModelCatalog.js";
 import type { GlobalEventQueue } from "./GlobalEventQueue.js";
 import { PersistentGlobalEventQueue } from "./PersistentGlobalEventQueue.js";
+import { repairLegacyOrphanedSteering } from "./repairLegacyOrphanedSteering.js";
 import type { SessionStore } from "./SessionStore.js";
 import type { McpToolProvider } from "../mcp/index.js";
 import type { DockerExecutionConfig } from "../execution/index.js";
@@ -87,6 +88,13 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
             chmodSync(options.databasePath, 0o600);
         }
         this.#repairInterruptedTitleGenerations();
+        repairLegacyOrphanedSteering(this.#database, {
+            createEventId: this.#createEventId,
+            ...(this.#persistentGlobalEventQueue === undefined
+                ? {}
+                : { globalEventQueue: this.#persistentGlobalEventQueue }),
+            now: this.#now,
+        });
         this.repairInterruptedSessions("crash");
     }
 

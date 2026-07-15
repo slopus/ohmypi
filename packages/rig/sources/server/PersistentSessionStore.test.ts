@@ -411,15 +411,20 @@ describe("PersistentSessionStore", () => {
         }
     });
 
-    it("repairs terminal legacy steering once without duplicating stored or applied messages", async () => {
+    it("atomically repairs terminal legacy user steering once with event and context identity", async () => {
         const { cleanup, databasePath } = await createDatabasePath();
         try {
             const alreadyStored = textUserMessage("already-stored", "already stored");
             const alreadyApplied = textUserMessage("already-applied", "already applied");
             const orphaned = textUserMessage("legacy-orphan", "repair me");
+            const richOrphanedContext = textUserMessage(
+                orphaned.id,
+                "richer compacted context for repair me",
+            );
+            const secondOrphaned = textUserMessage("second-legacy-orphan", "repair me second");
             const notification = textUserMessage("legacy-notification", "background display text");
             const state = sessionState({
-                contextMessages: [alreadyStored, alreadyApplied],
+                contextMessages: [alreadyStored, alreadyApplied, richOrphanedContext],
                 modelId: "openai/test",
                 models: testModelCatalog().models,
                 providerId: "codex",
@@ -427,6 +432,7 @@ describe("PersistentSessionStore", () => {
             });
             const store = new PersistentSessionStore({
                 databasePath,
+                durableGlobalEventQueue: true,
                 modelCatalog: testModelCatalog(),
             });
             store.saveSession(state);
@@ -445,36 +451,45 @@ describe("PersistentSessionStore", () => {
             store.close();
 
             const database = new DatabaseSync(databasePath);
-            insertEvent(database, state.id, "submitted-orphan", "message_submitted", 1, {
+            insertEvent(database, state.id, "started-legacy-run", "run_started", 1, {
+                runId: "legacy-run",
+            });
+            insertEvent(database, state.id, "submitted-orphan", "message_submitted", 2, {
                 delivery: "steer",
                 displayText: "repair me",
                 message: orphaned,
                 runId: "legacy-run",
             });
-            insertEvent(database, state.id, "submitted-stored", "message_submitted", 2, {
+            insertEvent(database, state.id, "submitted-stored", "message_submitted", 3, {
                 delivery: "steer",
                 displayText: "already stored",
                 message: alreadyStored,
                 runId: "legacy-run",
             });
-            insertEvent(database, state.id, "submitted-applied", "message_submitted", 3, {
+            insertEvent(database, state.id, "submitted-second", "message_submitted", 4, {
+                delivery: "steer",
+                displayText: "repair me second",
+                message: secondOrphaned,
+                runId: "legacy-run",
+            });
+            insertEvent(database, state.id, "submitted-applied", "message_submitted", 5, {
                 delivery: "steer",
                 displayText: "already applied",
                 message: alreadyApplied,
                 runId: "legacy-run",
             });
-            insertEvent(database, state.id, "applied-modern", "steering_applied", 4, {
+            insertEvent(database, state.id, "applied-modern", "steering_applied", 6, {
                 messageIds: [alreadyApplied.id],
                 runId: "legacy-run",
             });
-            insertEvent(database, state.id, "submitted-notification", "message_submitted", 5, {
+            insertEvent(database, state.id, "submitted-notification", "message_submitted", 7, {
                 delivery: "steer",
                 displayText: "Background work completed.",
                 message: notification,
                 runId: "legacy-run",
                 source: "notification",
             });
-            insertEvent(database, state.id, "finished-legacy-run", "run_finished", 6, {
+            insertEvent(database, state.id, "finished-legacy-run", "run_finished", 8, {
                 agentRunId: "legacy-agent-run",
                 modelLocked: true,
                 runId: "legacy-run",
@@ -482,32 +497,284 @@ describe("PersistentSessionStore", () => {
             });
             database.close();
 
-            for (let restore = 0; restore < 2; restore += 1) {
-                const restoredStore = new PersistentSessionStore({
-                    databasePath,
-                    modelCatalog: testModelCatalog(),
-                });
+            const restoredStore = new PersistentSessionStore({
+                databasePath,
+                durableGlobalEventQueue: true,
+                modelCatalog: testModelCatalog(),
+                now: () => 200,
+            });
+            try {
                 const restored = restoredStore.get(state.id);
                 expect(restored?.snapshot().snapshot.messages.map((message) => message.id)).toEqual(
-                    [alreadyStored.id, alreadyApplied.id, orphaned.id],
+                    [alreadyStored.id, alreadyApplied.id, orphaned.id, secondOrphaned.id],
                 );
-                expect(
-                    restored?.snapshot().snapshot.contextMessages?.map((message) => message.id),
-                ).toEqual([alreadyStored.id, alreadyApplied.id, orphaned.id]);
+                expect(restored?.snapshot().snapshot.contextMessages).toEqual([
+                    alreadyStored,
+                    alreadyApplied,
+                    richOrphanedContext,
+                    secondOrphaned,
+                ]);
                 const events = restored?.events.since(undefined) ?? [];
-                const appliedIds = events.flatMap((event) =>
-                    event.type === "steering_applied" ? event.data.messageIds : [],
+                const repairEvents = events.filter(
+                    (event) =>
+                        event.type === "steering_applied" &&
+                        event.data.messageIds.includes(orphaned.id),
                 );
-                expect(appliedIds.filter((id) => id === orphaned.id)).toHaveLength(1);
-                expect(appliedIds.filter((id) => id === alreadyStored.id)).toHaveLength(1);
-                expect(appliedIds.filter((id) => id === alreadyApplied.id)).toHaveLength(1);
-                expect(appliedIds.filter((id) => id === notification.id)).toHaveLength(1);
+                expect(repairEvents).toHaveLength(1);
+                expect(repairEvents[0]).toMatchObject({
+                    data: {
+                        messageIds: [orphaned.id, alreadyStored.id, secondOrphaned.id],
+                        runId: "legacy-run",
+                    },
+                    type: "steering_applied",
+                });
                 expect(
                     restored
                         ?.snapshot()
                         .snapshot.messages.some((message) => message.id === notification.id),
                 ).toBe(false);
+                expect(
+                    events.some(
+                        (event) =>
+                            event.type === "steering_applied" &&
+                            event.data.messageIds.includes(notification.id),
+                    ),
+                ).toBe(false);
+                expect(restoredStore.globalEventQueue?.list()).toEqual([
+                    expect.objectContaining({
+                        cursor: 1,
+                        event: expect.objectContaining({ id: repairEvents[0]?.id }),
+                    }),
+                ]);
+            } finally {
                 restoredStore.close();
+            }
+
+            const afterFirstOpen = readLegacyRepairDatabaseState(databasePath, state.id);
+            expect(afterFirstOpen.lastEventId).toBe(afterFirstOpen.repairEventId);
+            expect(afterFirstOpen.globalLastCursor).toBe(1);
+            expect(afterFirstOpen.messageIds).toEqual([
+                alreadyStored.id,
+                alreadyApplied.id,
+                orphaned.id,
+                secondOrphaned.id,
+            ]);
+
+            const reopenedStore = new PersistentSessionStore({
+                databasePath,
+                durableGlobalEventQueue: true,
+                modelCatalog: testModelCatalog(),
+                now: () => 300,
+            });
+            reopenedStore.close();
+            expect(readLegacyRepairDatabaseState(databasePath, state.id)).toEqual(afterFirstOpen);
+        } finally {
+            await cleanup();
+        }
+    });
+
+    it("leaves notifications, modern runs, invalid ordering, and discarded epochs unchanged", async () => {
+        const { cleanup, databasePath } = await createDatabasePath();
+        try {
+            const state = sessionState({
+                modelId: "openai/test",
+                models: testModelCatalog().models,
+                providerId: "codex",
+                status: "completed",
+            });
+            const store = new PersistentSessionStore({
+                databasePath,
+                durableGlobalEventQueue: true,
+                modelCatalog: testModelCatalog(),
+            });
+            store.saveSession(state);
+            store.close();
+
+            const database = new DatabaseSync(databasePath);
+            const modern = textUserMessage("modern", "modern applied steering");
+            const notification = textUserMessage("notification", "background display text");
+            const terminalFirst = textUserMessage("terminal-first", "submitted too late");
+            const missingStart = textUserMessage("missing-start", "no run start");
+            const beforeReset = textUserMessage("before-reset", "discarded by reset");
+            const wrongTerminal = textUserMessage("wrong-terminal", "different terminal run");
+            insertEvent(database, state.id, "modern-start", "run_started", 1, {
+                runId: "modern-run",
+            });
+            insertEvent(database, state.id, "modern-submit", "message_submitted", 2, {
+                delivery: "steer",
+                displayText: "modern applied steering",
+                message: modern,
+                runId: "modern-run",
+            });
+            insertEvent(database, state.id, "modern-applied", "steering_applied", 3, {
+                messageIds: [modern.id],
+                runId: "modern-run",
+            });
+            insertEvent(database, state.id, "modern-finished", "run_finished", 4, {
+                agentRunId: "modern-agent-run",
+                modelLocked: true,
+                runId: "modern-run",
+                stopReason: "stop",
+            });
+            insertEvent(database, state.id, "notification-start", "run_started", 5, {
+                runId: "notification-run",
+            });
+            insertEvent(database, state.id, "notification-submit", "message_submitted", 6, {
+                delivery: "steer",
+                displayText: "Background work completed.",
+                message: notification,
+                runId: "notification-run",
+                source: "notification",
+            });
+            insertEvent(database, state.id, "notification-finished", "run_finished", 7, {
+                agentRunId: "notification-agent-run",
+                modelLocked: true,
+                runId: "notification-run",
+                stopReason: "stop",
+            });
+            insertEvent(database, state.id, "terminal-first-start", "run_started", 8, {
+                runId: "terminal-first-run",
+            });
+            insertEvent(database, state.id, "terminal-first-finished", "run_finished", 9, {
+                agentRunId: "terminal-first-agent-run",
+                modelLocked: true,
+                runId: "terminal-first-run",
+                stopReason: "stop",
+            });
+            insertEvent(database, state.id, "terminal-first-submit", "message_submitted", 10, {
+                delivery: "steer",
+                displayText: "submitted too late",
+                message: terminalFirst,
+                runId: "terminal-first-run",
+            });
+            insertEvent(database, state.id, "missing-start-submit", "message_submitted", 11, {
+                delivery: "steer",
+                displayText: "no run start",
+                message: missingStart,
+                runId: "missing-start-run",
+            });
+            insertEvent(database, state.id, "missing-start-finished", "run_finished", 12, {
+                agentRunId: "missing-start-agent-run",
+                modelLocked: true,
+                runId: "missing-start-run",
+                stopReason: "stop",
+            });
+            insertEvent(database, state.id, "reset-start", "run_started", 13, {
+                runId: "reset-run",
+            });
+            insertEvent(database, state.id, "reset-submit", "message_submitted", 14, {
+                delivery: "steer",
+                displayText: "discarded by reset",
+                message: beforeReset,
+                runId: "reset-run",
+            });
+            insertEvent(database, state.id, "reset-finished", "run_finished", 15, {
+                agentRunId: "reset-agent-run",
+                modelLocked: true,
+                runId: "reset-run",
+                stopReason: "stop",
+            });
+            insertEvent(database, state.id, "session-reset", "session_reset", 16, {
+                snapshot: emptyAgentSnapshot(),
+            });
+            insertEvent(database, state.id, "wrong-terminal-start", "run_started", 17, {
+                runId: "wrong-terminal-run",
+            });
+            insertEvent(database, state.id, "wrong-terminal-submit", "message_submitted", 18, {
+                delivery: "steer",
+                displayText: "different terminal run",
+                message: wrongTerminal,
+                runId: "wrong-terminal-run",
+            });
+            insertEvent(database, state.id, "other-run-finished", "run_finished", 19, {
+                agentRunId: "other-agent-run",
+                modelLocked: true,
+                runId: "other-run",
+                stopReason: "stop",
+            });
+            const before = readSessionPersistenceCounts(database, state.id);
+            database.close();
+
+            const restored = new PersistentSessionStore({
+                databasePath,
+                durableGlobalEventQueue: true,
+                modelCatalog: testModelCatalog(),
+            });
+            restored.close();
+
+            const verify = new DatabaseSync(databasePath);
+            try {
+                expect(readSessionPersistenceCounts(verify, state.id)).toEqual(before);
+                expect(
+                    verify
+                        .prepare(
+                            "SELECT COUNT(*) AS count FROM session_events WHERE session_id = ? AND type = 'steering_applied'",
+                        )
+                        .get(state.id),
+                ).toEqual({ count: 1 });
+            } finally {
+                verify.close();
+            }
+        } finally {
+            await cleanup();
+        }
+    });
+
+    it("does not promote active steering after restart interruption, including on reopen", async () => {
+        const { cleanup, databasePath } = await createDatabasePath();
+        try {
+            const active = textUserMessage("active-orphan", "still active at restart");
+            const state = sessionState({
+                activeRunId: "active-run",
+                modelId: "openai/test",
+                models: testModelCatalog().models,
+                providerId: "codex",
+                status: "running",
+            });
+            const store = new PersistentSessionStore({
+                databasePath,
+                modelCatalog: testModelCatalog(),
+            });
+            store.saveSession(state);
+            store.close();
+            const database = new DatabaseSync(databasePath);
+            insertEvent(database, state.id, "active-start", "run_started", 1, {
+                runId: "active-run",
+            });
+            insertEvent(database, state.id, "active-submit", "message_submitted", 2, {
+                delivery: "steer",
+                displayText: "still active at restart",
+                message: active,
+                runId: "active-run",
+            });
+            database.close();
+
+            for (let open = 0; open < 2; open += 1) {
+                const restored = new PersistentSessionStore({
+                    databasePath,
+                    modelCatalog: testModelCatalog(),
+                    now: () => 100 + open,
+                });
+                restored.close();
+                const verify = new DatabaseSync(databasePath);
+                try {
+                    expect(
+                        verify
+                            .prepare(
+                                "SELECT COUNT(*) AS count FROM session_messages WHERE session_id = ? AND message_id = ?",
+                            )
+                            .get(state.id, active.id),
+                    ).toEqual({ count: 0 });
+                    expect(
+                        verify
+                            .prepare(
+                                "SELECT COUNT(*) AS count FROM session_events WHERE session_id = ? AND type = 'steering_applied'",
+                            )
+                            .get(state.id),
+                    ).toEqual({ count: 0 });
+                } finally {
+                    verify.close();
+                }
             }
         } finally {
             await cleanup();
@@ -1702,4 +1969,102 @@ function insertEvent<TType extends import("../protocol/index.js").SessionEvent["
             "INSERT INTO session_events (session_id, event_id, type, created_at_ms, data_json) VALUES (?, ?, ?, ?, ?)",
         )
         .run(sessionId, eventId, type, createdAt, JSON.stringify(data));
+}
+
+function emptyAgentSnapshot(): import("../protocol/index.js").ProtocolSession["snapshot"] {
+    return {
+        id: "agent-1",
+        messages: [],
+        modelId: "openai/test",
+        providerId: "codex",
+        queue: [],
+        status: "idle",
+        tools: [],
+    };
+}
+
+function readSessionPersistenceCounts(
+    database: DatabaseSync,
+    sessionId: string,
+): { eventCount: number; globalEventCount: number; messageCount: number } {
+    return {
+        eventCount: (
+            database
+                .prepare("SELECT COUNT(*) AS count FROM session_events WHERE session_id = ?")
+                .get(sessionId) as { count: number }
+        ).count,
+        globalEventCount: (
+            database.prepare("SELECT COUNT(*) AS count FROM durable_global_events").get() as {
+                count: number;
+            }
+        ).count,
+        messageCount: (
+            database
+                .prepare("SELECT COUNT(*) AS count FROM session_messages WHERE session_id = ?")
+                .get(sessionId) as { count: number }
+        ).count,
+    };
+}
+
+function readLegacyRepairDatabaseState(
+    databasePath: string,
+    sessionId: string,
+): {
+    contextJson: string | null;
+    globalEventCount: number;
+    globalLastCursor: number;
+    lastEventId: string | null;
+    messageIds: string[];
+    repairEventId: string;
+    sessionEventCount: number;
+    updatedAt: number;
+} {
+    const database = new DatabaseSync(databasePath);
+    try {
+        const session = database
+            .prepare(
+                "SELECT context_messages_json, last_event_id, updated_at_ms FROM sessions WHERE id = ?",
+            )
+            .get(sessionId) as {
+            context_messages_json: string | null;
+            last_event_id: string | null;
+            updated_at_ms: number;
+        };
+        const repairEvents = database
+            .prepare(
+                "SELECT event_id FROM session_events WHERE session_id = ? AND type = 'steering_applied' ORDER BY seq",
+            )
+            .all(sessionId) as { event_id: string }[];
+        const globalState = database
+            .prepare("SELECT last_cursor FROM durable_global_event_queue_state WHERE id = 1")
+            .get() as { last_cursor: number };
+        const globalEventCount = (
+            database.prepare("SELECT COUNT(*) AS count FROM durable_global_events").get() as {
+                count: number;
+            }
+        ).count;
+        const sessionEventCount = (
+            database
+                .prepare("SELECT COUNT(*) AS count FROM session_events WHERE session_id = ?")
+                .get(sessionId) as { count: number }
+        ).count;
+        return {
+            contextJson: session.context_messages_json,
+            globalEventCount,
+            globalLastCursor: globalState.last_cursor,
+            lastEventId: session.last_event_id,
+            messageIds: (
+                database
+                    .prepare(
+                        "SELECT message_id FROM session_messages WHERE session_id = ? ORDER BY position",
+                    )
+                    .all(sessionId) as { message_id: string }[]
+            ).map((row) => row.message_id),
+            repairEventId: repairEvents.at(-1)?.event_id ?? "",
+            sessionEventCount,
+            updatedAt: session.updated_at_ms,
+        };
+    } finally {
+        database.close();
+    }
 }

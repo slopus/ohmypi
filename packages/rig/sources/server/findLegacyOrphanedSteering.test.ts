@@ -4,70 +4,116 @@ import type { SessionEvent } from "../protocol/index.js";
 import { findLegacyOrphanedSteering } from "./findLegacyOrphanedSteering.js";
 
 describe("findLegacyOrphanedSteering", () => {
-    it("returns only unapplied steer submissions followed by their own terminal boundary", () => {
-        const orphaned = steerSubmitted("orphaned", "run-1", 1);
-        const applied = steerSubmitted("applied", "run-1", 2);
-        const stillRunning = steerSubmitted("still-running", "run-2", 3);
-        const notification = steerSubmitted("notification", "run-1", 4, "notification");
-        const reusedInAnotherRun = steerSubmitted("applied", "run-3", 7);
+    it("returns ordered user steering strictly inside a matching terminal run epoch", () => {
+        const first = steerSubmitted("first", "run-1", 2);
+        const second = steerSubmitted("second", "run-1", 3);
+        const storedMissingEvent = steerSubmitted("stored", "run-1", 4);
+        const wrongRunApplication = steerSubmitted("wrong-run-application", "run-1", 5);
+        const notification = steerSubmitted("notification", "run-1", 6, "notification");
         const events: SessionEvent[] = [
-            orphaned,
-            applied,
-            stillRunning,
+            event("run_started", 1, { runId: "run-1" }),
+            first,
+            second,
+            storedMissingEvent,
+            wrongRunApplication,
             notification,
-            event("steering_applied", 5, {
-                messageIds: [applied.data.message.id],
+            event("steering_applied", 7, {
+                messageIds: [second.data.message.id, "another-applied-message"],
                 runId: "run-1",
             }),
-            event("run_finished", 6, {
+            event("steering_applied", 8, {
+                messageIds: [wrongRunApplication.data.message.id],
+                runId: "another-run",
+            }),
+            event("run_finished", 9, {
                 agentRunId: "agent-run-1",
                 modelLocked: true,
                 runId: "run-1",
                 stopReason: "aborted",
             }),
-            event("run_finished", 7, {
-                agentRunId: "agent-run-other",
-                modelLocked: true,
-                runId: "run-other",
-                stopReason: "stop",
-            }),
-            reusedInAnotherRun,
-            event("run_finished", 8, {
-                agentRunId: "agent-run-3",
-                modelLocked: true,
-                runId: "run-3",
-                stopReason: "stop",
-            }),
         ];
 
         expect(findLegacyOrphanedSteering(events)).toEqual([
-            { events: [orphaned, notification], runId: "run-1" },
-            { events: [reusedInAnotherRun], runId: "run-3" },
+            {
+                events: [first, storedMissingEvent, wrongRunApplication],
+                runId: "run-1",
+            },
         ]);
     });
 
-    it("recognizes run errors and ignores submissions after an earlier boundary", () => {
-        const beforeError = steerSubmitted("before-error", "run-error", 1);
-        const afterBoundary = steerSubmitted("after-boundary", "run-finished", 4);
+    it("ignores invalid ordering, active runs, and candidates before reset or rewind", () => {
+        const active = steerSubmitted("active", "active-run", 2);
+        const afterTerminal = steerSubmitted("after-terminal", "terminal-first", 5);
+        const noStart = steerSubmitted("no-start", "missing-start", 6);
+        const beforeReset = steerSubmitted("before-reset", "reset-run", 8);
+        const beforeRewind = steerSubmitted("before-rewind", "rewind-run", 12);
+        const afterRewind = steerSubmitted("after-rewind", "valid-run", 16);
         const events: SessionEvent[] = [
-            beforeError,
-            event("run_error", 2, {
+            event("run_started", 1, { runId: "active-run" }),
+            active,
+            event("run_started", 3, { runId: "terminal-first" }),
+            finished("terminal-first", 4),
+            afterTerminal,
+            noStart,
+            event("run_started", 7, { runId: "reset-run" }),
+            beforeReset,
+            finished("reset-run", 9),
+            resetEvent(10),
+            event("run_started", 11, { runId: "rewind-run" }),
+            beforeRewind,
+            event("run_error", 13, {
                 errorMessage: "legacy failure",
                 modelLocked: true,
-                runId: "run-error",
+                runId: "rewind-run",
             }),
-            event("run_finished", 3, {
-                agentRunId: "agent-run-finished",
+            rewindEvent(14),
+            event("run_started", 15, { runId: "valid-run" }),
+            afterRewind,
+            event("run_error", 17, {
+                errorMessage: "terminal error",
                 modelLocked: true,
-                runId: "run-finished",
-                stopReason: "stop",
+                runId: "valid-run",
             }),
-            afterBoundary,
         ];
 
         expect(findLegacyOrphanedSteering(events)).toEqual([
-            { events: [beforeError], runId: "run-error" },
+            { events: [afterRewind], runId: "valid-run" },
         ]);
+    });
+
+    it("treats an existing same-run application as a complete no-op", () => {
+        const applied = steerSubmitted("already-applied", "run-1", 2);
+        expect(
+            findLegacyOrphanedSteering([
+                event("run_started", 1, { runId: "run-1" }),
+                applied,
+                event("steering_applied", 3, {
+                    messageIds: [applied.data.message.id],
+                    runId: "run-1",
+                }),
+                finished("run-1", 4),
+            ]),
+        ).toEqual([]);
+    });
+
+    it("does not let a pre-reset application suppress the current conversation epoch", () => {
+        const old = steerSubmitted("reused-message-id", "old-run", 2);
+        const current = steerSubmitted("reused-message-id", "current-run", 7);
+        expect(
+            findLegacyOrphanedSteering([
+                event("run_started", 1, { runId: "old-run" }),
+                old,
+                event("steering_applied", 3, {
+                    messageIds: [old.data.message.id],
+                    runId: "old-run",
+                }),
+                finished("old-run", 4),
+                resetEvent(5),
+                event("run_started", 6, { runId: "current-run" }),
+                current,
+                finished("current-run", 8),
+            ]),
+        ).toEqual([{ events: [current], runId: "current-run" }]);
     });
 });
 
@@ -88,6 +134,41 @@ function steerSubmitted(
         runId,
         ...(source === undefined ? {} : { source }),
     });
+}
+
+function finished(
+    runId: string,
+    createdAt: number,
+): Extract<SessionEvent, { type: "run_finished" }> {
+    return event("run_finished", createdAt, {
+        agentRunId: `agent-${runId}`,
+        modelLocked: true,
+        runId,
+        stopReason: "stop",
+    });
+}
+
+function resetEvent(createdAt: number): Extract<SessionEvent, { type: "session_reset" }> {
+    return event("session_reset", createdAt, { snapshot: snapshot() });
+}
+
+function rewindEvent(createdAt: number): Extract<SessionEvent, { type: "session_rewound" }> {
+    return event("session_rewound", createdAt, {
+        messageId: "rewind-target",
+        snapshot: snapshot(),
+    });
+}
+
+function snapshot(): Extract<SessionEvent, { type: "session_reset" }>["data"]["snapshot"] {
+    return {
+        id: "agent-1",
+        messages: [],
+        modelId: "openai/test",
+        providerId: "codex",
+        queue: [],
+        status: "idle",
+        tools: [],
+    };
 }
 
 function event<TType extends SessionEvent["type"]>(

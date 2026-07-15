@@ -76,13 +76,16 @@ describe("legacy orphaned steering after resume", () => {
         await screenshot(gym, "legacy-orphan-repaired-resume.png");
 
         const repaired = await readLegacyRepairState(gym);
-        expect(repaired).toEqual({
-            appliedCount: 1,
-            appliedMessageIds: [LEGACY_MESSAGE_ID],
-            storedCount: 1,
-            storedMessageIds: [LEGACY_MESSAGE_ID],
-            submittedCount: 1,
-        });
+        expect(repaired.appliedCount).toBe(1);
+        expect(repaired.appliedMessageIds).toEqual([LEGACY_MESSAGE_ID]);
+        expect(repaired.contextCount).toBe(1);
+        expect(repaired.storedCount).toBe(1);
+        expect(repaired.storedMessageIds).toEqual([LEGACY_MESSAGE_ID]);
+        expect(repaired.submittedCount).toBe(1);
+        expect(repaired.submittedRunId).toBe(repaired.finishedRunId);
+        expect(repaired.appliedRunId).toBe(repaired.finishedRunId);
+        expect(repaired.submittedSeq).toBeLessThan(repaired.finishedSeq);
+        expect(repaired.finishedSeq).toBeLessThan(repaired.appliedSeq);
 
         submit(gym, "Continue after repairing the legacy direction.");
         await gym.terminal.waitUntil(
@@ -144,18 +147,32 @@ function countOccurrences(text: string, value: string): number {
 async function readLegacyRepairState(gym: Gym): Promise<{
     appliedCount: number;
     appliedMessageIds: string[];
+    appliedRunId: string;
+    appliedSeq: number;
+    contextCount: number;
+    finishedRunId: string;
+    finishedSeq: number;
     storedCount: number;
     storedMessageIds: string[];
     submittedCount: number;
+    submittedRunId: string;
+    submittedSeq: number;
 }> {
     const result = await gym.runInContainer("node", ["-e", inspectLegacyRepairScript]);
     expect(result.stderr).toBe("");
     return JSON.parse(result.stdout) as {
         appliedCount: number;
         appliedMessageIds: string[];
+        appliedRunId: string;
+        appliedSeq: number;
+        contextCount: number;
+        finishedRunId: string;
+        finishedSeq: number;
         storedCount: number;
         storedMessageIds: string[];
         submittedCount: number;
+        submittedRunId: string;
+        submittedSeq: number;
     };
 }
 
@@ -220,7 +237,7 @@ const session = database
     .prepare("SELECT id FROM sessions WHERE parent_session_id IS NULL ORDER BY created_at_ms DESC LIMIT 1")
     .get();
 const events = database
-    .prepare("SELECT type, data_json FROM session_events WHERE session_id = ? ORDER BY seq")
+    .prepare("SELECT seq, type, data_json FROM session_events WHERE session_id = ? ORDER BY seq")
     .all(session.id)
     .map((event) => ({ ...event, data: JSON.parse(event.data_json) }));
 const submitted = events.filter(
@@ -234,15 +251,33 @@ const applied = events.filter(
         event.type === "steering_applied" &&
         event.data.messageIds.includes(${JSON.stringify(LEGACY_MESSAGE_ID)}),
 );
+const finished = events.filter(
+    (event) =>
+        event.type === "run_finished" &&
+        event.data.runId === submitted[0]?.data.runId,
+);
 const stored = database
     .prepare("SELECT message_id FROM session_messages WHERE session_id = ? AND message_id = ? ORDER BY position")
     .all(session.id, ${JSON.stringify(LEGACY_MESSAGE_ID)});
+const sessionRow = database
+    .prepare("SELECT context_messages_json FROM sessions WHERE id = ?")
+    .get(session.id);
+const contextMessages = sessionRow.context_messages_json === null
+    ? []
+    : JSON.parse(sessionRow.context_messages_json);
 database.close();
 process.stdout.write(JSON.stringify({
     appliedCount: applied.length,
     appliedMessageIds: applied.flatMap((event) => event.data.messageIds),
+    appliedRunId: applied[0]?.data.runId,
+    appliedSeq: applied[0]?.seq,
+    contextCount: contextMessages.filter((message) => message.id === ${JSON.stringify(LEGACY_MESSAGE_ID)}).length,
+    finishedRunId: finished[0]?.data.runId,
+    finishedSeq: finished[0]?.seq,
     storedCount: stored.length,
     storedMessageIds: stored.map((message) => message.message_id),
     submittedCount: submitted.length,
+    submittedRunId: submitted[0]?.data.runId,
+    submittedSeq: submitted[0]?.seq,
 }));
 `;
