@@ -46,7 +46,7 @@ describe("external reset boundary", () => {
         expect(reset.stderr).toBe("");
         expect(reset.stdout).toContain("reset\n");
 
-        const boundary = await gym.terminal.waitUntil(
+        await gym.terminal.waitUntil(
             (snapshot) =>
                 snapshot.text.includes("Session reset. Started a new session") &&
                 snapshot.text.includes(draft) &&

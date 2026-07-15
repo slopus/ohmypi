@@ -30,7 +30,7 @@ describe("single Escape without pending steering", () => {
         await waitForComposer(gym, draft);
 
         gym.terminal.press("escape");
-        const stopped = await gym.terminal.waitUntil(
+        await gym.terminal.waitUntil(
             (snapshot) =>
                 snapshot.text.includes("Session interrupted") &&
                 !snapshot.text.includes("esc to interrupt") &&

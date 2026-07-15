@@ -85,7 +85,7 @@ describe("Escape during queued turn startup", () => {
         expect(agentRequests(gym)).toHaveLength(2);
 
         gym.terminal.press("enter");
-        const recovered = await gym.terminal.waitForText("QUEUED_TURN_RECOVERED", 30_000);
+        await gym.terminal.waitForText("QUEUED_TURN_RECOVERED", 30_000);
         expect(agentRequests(gym)).toHaveLength(3);
     }, 120_000);
 });

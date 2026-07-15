@@ -23,7 +23,7 @@ describe("double Escape in the composer", () => {
         await waitForComposer(gym, draft);
         gym.terminal.press("escape");
 
-        const cleared = await waitForComposer(gym, "Ask Rig to do anything");
+        await waitForComposer(gym, "Ask Rig to do anything");
         expect(agentRequests(gym)).toHaveLength(0);
         await screenshot(gym, "revised-double-escape-cleared.png");
 

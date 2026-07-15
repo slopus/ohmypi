@@ -309,7 +309,6 @@ export class CodingAssistantApp implements Component, Focusable {
     #activeSessionRunId: string | undefined;
     #interruptRequestInFlight = false;
     #interruptSettlementRunId: string | undefined;
-    #sendingPendingSteering = false;
     #lastEscapeAtMs: number | undefined;
     #compacting = false;
     #pastedImagesById = new Map<number, PastedImage>();
@@ -792,7 +791,6 @@ export class CodingAssistantApp implements Component, Focusable {
             this.#lastEscapeAtMs = undefined;
             this.#activeSessionRunId = undefined;
             this.#interruptSettlementRunId = undefined;
-            this.#sendingPendingSteering = false;
             this.#setRunning(false);
             this.#clearEntries();
             this.#pendingSteeringMessages = [];
@@ -835,7 +833,6 @@ export class CodingAssistantApp implements Component, Focusable {
             this.#lastEscapeAtMs = undefined;
             this.#activeSessionRunId = undefined;
             this.#interruptSettlementRunId = undefined;
-            this.#sendingPendingSteering = false;
             this.#setRunning(false);
             this.#pendingSteeringMessages = [];
             const targetIndex = this.#entries.findIndex(
@@ -2176,19 +2173,16 @@ export class CodingAssistantApp implements Component, Focusable {
         if (this.#agent.abort === undefined || this.#interruptRequestInFlight) return;
         this.#interruptRequestInFlight = true;
         this.#interruptSettlementRunId = this.#activeSessionRunId;
-        this.#sendingPendingSteering = continuePendingSteering;
         this.#statusText = continuePendingSteering ? "Sending pending messages" : "Stopping";
         this.#requestRender();
         const request = continuePendingSteering
             ? this.#agent.abort({ continuePendingSteering: true })
             : this.#agent.abort();
         void request
-            .then((response) => {
-                if (response.continued !== true) this.#sendingPendingSteering = false;
+            .then(() => {
                 if (this.#running) this.#statusText = "Running";
             })
             .catch((error: unknown) => {
-                this.#sendingPendingSteering = false;
                 this.#interruptSettlementRunId = undefined;
                 this.#statusText = "Error";
                 this.#appendEntry({ role: "error", text: this.#formatError(error) });
@@ -3151,7 +3145,6 @@ export class CodingAssistantApp implements Component, Focusable {
                 });
             }
         }
-        if (this.#pendingSteeringMessages.length === 0) this.#sendingPendingSteering = false;
         this.#requestRender();
     }
 
