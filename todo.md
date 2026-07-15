@@ -30,8 +30,11 @@ This file tracks known defects, verified coverage gaps, and concrete follow-up w
 - [ ] Dedent pending steering messages by one terminal cell.
     - Move `Messages to be submitted after next tool call` and its `↳` children one column left while preserving the order between live status and composer.
     - Add a concise `(esc to send now)` hint while pending messages exist.
-    - Pressing Escape must interrupt the current response, promote every pending message into durable conversation exactly once, and send it on the continued turn instead of dropping it.
-    - Reproduce the reported Escape-and-continue loss through a real PTY test before changing production code.
+    - When pending messages exist, the first Escape must interrupt the current response, promote every pending message into durable conversation exactly once, and immediately start the continued turn with them; no second submission is required.
+    - Escape stops interaction only when no pending message exists.
+    - Double Escape clears the current composer draft but retains that cleared text in local input history.
+    - Up/Down cycles through recent submitted user messages and drafts cleared by double Escape, loading them into the composer for editing.
+    - Reproduce the reported pending-message loss through a real PTY test before changing production code.
     - Add exact row-position coverage at normal and narrow widths.
 
 - [ ] Show active agents first with elapsed time and token usage.
