@@ -4,6 +4,12 @@ This file tracks known defects, verified coverage gaps, and concrete follow-up w
 
 ## Product defects
 
+- [x] Align Auto-mode reviews with Codex risk thresholds, including MCP actions.
+    - Trusted MCP tools are available in Auto and use the same per-action reviewer as shell and host-access tools.
+    - Low- and medium-risk work proceeds without redundant approval; narrowly scoped high-risk work proceeds only with clear user authorization.
+    - Successful reviews stay out of tool history while denied or approval-required actions remain visible.
+    - Added a 16-case live Codex eval covering routine development, this session's false positives, MCP reads and mutations, unauthorized remote effects, destructive work, and secret export.
+
 - [x] Fix stale background-terminal completion events after session resume.
     - Resuming a session can append a burst of `Background terminal completed` rows for terminals that completed in earlier runs.
     - Determine why restored/yielded process state is reconciled as a new transition; fix the persisted lifecycle or initial reconciliation rather than hiding completion rows in the TUI.
