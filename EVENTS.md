@@ -21,8 +21,9 @@ Every session event uses the same envelope:
 
 Clients can read a session's events from `GET /sessions/{sessionId}/events` or
 follow them with server-sent events from `GET /sessions/{sessionId}/stream`.
-These per-session interfaces include every event below, including streaming
-`agent_event` updates.
+These per-session interfaces deliver every event below while the server is
+running, including streaming `agent_event` updates. High-volume provider stream
+updates are live-only: completed messages and run outcomes remain durable.
 
 When the durable global event queue is enabled, non-streaming events are also
 assigned a numeric global cursor and exposed through `GET /events` and
@@ -33,7 +34,7 @@ assigned a numeric global cursor and exposed through `GET /events` and
 ## Session events
 
 “Global” indicates whether an event is persisted to the enabled durable global
-event queue. Every event remains available through its per-session event log.
+event queue. Durable events remain available after a server restart.
 
 | Event                     | Emitted when                                                                                          | `data` payload                                                                               | Global |
 | ------------------------- | ----------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- | ------ |
@@ -66,8 +67,8 @@ event queue. Every event remains available through its per-session event log.
 ## `agent_event` subtypes
 
 All events in this section are wrapped as
-`{ type: "agent_event", data: { runId, event } }`. They are streamed and stored
-in per-session event history, but they are not persisted to the durable global
+`{ type: "agent_event", data: { runId, event } }`. They are streamed through
+the per-session interfaces, but they are not persisted to the durable global
 queue.
 
 ### Inference message stream
@@ -90,6 +91,10 @@ queue.
 The terminal `done` and `error` stream events are not global queue entries. The
 fully materialized message is subsequently emitted as `agent_message`, and the
 run outcome is emitted as `run_finished` or `run_error`.
+
+Inference message stream events are not written to `session_events`. Restoring
+an older database also ignores legacy rows for these subtypes. Their canonical
+`agent_message`, transcript message, and run lifecycle records remain durable.
 
 ### Agent loop, tool, and process updates
 

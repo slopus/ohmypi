@@ -37,6 +37,7 @@ import type { McpToolProvider } from "../mcp/index.js";
 import type { DockerExecutionConfig } from "../execution/index.js";
 import { summarizeDockerExecution } from "../execution/index.js";
 import type { TaskDrain } from "./TrackedTaskDrain.js";
+import { isTransientInferenceSessionEvent } from "./isTransientInferenceSessionEvent.js";
 
 export interface PersistentSessionStoreOptions {
     databasePath: string;
@@ -662,6 +663,7 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
     }
 
     #appendEvent(event: SessionEvent): void {
+        if (isTransientInferenceSessionEvent(event)) return;
         const globalEntry = this.#transaction(() => {
             this.#database
                 .prepare(
@@ -822,7 +824,7 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
     }
 
     #loadEvents(sessionId: string): SessionEvent[] {
-        return this.#database
+        const rows = this.#database
             .prepare(
                 `
                 SELECT event_id, type, created_at_ms, data_json
@@ -831,14 +833,19 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
                 ORDER BY seq ASC
                 `,
             )
-            .all(sessionId)
-            .map((row) => ({
+            .iterate(sessionId);
+        const events: SessionEvent[] = [];
+        for (const row of rows) {
+            const event = {
                 createdAt: readNumber(row, "created_at_ms"),
                 data: JSON.parse(readString(row, "data_json")) as SessionEvent["data"],
                 id: readString(row, "event_id"),
                 sessionId,
                 type: readString(row, "type") as SessionEvent["type"],
-            })) as SessionEvent[];
+            } as SessionEvent;
+            if (!isTransientInferenceSessionEvent(event)) events.push(event);
+        }
+        return events;
     }
 
     #loadMessages(sessionId: string): PersistedSessionMessage[] {

@@ -1,0 +1,93 @@
+import { describe, expect, it } from "vitest";
+
+import type { AgentLoopEvent } from "../agent/loop.js";
+import type { SessionEvent } from "../protocol/index.js";
+import {
+    isTransientInferenceSessionEvent,
+    TRANSIENT_INFERENCE_EVENT_TYPES,
+} from "./isTransientInferenceSessionEvent.js";
+
+describe("isTransientInferenceSessionEvent", () => {
+    it("classifies provider stream presentation events as transient", () => {
+        for (const type of TRANSIENT_INFERENCE_EVENT_TYPES) {
+            expect(isTransientInferenceSessionEvent(agentEvent({ type } as AgentLoopEvent))).toBe(
+                true,
+            );
+        }
+    });
+
+    it("keeps tool, process, compaction, and unknown future agent events durable", () => {
+        expect(
+            isTransientInferenceSessionEvent(
+                agentEvent({
+                    compactedMessageCount: 2,
+                    estimatedTokensAfter: 100,
+                    estimatedTokensBefore: 1_000,
+                    reason: "threshold",
+                    type: "context_compacted",
+                }),
+            ),
+        ).toBe(false);
+        expect(
+            isTransientInferenceSessionEvent(
+                agentEvent({ running: 1, type: "background_processes_changed" }),
+            ),
+        ).toBe(false);
+        expect(
+            isTransientInferenceSessionEvent(
+                agentEvent({
+                    result: {
+                        display: "done",
+                        toolCallId: "tool-1",
+                        toolName: "exec_command",
+                        type: "tool_result",
+                    },
+                    type: "tool_execution_end",
+                }),
+            ),
+        ).toBe(false);
+        expect(
+            isTransientInferenceSessionEvent(
+                agentEvent({ type: "future_provider_event" } as unknown as AgentLoopEvent),
+            ),
+        ).toBe(false);
+    });
+
+    it("conservatively keeps null and missing agent event subtypes", () => {
+        expect(isTransientInferenceSessionEvent(malformedAgentEvent({ type: null }))).toBe(false);
+        expect(isTransientInferenceSessionEvent(malformedAgentEvent({}))).toBe(false);
+        expect(isTransientInferenceSessionEvent(malformedAgentEvent(undefined))).toBe(false);
+    });
+
+    it("keeps non-agent session events durable", () => {
+        expect(
+            isTransientInferenceSessionEvent({
+                createdAt: 1,
+                data: { modelLocked: true, runId: "run-1", stopReason: "stop" },
+                id: "event-2",
+                sessionId: "session-1",
+                type: "run_finished",
+            }),
+        ).toBe(false);
+    });
+});
+
+function agentEvent(event: AgentLoopEvent): SessionEvent {
+    return {
+        createdAt: 1,
+        data: { event, runId: "run-1" },
+        id: "event-1",
+        sessionId: "session-1",
+        type: "agent_event",
+    };
+}
+
+function malformedAgentEvent(event: unknown): SessionEvent {
+    return {
+        createdAt: 1,
+        data: { event, runId: "run-1" },
+        id: "event-1",
+        sessionId: "session-1",
+        type: "agent_event",
+    } as unknown as SessionEvent;
+}

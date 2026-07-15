@@ -6,13 +6,193 @@ import { tmpdir } from "node:os";
 import { describe, expect, it } from "vitest";
 
 import type { UserMessage } from "../agent/types.js";
-import type { ModelCatalog } from "../protocol/index.js";
+import type { ModelCatalog, SessionEvent } from "../protocol/index.js";
 import type { GymInferenceRequest } from "../providers/gym-types.js";
 import { defineModel } from "../providers/types.js";
 import type { PersistedQueuedRun, PersistedSessionState } from "./InMemorySession.js";
 import { PersistentSessionStore } from "./PersistentSessionStore.js";
 
 describe("PersistentSessionStore", () => {
+    it("delivers transient inference events live without writing session event rows", async () => {
+        const { cleanup, databasePath } = await createDatabasePath();
+        try {
+            const store = new PersistentSessionStore({ databasePath });
+            const session = store.create({ cwd: "/tmp/rig-persistent-session-test" });
+            const transient = sessionEvent(session.id, "transient-text", "agent_event", {
+                event: { contentIndex: 0, delta: "token", partial: {}, type: "text_delta" },
+                runId: "run-1",
+            });
+            const processChanged = sessionEvent(session.id, "process-changed", "agent_event", {
+                event: { running: 1, type: "background_processes_changed" },
+                runId: "run-1",
+            });
+            const compacted = sessionEvent(session.id, "context-compacted", "agent_event", {
+                event: {
+                    compactedMessageCount: 4,
+                    estimatedTokensAfter: 600,
+                    estimatedTokensBefore: 4_200,
+                    reason: "threshold",
+                    type: "context_compacted",
+                },
+                runId: "run-1",
+            });
+
+            session.events.append(transient);
+            session.events.append(processChanged);
+            session.events.append(compacted);
+
+            expect(session.events.since(undefined)?.map((event) => event.id)).toEqual([
+                expect.any(String),
+                transient.id,
+                processChanged.id,
+                compacted.id,
+            ]);
+            const database = new DatabaseSync(databasePath, { readOnly: true });
+            try {
+                const rows = database
+                    .prepare(
+                        "SELECT event_id FROM session_events WHERE session_id = ? ORDER BY seq",
+                    )
+                    .all(session.id) as Array<{ event_id: string }>;
+                expect(rows.map((row) => row.event_id)).toEqual([
+                    expect.any(String),
+                    processChanged.id,
+                    compacted.id,
+                ]);
+            } finally {
+                database.close();
+            }
+            store.close();
+        } finally {
+            await cleanup();
+        }
+    });
+
+    it("skips legacy transient rows on restore while retaining durable event ordering", async () => {
+        const { cleanup, databasePath } = await createDatabasePath();
+        try {
+            const store = new PersistentSessionStore({ databasePath });
+            const sessionId = store.create({ cwd: "/tmp/rig-persistent-session-test" }).id;
+            store.close();
+
+            const database = new DatabaseSync(databasePath);
+            insertSessionEvent(database, sessionId, "run-started", "run_started", {
+                runId: "run-1",
+            });
+            insertSessionEvent(database, sessionId, "legacy-delta", "agent_event", {
+                event: { contentIndex: 0, delta: "legacy", partial: {}, type: "text_delta" },
+                runId: "run-1",
+            });
+            insertSessionEvent(database, sessionId, "tool-started", "agent_event", {
+                event: {
+                    toolCall: {
+                        arguments: { cmd: "true" },
+                        id: "tool-1",
+                        name: "exec_command",
+                        type: "toolCall",
+                    },
+                    type: "tool_execution_start",
+                },
+                runId: "run-1",
+            });
+            insertSessionEvent(database, sessionId, "process-changed", "agent_event", {
+                event: { running: 1, type: "background_processes_changed" },
+                runId: "run-1",
+            });
+            insertSessionEvent(database, sessionId, "compacted", "agent_event", {
+                event: {
+                    compactedMessageCount: 3,
+                    estimatedTokensAfter: 500,
+                    estimatedTokensBefore: 2_000,
+                    reason: "threshold",
+                    type: "context_compacted",
+                },
+                runId: "run-1",
+            });
+            insertSessionEvent(database, sessionId, "run-finished", "run_finished", {
+                modelLocked: true,
+                runId: "run-1",
+                stopReason: "stop",
+            });
+            database.close();
+
+            const restoredStore = new PersistentSessionStore({ databasePath });
+            try {
+                expect(
+                    restoredStore
+                        .get(sessionId)
+                        ?.events.since(undefined)
+                        ?.map((event) => event.id),
+                ).toEqual([
+                    expect.any(String),
+                    "run-started",
+                    "tool-started",
+                    "process-changed",
+                    "compacted",
+                    "run-finished",
+                ]);
+            } finally {
+                restoredStore.close();
+            }
+
+            const retainedDatabase = new DatabaseSync(databasePath, { readOnly: true });
+            try {
+                expect(
+                    retainedDatabase
+                        .prepare("SELECT COUNT(*) AS count FROM session_events WHERE event_id = ?")
+                        .get("legacy-delta"),
+                ).toEqual({ count: 1 });
+            } finally {
+                retainedDatabase.close();
+            }
+        } finally {
+            await cleanup();
+        }
+    });
+
+    it("conservatively restores null, missing, and unknown agent event subtypes", async () => {
+        const { cleanup, databasePath } = await createDatabasePath();
+        try {
+            const store = new PersistentSessionStore({ databasePath });
+            const sessionId = store.create({ cwd: "/tmp/rig-persistent-session-test" }).id;
+            store.close();
+
+            const database = new DatabaseSync(databasePath);
+            insertSessionEvent(database, sessionId, "null-subtype", "agent_event", {
+                event: { type: null },
+                runId: "run-1",
+            });
+            insertSessionEvent(database, sessionId, "missing-subtype", "agent_event", {
+                event: {},
+                runId: "run-1",
+            });
+            insertSessionEvent(database, sessionId, "unknown-subtype", "agent_event", {
+                event: { type: "future_provider_event" },
+                runId: "run-1",
+            });
+            database.close();
+
+            const restoredStore = new PersistentSessionStore({ databasePath });
+            try {
+                expect(
+                    restoredStore
+                        .get(sessionId)
+                        ?.events.since(undefined)
+                        ?.map((event) => event.id),
+                ).toEqual([
+                    expect.any(String),
+                    "null-subtype",
+                    "missing-subtype",
+                    "unknown-subtype",
+                ]);
+            } finally {
+                restoredStore.close();
+            }
+        } finally {
+            await cleanup();
+        }
+    });
+
     it("keeps Docker execution settings across daemon restarts", async () => {
         const { cleanup, databasePath } = await createDatabasePath();
         try {
@@ -1323,4 +1503,36 @@ function textUserMessage(id: string, text: string): UserMessage {
         id,
         role: "user",
     };
+}
+
+function sessionEvent(
+    sessionId: string,
+    id: string,
+    type: SessionEvent["type"],
+    data: unknown,
+): SessionEvent {
+    return {
+        createdAt: 1_700_000_000_000,
+        data,
+        id,
+        sessionId,
+        type,
+    } as SessionEvent;
+}
+
+function insertSessionEvent(
+    database: DatabaseSync,
+    sessionId: string,
+    id: string,
+    type: SessionEvent["type"],
+    data: unknown,
+): void {
+    database
+        .prepare(
+            `
+            INSERT INTO session_events (session_id, event_id, type, created_at_ms, data_json)
+            VALUES (?, ?, ?, ?, ?)
+            `,
+        )
+        .run(sessionId, id, type, 1_700_000_000_000, JSON.stringify(data));
 }

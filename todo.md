@@ -154,6 +154,11 @@ This file tracks known defects, verified coverage gaps, and concrete follow-up w
 
 ## Backlog captured at the July 14 pause
 
+- [ ] Reclaim disk space from legacy session event logs.
+    - Existing databases can retain multiple gigabytes of redundant inference-stream events even after resume no longer loads those events into memory.
+    - Design an explicit, backward-compatible cleanup and compaction flow that preserves semantic messages, resumable context, todos, and durable lifecycle history.
+    - Do not automatically delete legacy rows, migrate the schema, or vacuum a user's database as part of ordinary startup or resume.
+
 - [ ] Expand `/usage` into a session and plan-usage dashboard.
     - Keep current provider token totals, then add session cost, API and wall duration, lines added/removed, current context usage, and provider-reported reset windows where available.
     - Show current-session, weekly all-model, and model-specific progress bars with local timezone reset labels; mark unavailable provider data clearly instead of estimating it as fact.
