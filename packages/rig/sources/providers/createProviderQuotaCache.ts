@@ -5,7 +5,7 @@ import {
 import type { ProviderQuota } from "./providerQuota.js";
 
 export interface ProviderQuotaCache {
-    get(): Promise<ProviderQuota>;
+    get(options?: { fresh?: boolean }): Promise<ProviderQuota>;
     clear(): void;
 }
 
@@ -25,8 +25,12 @@ export function createProviderQuotaCache(
     let generation = 0;
 
     return {
-        async get() {
-            if (cached !== undefined && !isProviderQuotaStale(cached, now(), staleAfterMs)) {
+        async get(getOptions = {}) {
+            if (
+                getOptions.fresh !== true &&
+                cached !== undefined &&
+                !isProviderQuotaStale(cached, now(), staleAfterMs)
+            ) {
                 return cached;
             }
             if (pending !== undefined) {

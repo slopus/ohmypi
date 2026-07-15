@@ -40,10 +40,11 @@ describe("Claude SDK provider", () => {
         await expect(provider.quota?.()).resolves.toMatchObject({
             capturedAt: 1_000,
             source: "claude-sdk",
-            status: "available",
-            usedPercent: 32,
+            windows: { fiveHour: { status: "available", usedPercent: 32 } },
         });
-        await expect(provider.quota?.()).resolves.toMatchObject({ usedPercent: 32 });
+        await expect(provider.quota?.()).resolves.toMatchObject({
+            windows: { fiveHour: { usedPercent: 32 } },
+        });
         expect(calls).toHaveLength(1);
         expect(calls[0]?.options).toMatchObject({
             cwd: harness.context.fs.cwd,
@@ -67,8 +68,10 @@ describe("Claude SDK provider", () => {
         await expect(provider.quota?.()).resolves.toEqual({
             capturedAt: 1_000,
             source: "claude-sdk",
-            status: "unavailable",
-            window: "five_hour",
+            windows: {
+                fiveHour: { status: "unavailable" },
+                weekly: { status: "unavailable" },
+            },
         });
     });
 

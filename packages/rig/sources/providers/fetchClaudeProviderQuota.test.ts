@@ -25,7 +25,7 @@ describe("fetchClaudeProviderQuota", () => {
         expect(close).toHaveBeenCalledOnce();
     });
 
-    it("maps the SDK five-hour plan window without estimating", async () => {
+    it("maps the SDK five-hour and weekly plan windows without estimating", async () => {
         const query = usageQuery({
             rate_limits_available: true,
             rate_limits: {
@@ -33,16 +33,28 @@ describe("fetchClaudeProviderQuota", () => {
                     utilization: 62.25,
                     resets_at: "2026-05-01T12:00:00.000Z",
                 },
+                seven_day: {
+                    utilization: 21.5,
+                    resets_at: "2026-05-07T12:00:00.000Z",
+                },
             },
         });
 
         await expect(fetchClaudeProviderQuota(query, { now: () => 500 })).resolves.toEqual({
-            status: "available",
-            source: "claude-sdk",
-            window: "five_hour",
-            usedPercent: 62.25,
-            resetsAt: Date.parse("2026-05-01T12:00:00.000Z"),
             capturedAt: 500,
+            source: "claude-sdk",
+            windows: {
+                fiveHour: {
+                    resetsAt: Date.parse("2026-05-01T12:00:00.000Z"),
+                    status: "available",
+                    usedPercent: 62.25,
+                },
+                weekly: {
+                    resetsAt: Date.parse("2026-05-07T12:00:00.000Z"),
+                    status: "available",
+                    usedPercent: 21.5,
+                },
+            },
         });
     });
 
@@ -70,10 +82,12 @@ describe("fetchClaudeProviderQuota", () => {
         await expect(
             fetchClaudeProviderQuota(usageQuery(response), { now: () => 600 }),
         ).resolves.toEqual({
-            status: "unavailable",
-            source: "claude-sdk",
-            window: "five_hour",
             capturedAt: 600,
+            source: "claude-sdk",
+            windows: {
+                fiveHour: { status: "unavailable" },
+                weekly: { status: "unavailable" },
+            },
         });
     });
 
@@ -86,10 +100,12 @@ describe("fetchClaudeProviderQuota", () => {
         };
 
         await expect(fetchClaudeProviderQuota(query, { now: () => 700 })).resolves.toEqual({
-            status: "unavailable",
-            source: "claude-sdk",
-            window: "five_hour",
             capturedAt: 700,
+            source: "claude-sdk",
+            windows: {
+                fiveHour: { status: "unavailable" },
+                weekly: { status: "unavailable" },
+            },
         });
     });
 
@@ -103,7 +119,10 @@ describe("fetchClaudeProviderQuota", () => {
 
         await expect(
             fetchClaudeProviderQuota(query, { now: () => 800, timeoutMs: 1 }),
-        ).resolves.toMatchObject({ capturedAt: 800, status: "unavailable" });
+        ).resolves.toMatchObject({
+            capturedAt: 800,
+            windows: { fiveHour: { status: "unavailable" } },
+        });
         expect(close).toHaveBeenCalledOnce();
     });
 
@@ -124,7 +143,10 @@ describe("fetchClaudeProviderQuota", () => {
         expect(settled).toBe(false);
 
         await vi.advanceTimersByTimeAsync(1);
-        await expect(result).resolves.toMatchObject({ capturedAt: 900, status: "unavailable" });
+        await expect(result).resolves.toMatchObject({
+            capturedAt: 900,
+            windows: { fiveHour: { status: "unavailable" } },
+        });
         expect(close).toHaveBeenCalledOnce();
     });
 });

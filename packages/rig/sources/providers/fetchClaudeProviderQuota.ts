@@ -1,6 +1,7 @@
 import type { Query } from "@anthropic-ai/claude-agent-sdk";
 
 import type { ProviderQuota } from "./providerQuota.js";
+import { unavailableProviderQuota } from "./unavailableProviderQuota.js";
 
 export type ClaudeQuotaQuery = Pick<
     Query,
@@ -18,12 +19,7 @@ export async function fetchClaudeProviderQuota(
 ): Promise<ProviderQuota> {
     const now = options.now ?? Date.now;
     const timeoutMs = options.timeoutMs ?? 5_000;
-    const unavailable = (): ProviderQuota => ({
-        status: "unavailable",
-        source: "claude-sdk",
-        window: "five_hour",
-        capturedAt: now(),
-    });
+    const unavailable = (): ProviderQuota => unavailableProviderQuota("claude-sdk", now());
 
     try {
         const usageRequest = query.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET();
@@ -37,31 +33,16 @@ export async function fetchClaudeProviderQuota(
         const usage = await Promise.race([usageRequest, timeoutRequest]).finally(() => {
             if (timeout !== undefined) clearTimeout(timeout);
         });
-        const fiveHour = usage.rate_limits?.five_hour;
-        if (
-            !usage.rate_limits_available ||
-            fiveHour == null ||
-            typeof fiveHour.utilization !== "number" ||
-            !Number.isFinite(fiveHour.utilization) ||
-            fiveHour.utilization < 0 ||
-            fiveHour.utilization > 100 ||
-            typeof fiveHour.resets_at !== "string"
-        ) {
+        if (!usage.rate_limits_available) {
             return unavailable();
         }
-
-        const resetsAt = Date.parse(fiveHour.resets_at);
-        if (!Number.isFinite(resetsAt)) {
-            return unavailable();
-        }
-
         return {
-            status: "available",
-            source: "claude-sdk",
-            window: "five_hour",
-            usedPercent: fiveHour.utilization,
-            resetsAt,
             capturedAt: now(),
+            source: "claude-sdk",
+            windows: {
+                fiveHour: parseClaudeQuotaWindow(usage.rate_limits?.five_hour),
+                weekly: parseClaudeQuotaWindow(usage.rate_limits?.seven_day),
+            },
         };
     } catch {
         return unavailable();
@@ -72,4 +53,22 @@ export async function fetchClaudeProviderQuota(
             // Cleanup errors do not make an otherwise authoritative response unavailable.
         }
     }
+}
+
+function parseClaudeQuotaWindow(
+    window: { utilization: number | null; resets_at: string | null } | null | undefined,
+): ProviderQuota["windows"]["fiveHour"] {
+    if (
+        typeof window?.utilization !== "number" ||
+        !Number.isFinite(window.utilization) ||
+        window.utilization < 0 ||
+        window.utilization > 100 ||
+        typeof window.resets_at !== "string"
+    ) {
+        return { status: "unavailable" };
+    }
+    const resetsAt = Date.parse(window.resets_at);
+    return Number.isFinite(resetsAt)
+        ? { status: "available", usedPercent: window.utilization, resetsAt }
+        : { status: "unavailable" };
 }

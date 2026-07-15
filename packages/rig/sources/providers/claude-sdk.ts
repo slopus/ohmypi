@@ -30,6 +30,7 @@ import { resolveClaudeCodeExecutablePath } from "./resolveClaudeCodeExecutablePa
 import { createProviderQuotaCache } from "./createProviderQuotaCache.js";
 import { fetchClaudeProviderQuota } from "./fetchClaudeProviderQuota.js";
 import { idleClaudeSdkPrompt } from "./idleClaudeSdkPrompt.js";
+import { unavailableProviderQuota } from "./unavailableProviderQuota.js";
 import {
     defineProvider,
     type AssistantContent,
@@ -80,12 +81,7 @@ export function createClaudeSdkProvider(options: ClaudeSdkProviderOptions) {
                 });
                 return fetchClaudeProviderQuota(probe, { now });
             } catch {
-                return {
-                    capturedAt: now(),
-                    source: "claude-sdk",
-                    status: "unavailable",
-                    window: "five_hour",
-                };
+                return unavailableProviderQuota("claude-sdk", now());
             }
         },
         { now },
@@ -103,7 +99,7 @@ export function createClaudeSdkProvider(options: ClaudeSdkProviderOptions) {
             modelAnthropicSonnet46,
             modelAnthropicHaiku45,
         ],
-        quota: () => quota.get(),
+        quota: (quotaOptions) => quota.get(quotaOptions),
         stream(model, context, streamOptions) {
             const activeTools = toolsForProviderContext(tools, context);
             const sdkOptions = toClaudeSdkOptions({

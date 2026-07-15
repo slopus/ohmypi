@@ -1,19 +1,21 @@
 export type ProviderQuotaSource = "codex" | "claude-sdk";
 
-export interface AvailableProviderQuota {
-    status: "available";
-    source: ProviderQuotaSource;
-    window: "five_hour";
-    usedPercent: number;
-    resetsAt: number;
-    capturedAt: number;
-}
+export type ProviderQuotaWindow =
+    | {
+          status: "available";
+          usedPercent: number;
+          resetsAt: number;
+          durationMs?: number;
+      }
+    | {
+          status: "unavailable";
+      };
 
-export interface UnavailableProviderQuota {
-    status: "unavailable";
-    source: ProviderQuotaSource;
-    window: "five_hour";
+export interface ProviderQuota {
     capturedAt: number;
+    source: ProviderQuotaSource;
+    windows: {
+        fiveHour: ProviderQuotaWindow;
+        weekly: ProviderQuotaWindow;
+    };
 }
-
-export type ProviderQuota = AvailableProviderQuota | UnavailableProviderQuota;

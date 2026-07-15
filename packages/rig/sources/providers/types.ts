@@ -156,7 +156,7 @@ export interface Provider {
     readonly id: string;
     readonly models: readonly Model[];
     readonly serviceTiers?: readonly ServiceTier[];
-    quota?(): Promise<ProviderQuota>;
+    quota?(options?: { fresh?: boolean }): Promise<ProviderQuota>;
     stream<TThinkingLevel extends string>(
         model: Model<TThinkingLevel>,
         context: Context,
@@ -194,7 +194,7 @@ export function defineProvider(provider: {
     id: string;
     models: readonly Model[];
     serviceTiers?: readonly ServiceTier[];
-    quota?: () => Promise<ProviderQuota>;
+    quota?: (options?: { fresh?: boolean }) => Promise<ProviderQuota>;
     stream<TThinkingLevel extends string>(
         model: Model<TThinkingLevel>,
         context: Context,

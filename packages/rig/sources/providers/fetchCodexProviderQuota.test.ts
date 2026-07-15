@@ -15,7 +15,7 @@ afterEach(async () => {
 });
 
 describe("fetchCodexProviderQuota", () => {
-    it("fetches the authoritative primary window with local bearer and account headers", async () => {
+    it("fetches authoritative five-hour and weekly windows with local auth headers", async () => {
         const authPath = await writeAuthFile({
             access_token: "access-token",
             account_id: "account-123",
@@ -24,8 +24,14 @@ describe("fetchCodexProviderQuota", () => {
             Response.json({
                 rate_limit: {
                     primary_window: {
+                        limit_window_seconds: 18_000,
                         used_percent: 37.5,
                         reset_at: 1_735_689_600,
+                    },
+                    secondary_window: {
+                        limit_window_seconds: 604_800,
+                        used_percent: 12.25,
+                        reset_at: 1_736_208_000,
                     },
                 },
             }),
@@ -39,12 +45,22 @@ describe("fetchCodexProviderQuota", () => {
         });
 
         expect(quota).toEqual({
-            status: "available",
-            source: "codex",
-            window: "five_hour",
-            usedPercent: 37.5,
-            resetsAt: 1_735_689_600_000,
             capturedAt: 123_000,
+            source: "codex",
+            windows: {
+                fiveHour: {
+                    durationMs: 18_000_000,
+                    resetsAt: 1_735_689_600_000,
+                    status: "available",
+                    usedPercent: 37.5,
+                },
+                weekly: {
+                    durationMs: 604_800_000,
+                    resetsAt: 1_736_208_000_000,
+                    status: "available",
+                    usedPercent: 12.25,
+                },
+            },
         });
         expect(fetchMock).toHaveBeenCalledOnce();
         const [url, init] = fetchMock.mock.calls[0] ?? [];
@@ -90,10 +106,12 @@ describe("fetchCodexProviderQuota", () => {
         await expect(
             fetchCodexProviderQuota({ authPath, fetch: fetchMock, now: () => 55 }),
         ).resolves.toEqual({
-            status: "unavailable",
-            source: "codex",
-            window: "five_hour",
             capturedAt: 55,
+            source: "codex",
+            windows: {
+                fiveHour: { status: "unavailable" },
+                weekly: { status: "unavailable" },
+            },
         });
     });
 
@@ -111,10 +129,12 @@ describe("fetchCodexProviderQuota", () => {
         await expect(
             fetchCodexProviderQuota({ authPath, fetch: fetchMock, timeoutMs: 1, now: () => 77 }),
         ).resolves.toEqual({
-            status: "unavailable",
-            source: "codex",
-            window: "five_hour",
             capturedAt: 77,
+            source: "codex",
+            windows: {
+                fiveHour: { status: "unavailable" },
+                weekly: { status: "unavailable" },
+            },
         });
     });
 });

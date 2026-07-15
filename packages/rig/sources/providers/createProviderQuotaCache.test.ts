@@ -9,12 +9,16 @@ describe("createProviderQuotaCache", () => {
         let now = 1_000_000;
         const load = vi.fn(
             async (): Promise<ProviderQuota> => ({
-                status: "available",
-                source: "codex",
-                window: "five_hour",
-                usedPercent: 20,
-                resetsAt: 2_000_000,
                 capturedAt: now,
+                source: "codex",
+                windows: {
+                    fiveHour: {
+                        status: "available",
+                        usedPercent: 20,
+                        resetsAt: 2_000_000,
+                    },
+                    weekly: { status: "unavailable" },
+                },
             }),
         );
         const cache = createProviderQuotaCache(load, { now: () => now });
@@ -42,10 +46,12 @@ describe("createProviderQuotaCache", () => {
         const first = cache.get();
         const concurrent = cache.get();
         resolvers[0]?.({
-            status: "unavailable",
-            source: "claude-sdk",
-            window: "five_hour",
             capturedAt: Date.now(),
+            source: "claude-sdk",
+            windows: {
+                fiveHour: { status: "unavailable" },
+                weekly: { status: "unavailable" },
+            },
         });
 
         expect(await first).toBe(await concurrent);
@@ -55,11 +61,40 @@ describe("createProviderQuotaCache", () => {
         const refreshed = cache.get();
         expect(load).toHaveBeenCalledTimes(2);
         resolvers[1]?.({
-            status: "unavailable",
-            source: "claude-sdk",
-            window: "five_hour",
             capturedAt: Date.now(),
+            source: "claude-sdk",
+            windows: {
+                fiveHour: { status: "unavailable" },
+                weekly: { status: "unavailable" },
+            },
         });
         await refreshed;
+    });
+
+    it("refreshes explicitly while retaining the new snapshot for ordinary reads", async () => {
+        let now = 1_000;
+        const load = vi.fn(
+            async (): Promise<ProviderQuota> => ({
+                capturedAt: now,
+                source: "codex",
+                windows: {
+                    fiveHour: {
+                        status: "available",
+                        usedPercent: load.mock.calls.length,
+                        resetsAt: 9,
+                    },
+                    weekly: { status: "unavailable" },
+                },
+            }),
+        );
+        const cache = createProviderQuotaCache(load, { now: () => now });
+
+        await cache.get();
+        now = 2_000;
+        const refreshed = await cache.get({ fresh: true });
+
+        expect(load).toHaveBeenCalledTimes(2);
+        expect(refreshed.capturedAt).toBe(2_000);
+        expect(await cache.get()).toBe(refreshed);
     });
 });
