@@ -24,6 +24,29 @@ describe("aggregateQuotaContributions", () => {
         ]);
     });
 
+    it("uses an epoch high-water mark instead of double-counting repeated recovery", () => {
+        const values = [20, 30, 25, 30];
+        const events = values.map((value, index) =>
+            observation(
+                `high-water-${index}`,
+                `high-water-${index}`,
+                index % 2 === 0 ? "before" : "after",
+                "codex",
+                quota("codex", value, value, 100),
+            ),
+        );
+
+        expect(aggregateQuotaContributions(events)).toEqual([
+            {
+                providerId: "codex",
+                windows: {
+                    fiveHour: { observedUsedPercent: 10 },
+                    weekly: { observedUsedPercent: 10 },
+                },
+            },
+        ]);
+    });
+
     it("ignores a delta across reset rollover and resumes within the new epoch", () => {
         const events = [
             observation("old-before", "old", "before", "codex", quota("codex", 90, 40, 100)),
