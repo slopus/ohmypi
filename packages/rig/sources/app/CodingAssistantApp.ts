@@ -294,6 +294,7 @@ export class CodingAssistantApp implements Component, Focusable {
     #cursorVisible = true;
     #entries: AppTranscriptEntry[] = [];
     readonly #assistantStreamingRender = new AppendOnlyStreamingRender<AppTranscriptEntry>();
+    readonly #thinkingStreamingRender = new AppendOnlyStreamingRender<AppTranscriptEntry>();
     readonly #entryRenderCache = new TranscriptEntryRenderCache();
     readonly #headerLinesByWidth = new Map<number, readonly string[]>();
     #showHeaderInFrame = true;
@@ -354,6 +355,7 @@ export class CodingAssistantApp implements Component, Focusable {
     #thinkingEntryIdsByContentIndex = new Map<number, string>();
     #toolCallEntryIdsByContentIndex = new Map<number, string>();
     #streamedToolCallEntries = new Set<AppTranscriptEntry>();
+    #streamingThinkingEntryIds = new Set<string>();
     #deferredTurnSeparator = false;
     #workSegmentStartedAtMs: number | undefined;
     #pendingSubagentCompletionIds = new Set<string>();
@@ -741,6 +743,7 @@ export class CodingAssistantApp implements Component, Focusable {
             this.#stopActivityAnimation();
             this.#streamEntryId = undefined;
             this.#thinkingEntryIdsByContentIndex.clear();
+            this.#streamingThinkingEntryIds.clear();
             this.#toolCallEntryIdsByContentIndex.clear();
             this.#markActiveToolCallsStopped();
             this.#activeToolCallIds.clear();
@@ -797,6 +800,7 @@ export class CodingAssistantApp implements Component, Focusable {
             this.#seenToolCallIds.clear();
             this.#streamEntryId = undefined;
             this.#thinkingEntryIdsByContentIndex.clear();
+            this.#streamingThinkingEntryIds.clear();
             this.#toolCallEntryIdsByContentIndex.clear();
             this.#activeToolCallIds.clear();
             this.#awaitingApprovalToolCallIds.clear();
@@ -843,6 +847,7 @@ export class CodingAssistantApp implements Component, Focusable {
             this.#statusText = "Idle";
             this.#streamEntryId = undefined;
             this.#thinkingEntryIdsByContentIndex.clear();
+            this.#streamingThinkingEntryIds.clear();
             this.#toolCallEntryIdsByContentIndex.clear();
             this.#activeToolCallIds.clear();
             this.#awaitingApprovalToolCallIds.clear();
@@ -1565,6 +1570,7 @@ export class CodingAssistantApp implements Component, Focusable {
             this.#clearEntries();
             this.#streamEntryId = undefined;
             this.#thinkingEntryIdsByContentIndex.clear();
+            this.#streamingThinkingEntryIds.clear();
             this.#toolCallEntryIdsByContentIndex.clear();
             this.#activeToolCallIds.clear();
             this.#awaitingApprovalToolCallIds.clear();
@@ -1947,6 +1953,7 @@ export class CodingAssistantApp implements Component, Focusable {
                     this.#seenToolCallIds.clear();
                     this.#streamEntryId = undefined;
                     this.#thinkingEntryIdsByContentIndex.clear();
+                    this.#streamingThinkingEntryIds.clear();
                     this.#toolCallEntryIdsByContentIndex.clear();
                     this.#activeToolCallIds.clear();
                     this.#awaitingApprovalToolCallIds.clear();
@@ -2021,6 +2028,7 @@ export class CodingAssistantApp implements Component, Focusable {
         this.#statusText = "Running";
         this.#streamEntryId = undefined;
         this.#thinkingEntryIdsByContentIndex.clear();
+        this.#streamingThinkingEntryIds.clear();
         this.#toolCallEntryIdsByContentIndex.clear();
         this.#activeToolCallIds.clear();
         this.#awaitingApprovalToolCallIds.clear();
@@ -2094,6 +2102,7 @@ export class CodingAssistantApp implements Component, Focusable {
                 this.#stopActivityAnimation();
                 this.#streamEntryId = undefined;
                 this.#thinkingEntryIdsByContentIndex.clear();
+                this.#streamingThinkingEntryIds.clear();
                 this.#toolCallEntryIdsByContentIndex.clear();
                 this.#activeToolCallIds.clear();
                 this.#awaitingApprovalToolCallIds.clear();
@@ -2295,6 +2304,7 @@ export class CodingAssistantApp implements Component, Focusable {
         this.#statusText = "Idle";
         this.#discardPendingToolCallEntries();
         this.#thinkingEntryIdsByContentIndex.clear();
+        this.#streamingThinkingEntryIds.clear();
         this.#toolCallEntryIdsByContentIndex.clear();
         this.#markActiveToolCallsStopped();
         this.#activeToolCallIds.clear();
@@ -2355,6 +2365,7 @@ export class CodingAssistantApp implements Component, Focusable {
             this.#streamEntryId = undefined;
             this.#streamedToolCallEntries.clear();
             this.#thinkingEntryIdsByContentIndex.clear();
+            this.#streamingThinkingEntryIds.clear();
             this.#toolCallEntryIdsByContentIndex.clear();
         } else if (event.type === "text_start") {
             this.#statusText = "Running";
@@ -2364,6 +2375,8 @@ export class CodingAssistantApp implements Component, Focusable {
             this.#finishStreamText(event.content);
         } else if (event.type === "thinking_start") {
             this.#statusText = "Thinking";
+            const entry = this.#ensureThinkingEntry(event.contentIndex);
+            this.#streamingThinkingEntryIds.add(entry.id);
         } else if (event.type === "thinking_delta") {
             this.#statusText = "Thinking";
             this.#appendThinkingText(event.contentIndex, event.delta);
@@ -2607,6 +2620,7 @@ export class CodingAssistantApp implements Component, Focusable {
         }
 
         const entry = this.#ensureThinkingEntry(contentIndex);
+        this.#streamingThinkingEntryIds.add(entry.id);
         entry.text += delta;
     }
 
@@ -2617,6 +2631,7 @@ export class CodingAssistantApp implements Component, Focusable {
 
         const entry = this.#ensureThinkingEntry(contentIndex);
         entry.text = text;
+        this.#streamingThinkingEntryIds.delete(entry.id);
     }
 
     #ensureToolCallEntry(contentIndex: number): AppTranscriptEntry {
@@ -3989,11 +4004,18 @@ export class CodingAssistantApp implements Component, Focusable {
         const prefix = `${DIM}•${RESET} `;
         const prefixWidth = visibleWidth(prefix);
         const contentWidth = Math.max(1, width - prefixWidth);
-        const renderedMarkdown = renderAgentMarkdown({
+        const renderedMarkdown = this.#thinkingStreamingRender.render({
+            entry,
+            isStreaming: this.#streamingThinkingEntryIds.has(entry.id),
+            render: (text) =>
+                renderAgentMarkdown({
+                    text,
+                    width: contentWidth,
+                    cwd: this.#cwd,
+                    theme: this.#theme,
+                }),
             text: entry.text,
             width: contentWidth,
-            cwd: this.#cwd,
-            theme: this.#theme,
         });
         const indent = " ".repeat(prefixWidth);
         return renderedMarkdown.map((line, index) =>

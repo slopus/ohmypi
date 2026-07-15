@@ -103,6 +103,8 @@ export function createGymProvider(options: CreateGymProviderOptions) {
                         contentIndex,
                         message,
                         block,
+                        reply.thinkingDeltaChunkSize,
+                        reply.thinkingDeltaDelayMs,
                         reply.textDeltaChunkSize,
                         reply.textDeltaDelayMs,
                         reply.toolCallDeltaDelayMs,
@@ -142,6 +144,8 @@ async function* eventsForBlock(
     contentIndex: number,
     message: AssistantMessage,
     block: AssistantMessage["content"][number],
+    thinkingDeltaChunkSize: number | undefined,
+    thinkingDeltaDelayMs: number | undefined,
     textDeltaChunkSize: number | undefined,
     textDeltaDelayMs: number | undefined,
     toolCallDeltaDelayMs: number | undefined,
@@ -172,7 +176,24 @@ async function* eventsForBlock(
     }
     if (block.type === "thinking") {
         yield { type: "thinking_start", contentIndex, partial: message };
-        yield { type: "thinking_delta", contentIndex, delta: block.thinking, partial: message };
+        const requestedChunkSize = Math.floor(thinkingDeltaChunkSize ?? block.thinking.length);
+        const chunkSize = Number.isFinite(requestedChunkSize)
+            ? Math.max(1, requestedChunkSize)
+            : Math.max(1, block.thinking.length);
+        if (block.thinking.length === 0) {
+            yield { type: "thinking_delta", contentIndex, delta: "", partial: message };
+        }
+        for (let offset = 0; offset < block.thinking.length; offset += chunkSize) {
+            yield {
+                type: "thinking_delta",
+                contentIndex,
+                delta: block.thinking.slice(offset, offset + chunkSize),
+                partial: message,
+            };
+            if (thinkingDeltaDelayMs !== undefined && offset + chunkSize < block.thinking.length) {
+                await delay(thinkingDeltaDelayMs, streamOptions);
+            }
+        }
         yield {
             type: "thinking_end",
             contentIndex,

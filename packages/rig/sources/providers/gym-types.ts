@@ -14,6 +14,8 @@ export interface GymInferenceResponse {
     errorMessage?: string;
     responseModel?: string;
     stopReason?: StopReason;
+    thinkingDeltaChunkSize?: number;
+    thinkingDeltaDelayMs?: number;
     textDeltaChunkSize?: number;
     textDeltaDelayMs?: number;
     toolCallDeltaDelayMs?: number;
