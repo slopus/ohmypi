@@ -4,7 +4,10 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { createGym, type Gym } from "../../packages/gym/sources/index.js";
 
-const ARTIFACTS = resolve(import.meta.dirname, "../../artifacts/startup-status-card");
+const ARTIFACTS = resolve(
+    import.meta.dirname,
+    "../../artifacts/integrated-critical-wave/clean-features",
+);
 const running = new Set<Gym>();
 
 afterEach(async () => {

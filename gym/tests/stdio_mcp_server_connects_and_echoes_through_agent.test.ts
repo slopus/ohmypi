@@ -1,3 +1,6 @@
+import { mkdir } from "node:fs/promises";
+import { resolve } from "node:path";
+
 import { afterEach, describe, expect, it } from "vitest";
 
 import { createGym, type Gym } from "../../packages/gym/sources/index.js";
@@ -6,6 +9,10 @@ const COLS = 140;
 const ROWS = 24;
 const MCP_TOOL_NAME = "mcp__Echo_Service__echo_value";
 const WORKSPACE_SHADOW_MARKER = "workspace-mcp-shadow-started.txt";
+const artifacts = resolve(
+    import.meta.dirname,
+    "../../artifacts/integrated-critical-wave/clean-features",
+);
 const running = new Set<Gym>();
 
 const MCP_SERVER = `
@@ -252,6 +259,8 @@ describe("stdio MCP server connects and echoes through the agent", () => {
         assertHealthyTerminal(followUp, baseline);
         expect(followUp.text).toContain("Ask Rig to do anything");
         expect(agentRequests(gym)).toHaveLength(5);
+        await mkdir(artifacts, { recursive: true });
+        await gym.terminal.screenshot(`${artifacts}/structured-mcp-one-child.png`);
     }, 120_000);
 });
 

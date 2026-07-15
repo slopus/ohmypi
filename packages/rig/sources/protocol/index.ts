@@ -25,6 +25,7 @@ export type {
     EffortChangedEvent,
     FileSearchResult,
     ForkSessionResponse,
+    GetCurrentProviderQuotaResponse,
     GetDaemonConfigResponse,
     GetSessionUsageResponse,
     GlobalEventQueueEntry,

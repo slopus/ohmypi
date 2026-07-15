@@ -4,12 +4,13 @@ import { humanizePermissionMode } from "./humanizePermissionMode.js";
 import { humanizeProviderId } from "./humanizeProviderId.js";
 import { humanizeReasoningLevel } from "./humanizeReasoningLevel.js";
 import { humanizeSessionEnvironment } from "./humanizeSessionEnvironment.js";
-import type { StartupStatusCardModel } from "./StartupStatusCardModel.js";
+import type { StartupStatusCardModel, StartupStatusCardUsage } from "./StartupStatusCardModel.js";
 
 export function createStartupStatusCardModel(options: {
     model: Model;
     resumed: boolean;
     session: ProtocolSession;
+    usage?: StartupStatusCardUsage;
     version: string;
 }): StartupStatusCardModel {
     const effort =
@@ -25,6 +26,7 @@ export function createStartupStatusCardModel(options: {
         provider: humanizeProviderId(options.session.providerId),
         reasoning: humanizeReasoningLevel(effort),
         session: options.resumed ? "Resumed" : "New session",
+        ...(options.usage === undefined ? {} : { usage: options.usage }),
         version: options.version,
         workspace: options.session.cwd,
     };

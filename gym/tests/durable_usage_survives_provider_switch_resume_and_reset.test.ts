@@ -6,7 +6,10 @@ import { afterEach, describe, expect, it } from "vitest";
 import { createGym, type Gym } from "../../packages/gym/sources/index.js";
 
 const running = new Set<Gym>();
-const artifacts = resolve(import.meta.dirname, "../../artifacts/session-usage");
+const artifacts = resolve(
+    import.meta.dirname,
+    "../../artifacts/integrated-critical-wave/clean-features",
+);
 const rig = "node /app/packages/rig/dist/main.js";
 
 afterEach(async () => {
@@ -85,6 +88,7 @@ describe("durable session usage", () => {
         expect(switched.text).toContain("110 total · 100 input · 10 output");
         expect(switched.text).toContain("220 total · 200 input · 20 output");
         expect(switched.text).not.toContain("Usage Gym");
+        expect(switched.rows.filter((row) => row.includes("└"))).toEqual(["  └ Gym"]);
         await gym.terminal.screenshot(`${artifacts}/multi-provider-narrow-unavailable.png`);
 
         gym.terminal.press("ctrlD");

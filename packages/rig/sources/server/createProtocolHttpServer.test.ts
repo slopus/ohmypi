@@ -19,6 +19,36 @@ import { TrackedTaskDrain } from "./TrackedTaskDrain.js";
 import type { ProviderQuota } from "../providers/providerQuota.js";
 
 describe("createProtocolHttpServer", () => {
+    it("serves only the current provider quota from the daemon quota service", async () => {
+        const quota = {
+            capturedAt: 10,
+            source: "codex" as const,
+            windows: {
+                fiveHour: {
+                    capturedAt: 10,
+                    resetsAt: 20,
+                    status: "available" as const,
+                    usedPercent: 32,
+                },
+                weekly: { status: "unavailable" as const },
+            },
+        };
+        const getProviderQuota = vi.fn(async () => quota);
+        const { client, close } = await startServer({ getProviderQuota });
+        try {
+            const created = await client.createSession({ cwd: "/tmp/current-provider-quota" });
+
+            await expect(client.getCurrentProviderQuota(created.session.id)).resolves.toEqual({
+                currentProviderId: "codex",
+                quota,
+            });
+            expect(getProviderQuota).toHaveBeenCalledTimes(1);
+            expect(getProviderQuota).toHaveBeenCalledWith("codex");
+        } finally {
+            await close();
+        }
+    });
+
     it("serves durable attributed usage and current-provider quota", async () => {
         const { client, close, store } = await startServer();
         try {

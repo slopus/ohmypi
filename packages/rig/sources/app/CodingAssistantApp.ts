@@ -573,6 +573,7 @@ export class CodingAssistantApp implements Component, Focusable {
         }
 
         if (event.type === "run_started") {
+            this.#usageRequestVersion += 1;
             this.#abortNotified = false;
             this.#running = true;
             this.#statusText = "Running";

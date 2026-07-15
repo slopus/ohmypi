@@ -14,6 +14,7 @@ import type {
     CreateSessionResponse,
     EventId,
     ForkSessionResponse,
+    GetCurrentProviderQuotaResponse,
     GetDaemonConfigResponse,
     GetSessionUsageResponse,
     GlobalEventQueueEntry,
@@ -218,6 +219,13 @@ export class ProtocolHttpClient {
 
     getSessionUsage(sessionId: string): Promise<GetSessionUsageResponse> {
         return this.#requestJson("GET", `/sessions/${encodeURIComponent(sessionId)}/usage`);
+    }
+
+    getCurrentProviderQuota(sessionId: string): Promise<GetCurrentProviderQuotaResponse> {
+        return this.#requestJson(
+            "GET",
+            `/sessions/${encodeURIComponent(sessionId)}/current-provider-quota`,
+        );
     }
 
     getEvents(sessionId: string, after?: EventId): Promise<{ events: SessionEvent[] }> {

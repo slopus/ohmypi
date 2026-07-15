@@ -268,6 +268,11 @@ export interface GetSessionUsageResponse {
     quotas: readonly SessionProviderQuota[];
 }
 
+export interface GetCurrentProviderQuotaResponse {
+    currentProviderId: string;
+    quota?: ProviderQuota;
+}
+
 export interface SessionProviderQuota {
     providerId: string;
     quota: ProviderQuota;

@@ -8,7 +8,12 @@ import { createJustBashToolHarness } from "../tools/testing/createJustBashToolHa
 import { validJpeg32Base64, validPng32Base64 } from "../tools/testing/validImageFixtures.js";
 import { NativeProxessManager } from "../processes/index.js";
 import { createPermissionContext } from "../permissions/index.js";
-import type { ModelCatalog, ProtocolSession, SessionEvent } from "../protocol/index.js";
+import type {
+    GetSessionUsageResponse,
+    ModelCatalog,
+    ProtocolSession,
+    SessionEvent,
+} from "../protocol/index.js";
 import {
     defineModel,
     defineProvider,
@@ -3546,6 +3551,56 @@ describe("CodingAssistantApp", () => {
             expect(rows.filter((row) => row.includes("└"))).toEqual(["  └ Codex"]);
             expect(rows.every((row) => visibleWidth(row) <= 64)).toBe(true);
         });
+    });
+
+    it("discards a pending durable usage response when a newer run starts", async () => {
+        const model = defineModel({
+            defaultThinkingLevel: "off",
+            id: "openai/gpt-test",
+            name: "GPT Test",
+            thinkingLevels: ["off"],
+        });
+        const provider = defineProvider({
+            id: "codex",
+            models: [model],
+            stream: () => streamText("unused"),
+        });
+        const harness = createJustBashToolHarness();
+        const pendingUsage = deferred<GetSessionUsageResponse>();
+        const agent = Object.assign(
+            new Agent({
+                context: harness.context,
+                modelId: model.id,
+                printToConsole: false,
+                provider,
+            }),
+            { getUsage: vi.fn(() => pendingUsage.promise) },
+        );
+        const app = new CodingAssistantApp({
+            agent,
+            cwd: harness.context.fs.cwd,
+            processManager: new NativeProxessManager(),
+            tui: fakeTui(),
+        });
+
+        submit(app, "/usage");
+        app.applySessionEvent({
+            createdAt: 1,
+            data: { runId: "newer-run" },
+            id: "newer-run-started",
+            sessionId: "session-1",
+            type: "run_started",
+        });
+        pendingUsage.resolve({
+            currentProviderId: "codex",
+            groups: [],
+            observedQuota: [],
+            quotas: [],
+        });
+        await pendingUsage.promise;
+        await Promise.resolve();
+
+        expect(stripAnsi(app.render(80).join("\n"))).not.toContain("• Usage");
     });
 
     it("keeps the focused empty placeholder stable without inserting padding", () => {

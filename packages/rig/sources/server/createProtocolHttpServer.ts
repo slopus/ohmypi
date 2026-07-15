@@ -14,6 +14,7 @@ import type {
     CreateSessionResponse,
     DaemonIdentity,
     ForkSessionResponse,
+    GetCurrentProviderQuotaResponse,
     GetDaemonConfigResponse,
     GetSessionUsageResponse,
     ListGlobalEventsResponse,
@@ -341,6 +342,16 @@ async function handleRequest(
 
     if (request.method === "GET" && route.name === "session") {
         sendJson(response, 200, { session: session.snapshot() });
+        return;
+    }
+
+    if (request.method === "GET" && route.name === "current-provider-quota") {
+        const currentProviderId = session.snapshot().providerId;
+        const quota = await getProviderQuota?.(currentProviderId);
+        sendJson<GetCurrentProviderQuotaResponse>(response, 200, {
+            currentProviderId,
+            ...(quota === undefined ? {} : { quota }),
+        });
         return;
     }
 
@@ -746,6 +757,7 @@ function matchRoute(pathname: string):
               | "activity"
               | "background-processes-stop"
               | "compact"
+              | "current-provider-quota"
               | "effort"
               | "events"
               | "files"
@@ -810,6 +822,9 @@ function matchRoute(pathname: string):
     if (parts[2] === "abort") return { name: "abort", sessionId };
     if (parts[2] === "activity") return { name: "activity", sessionId };
     if (parts[2] === "compact") return { name: "compact", sessionId };
+    if (parts[2] === "current-provider-quota") {
+        return { name: "current-provider-quota", sessionId };
+    }
     if (parts[2] === "effort") return { name: "effort", sessionId };
     if (parts[2] === "events") return { name: "events", sessionId };
     if (parts[2] === "files") return { name: "files", sessionId };

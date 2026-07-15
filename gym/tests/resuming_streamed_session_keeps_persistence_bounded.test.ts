@@ -5,7 +5,10 @@ import { afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import { createGym, type Gym } from "../../packages/gym/sources/index.js";
 
-const artifacts = resolve(import.meta.dirname, "../../artifacts/bounded-session-events");
+const artifacts = resolve(
+    import.meta.dirname,
+    "../../artifacts/integrated-critical-wave/clean-features",
+);
 const running = new Set<Gym>();
 const RESUME_MARKER = "STREAMED_SESSION_RESUME_BOUNDARY";
 const FIRST_RESPONSE = `STREAMED_HISTORY_START\n${"streamed history ".repeat(64)}\nSTREAMED_HISTORY_COMPLETE`;
@@ -38,6 +41,46 @@ describe("resuming a session with streamed response history", () => {
             files: {
                 "inspect-streamed-session.mjs": inspectStreamedSessionScript,
             },
+            environment: {
+                NO_PROXY: "host.docker.internal",
+                RIG_CODEX_BASE_URL: "{{HTTP_PROXY_URL}}/backend-api",
+            },
+            homeFiles: {
+                ".codex/auth.json": JSON.stringify({
+                    auth_mode: "chatgpt",
+                    tokens: {
+                        access_token: "bounded-session-token",
+                        account_id: "bounded-session",
+                    },
+                }),
+            },
+            httpProxy: {
+                handler(request) {
+                    if (new URL(request.url).pathname === "/backend-api/wham/usage") {
+                        return {
+                            response: {
+                                body: JSON.stringify({
+                                    rate_limit: {
+                                        primary_window: {
+                                            limit_window_seconds: 18_000,
+                                            reset_at: Math.floor(Date.now() / 1_000) + 3_600,
+                                            used_percent: 20,
+                                        },
+                                        secondary_window: {
+                                            limit_window_seconds: 604_800,
+                                            reset_at: Math.floor(Date.now() / 1_000) + 345_600,
+                                            used_percent: 10,
+                                        },
+                                    },
+                                }),
+                                headers: { "content-type": "application/json" },
+                                status: 200,
+                            },
+                        };
+                    }
+                    return { response: { body: "Unexpected quota request", status: 404 } };
+                },
+            },
             inference(_request, callIndex) {
                 if (callIndex === 0) {
                     return {
@@ -48,6 +91,9 @@ describe("resuming a session with streamed response history", () => {
                 expect(callIndex).toBe(1);
                 return { content: [{ text: "FOLLOW_UP_AFTER_RESUME", type: "text" }] };
             },
+            modelId: "openai/gpt-5.6-sol",
+            providerId: "codex",
+            providerOverrides: ["codex"],
             rows: 60,
         });
         running.add(gym);
@@ -81,10 +127,12 @@ describe("resuming a session with streamed response history", () => {
 
         const persistedJson = await gym.readFile("streamed-session-persistence.json");
         const persisted = JSON.parse(persistedJson) as {
+            durableQuotaObservations: number;
             persistedEventRows: number;
             transientInferenceEvents: number;
         };
         expect(persisted.transientInferenceEvents).toBe(0);
+        expect(persisted.durableQuotaObservations).toBe(2);
         expect(persisted.persistedEventRows).toBeGreaterThan(0);
         expect(persisted.persistedEventRows).toBeLessThanOrEqual(MAX_PERSISTED_EVENT_ROWS);
 
@@ -135,7 +183,9 @@ const rows = database
     .prepare("SELECT type, data_json FROM session_events WHERE session_id = ? ORDER BY seq")
     .all(sessionId);
 let transientInferenceEvents = 0;
+let durableQuotaObservations = 0;
 for (const row of rows) {
+    if (row.type === "provider_quota_observed") durableQuotaObservations += 1;
     if (row.type !== "agent_event") continue;
     const event = JSON.parse(row.data_json).event;
     if (transientTypes.has(event?.type)) transientInferenceEvents += 1;
@@ -143,6 +193,6 @@ for (const row of rows) {
 database.close();
 writeFileSync(
     "/workspace/streamed-session-persistence.json",
-    JSON.stringify({ persistedEventRows: rows.length, transientInferenceEvents }),
+    JSON.stringify({ durableQuotaObservations, persistedEventRows: rows.length, transientInferenceEvents }),
 );
 `;

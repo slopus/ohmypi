@@ -20,6 +20,7 @@ import { createSerialTaskQueue } from "./createSerialTaskQueue.js";
 import { createStopOnceHandler } from "./createStopOnceHandler.js";
 import { createStartupStatusCardModel } from "./createStartupStatusCardModel.js";
 import { ensureSessionCanResume } from "./ensureSessionCanResume.js";
+import { providerQuotaToStartupStatusUsage } from "./providerQuotaToStartupStatusUsage.js";
 import { readPackageVersion } from "./readPackageVersion.js";
 import { resolveTerminalTheme } from "./resolveTerminalTheme.js";
 import { ScrollbackPreservingTerminal } from "./ScrollbackPreservingTerminal.js";
@@ -150,14 +151,15 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
     if (session.session.title !== undefined) {
         terminal.setTitle(`Rig - ${sanitizeTerminalTitle(session.session.title)}`);
     }
-    const subagents = await localServer.client
-        .listSubagents(session.session.id)
-        .catch((error: unknown) => {
-            startup.stop();
-            terminal.write("\x1b[?1004l");
-            tui.stop();
-            throw error;
-        });
+    const [subagents, currentProviderQuotaResponse] = await Promise.all([
+        localServer.client.listSubagents(session.session.id),
+        localServer.client.getCurrentProviderQuota(session.session.id).catch(() => undefined),
+    ]).catch((error: unknown) => {
+        startup.stop();
+        terminal.write("\x1b[?1004l");
+        tui.stop();
+        throw error;
+    });
     const context = createNodeAgentContext({
         cwd: sessionCwd,
         permissionMode: session.session.permissionMode,
@@ -172,6 +174,11 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
     const resumeCommand = `rig resume ${session.session.id}`;
     const version = readPackageVersion();
     const activeAgentLabel = sessionAgentFooterLabel(session.session.agent);
+    const startupUsage = providerQuotaToStartupStatusUsage(
+        currentProviderQuotaResponse?.currentProviderId === session.session.providerId
+            ? currentProviderQuotaResponse.quota
+            : undefined,
+    );
     const app = new CodingAssistantApp({
         ...(activeAgentLabel === undefined ? {} : { activeAgentLabel }),
         agent,
@@ -271,6 +278,7 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
             model: agent.model,
             resumed: options.resumeSessionId !== undefined,
             session: session.session,
+            ...(startupUsage === undefined ? {} : { usage: startupUsage }),
             version,
         }),
         theme,
