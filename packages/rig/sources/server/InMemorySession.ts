@@ -1173,6 +1173,64 @@ export class InMemorySession {
         this.#saveSession();
     }
 
+    markSuspendedAfterRestart(message: string, runId?: string): void {
+        if (!this.isSubagent() || this.#status !== "suspended") {
+            throw new Error("Only a suspended subagent can be repaired as resumable.");
+        }
+        this.#activeRun?.controller.abort();
+        this.#activeRun = undefined;
+        this.#restoredActiveRunId = undefined;
+        this.#activePartial = undefined;
+        this.#suspendOnAbort = false;
+        for (const queued of this.#queue) {
+            this.#persistence?.deleteQueuedRun(this.id, queued.runId);
+        }
+        this.#queue = [];
+        if (runId !== undefined) {
+            this.#append("run_error", {
+                errorMessage: message,
+                modelLocked: this.#modelLocked(),
+                runId,
+            });
+        }
+        this.#status = "suspended";
+        this.#saveSession();
+    }
+
+    recordSubagentStoppedAfterRestart(subagent: SubagentSummary): void {
+        const taskName = subagent.taskName ?? subagent.id;
+        const runId = `restart:${subagent.id}`;
+        const displayText = `Background work "${subagent.description}" stopped when the local server restarted.`;
+        const message: UserMessage = {
+            blocks: [
+                {
+                    type: "text",
+                    text: [
+                        "<subagent-notification>",
+                        `Task: ${taskName}`,
+                        "Status: suspended",
+                        "Result: The subagent stopped working when the local server restarted. It remains suspended and will not resume automatically.",
+                        `Use resume_agent with target ${JSON.stringify(taskName)} to continue it, or interrupt_agent to leave it stopped.`,
+                        "</subagent-notification>",
+                    ].join("\n"),
+                },
+            ],
+            id: createId(),
+            role: "user",
+        };
+        this.#separateModelContextFromVisibleTranscript();
+        this.#storeMessage(this.#messages.length, message, false, runId);
+        this.#contextMessages?.push(message);
+        this.#lastMessageAt = this.#now();
+        this.#append("message_submitted", {
+            displayText,
+            message,
+            runId,
+            source: "notification",
+        });
+        this.#saveSession();
+    }
+
     reset(): ProtocolSession {
         void this.#agentManager?.stopDescendants(this.id);
         void this.abort({ pauseDescendants: false }).catch(() => undefined);

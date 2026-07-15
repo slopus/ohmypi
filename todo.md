@@ -29,10 +29,10 @@ This file tracks known defects, verified coverage gaps, and concrete follow-up w
     - The queue retains ownership through asynchronous turn startup and removes the prompt only immediately before `agent.send()`.
     - Escape during skill refresh restores the prompt to the composer, and an unchanged Gym scenario resubmits it successfully.
 
-- [ ] Make suspended subagents resumable after daemon restart.
-    - Suspension can persist `status = suspended` together with a non-null active run ID.
-    - Startup repair then changes the session to `error`, causing `resume_agent` to reject it.
-    - Add persistence coverage for suspension while inference or a tool delays abort.
+- [x] Make suspended subagents resumable after daemon restart.
+    - Startup repair finalizes and clears a stale active run while preserving `status = suspended`.
+    - The parent receives a durable passive notification that delegated work stopped at restart and will not resume automatically.
+    - Gym restarts the real daemon, verifies no child inference runs on startup, and recovers only after the parent calls `resume_agent`.
 
 - [ ] Bound MCP rendering work before serializing and wrapping large payloads.
     - Invocation arguments and result blocks currently process the full payload before display row limits apply.

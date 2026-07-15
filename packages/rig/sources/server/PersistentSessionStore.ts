@@ -395,6 +395,17 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
 
             const state = session.state();
             const runId = state.activeRunId ?? state.queuedRuns.at(0)?.runId;
+            if (session.isSubagent() && state.status === "suspended") {
+                const message =
+                    "The subagent stopped working because the local server restarted before its suspended run finished.";
+                session.markSuspendedAfterRestart(message, runId);
+                const parentSessionId = session.agentMetadata().parentSessionId;
+                const parent =
+                    parentSessionId === undefined ? undefined : this.get(parentSessionId);
+                parent?.recordSubagentChanged(session.subagentSummary());
+                parent?.recordSubagentStoppedAfterRestart(session.subagentSummary());
+                continue;
+            }
             session.markInterrupted({
                 interruptedAt: this.#now(),
                 message:
