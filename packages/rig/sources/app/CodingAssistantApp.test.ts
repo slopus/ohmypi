@@ -3411,6 +3411,87 @@ describe("CodingAssistantApp", () => {
         expect(stripAnsi(app.render(100).join("\n"))).toContain("Total processed: 0");
     });
 
+    it("renders the durable backend usage summary for session-backed agents", async () => {
+        const model = defineModel({
+            contextWindow: 200_000,
+            defaultThinkingLevel: "off",
+            id: "openai/gpt-test",
+            name: "GPT Test",
+            thinkingLevels: ["off"],
+        });
+        const provider = defineProvider({
+            id: "codex",
+            models: [model],
+            stream: () => streamText("unused"),
+        });
+        const harness = createJustBashToolHarness();
+        const agent = Object.assign(
+            new Agent({
+                context: harness.context,
+                modelId: model.id,
+                printToConsole: false,
+                provider,
+            }),
+            {
+                getUsage: vi.fn(async () => ({
+                    context: {
+                        approximate: false,
+                        modelId: model.id,
+                        providerId: "codex",
+                        requestedModelId: model.id,
+                        totalTokens: 1_300,
+                    },
+                    currentProviderId: "codex",
+                    groups: [
+                        {
+                            kind: "attributed" as const,
+                            modelId: model.id,
+                            providerId: "codex",
+                            usage: {
+                                cacheRead: 40,
+                                cacheWrite: 30,
+                                cost: {
+                                    cacheRead: 0,
+                                    cacheWrite: 0,
+                                    input: 0,
+                                    output: 0,
+                                    total: 0,
+                                },
+                                input: 1_200,
+                                output: 100,
+                                totalTokens: 1_370,
+                            },
+                        },
+                    ],
+                    quota: {
+                        capturedAt: 1,
+                        resetsAt: 8_041_000,
+                        source: "codex" as const,
+                        status: "available" as const,
+                        usedPercent: 32,
+                        window: "five_hour" as const,
+                    },
+                })),
+            },
+        );
+        const app = new CodingAssistantApp({
+            agent,
+            cwd: harness.context.fs.cwd,
+            now: () => 1_000,
+            processManager: new NativeProxessManager(),
+            tui: fakeTui(),
+        });
+
+        submit(app, "/usage");
+        await vi.waitFor(() => {
+            const report = stripAnsi(app.render(100).join("\n"));
+            expect(report).toContain("GPT Test · 1.2k in · 100 out");
+            expect(report).toContain("5-hour: 68% left · resets in 2h 14m");
+            expect(report).toContain("Context: 1.3k / 200k · 99% left");
+            expect(report).toContain("Total: 1.4k");
+        });
+    });
+
     it("keeps the focused empty placeholder stable without inserting padding", () => {
         vi.useFakeTimers();
         try {

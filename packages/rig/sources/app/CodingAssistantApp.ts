@@ -65,6 +65,7 @@ import { FileMentionAutocomplete } from "./FileMentionAutocomplete.js";
 import type { FileMentionContext } from "./findFileMentionContext.js";
 import { formatFileMention } from "./formatFileMention.js";
 import { formatSubagentRows } from "./formatSubagentRows.js";
+import { formatSessionUsageSummary } from "./formatSessionUsageSummary.js";
 import { formatToolResultForDisplay } from "./formatToolResultForDisplay.js";
 import { humanizeReasoningLevel } from "./humanizeReasoningLevel.js";
 import { humanizePermissionMode } from "./humanizePermissionMode.js";
@@ -345,6 +346,7 @@ export class CodingAssistantApp implements Component, Focusable {
     #stoppingBackgroundTerminals = false;
     #toolStatusByCallId = new Map<string, string>();
     #usage: Usage = zeroUsage();
+    #usageRequestVersion = 0;
     #latestContextTokens = 0;
     #lastUserInputAtMs: number | undefined;
     #userInputRequests: UserInputRequest[] = [];
@@ -699,6 +701,7 @@ export class CodingAssistantApp implements Component, Focusable {
         }
 
         if (event.type === "session_reset") {
+            this.#usageRequestVersion += 1;
             this.#clearEntries();
             this.#pendingSteeringMessages = [];
             this.#modelLocked = false;
@@ -727,6 +730,7 @@ export class CodingAssistantApp implements Component, Focusable {
         }
 
         if (event.type === "session_rewound") {
+            this.#usageRequestVersion += 1;
             this.#pendingSteeringMessages = [];
             const targetIndex = this.#entries.findIndex(
                 (entry) => entry.id === event.data.messageId,
@@ -752,6 +756,7 @@ export class CodingAssistantApp implements Component, Focusable {
         }
 
         if (event.type === "model_changed") {
+            this.#usageRequestVersion += 1;
             this.#appendEntry({
                 role: "event",
                 title: "model",
@@ -1584,6 +1589,35 @@ export class CodingAssistantApp implements Component, Focusable {
     }
 
     #showUsageSummary(): void {
+        if (this.#agent.getUsage !== undefined) {
+            const version = ++this.#usageRequestVersion;
+            void this.#agent
+                .getUsage()
+                .then((summary) => {
+                    if (version !== this.#usageRequestVersion) return;
+                    this.#appendEntry({
+                        role: "event",
+                        title: "Usage",
+                        text: formatSessionUsageSummary(
+                            summary,
+                            this.#agent.modelChoices ?? [
+                                { model: this.#agent.model, providerId: this.#agent.provider.id },
+                            ],
+                            this.#now(),
+                        ),
+                    });
+                })
+                .catch(() => {
+                    if (version !== this.#usageRequestVersion) return;
+                    this.#appendEntry({
+                        role: "event",
+                        title: "Usage",
+                        text: "Usage unavailable.",
+                    });
+                });
+            return;
+        }
+
         const contextWindow = this.#agent.model.contextWindow;
         const context =
             contextWindow === undefined
@@ -1750,6 +1784,7 @@ export class CodingAssistantApp implements Component, Focusable {
     }
 
     #resetSession(): void {
+        this.#usageRequestVersion += 1;
         this.#abortActiveRun({ silent: true });
         this.#runToken += 1;
         this.#pendingPrompts = [];
