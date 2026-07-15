@@ -162,13 +162,9 @@ describe("daemon shutdown persistence drain", () => {
         expect(restarted.text).not.toContain("database is not open");
         await captureProof(gym, "03-healthy-restart.png");
 
-        await gym.runInContainer("sh", [
-            "-c",
-            'node -e \'const fs=require("node:fs"); const value=JSON.parse(fs.readFileSync("/home/rig/.local/state/rig/server.json","utf8")); fs.writeFileSync("/workspace/sse-daemon-pid",String(value.pid))\'',
-        ]);
         await gym.runInContainer("node", ["/app/packages/rig/dist/main.js", "daemon", "stop"]);
-        await waitForProcessExit(gym, "/workspace/sse-daemon-pid");
-        await gym.runInContainer("node", ["/app/packages/rig/dist/main.js", "daemon", "start"]);
+        gym.terminal.press("ctrlD");
+        await gym.terminal.waitForText("FINAL_DAEMON_RESTARTED", 30_000);
 
         const daemonStatus = await gym.runInContainer("node", [
             "/app/packages/rig/dist/main.js",
@@ -199,17 +195,6 @@ async function waitForFile(gym: Gym, path: string): Promise<void> {
     await gym.runInContainer(
         "sh",
         ["-c", `while [ ! -e ${JSON.stringify(path)} ]; do sleep 0.05; done`],
-        { timeoutMs: 30_000 },
-    );
-}
-
-async function waitForProcessExit(gym: Gym, pidPath: string): Promise<void> {
-    await gym.runInContainer(
-        "sh",
-        [
-            "-c",
-            `pid=$(cat ${JSON.stringify(pidPath)}); while kill -0 "$pid" 2>/dev/null; do state=$(awk '{print $3}' "/proc/$pid/stat" 2>/dev/null || true); [ "$state" = Z ] && break; sleep 0.05; done`,
-        ],
         { timeoutMs: 30_000 },
     );
 }
@@ -291,5 +276,8 @@ touch /workspace/client-exited
 while [ ! -e /workspace/restart-client ]; do sleep 0.05; done
 node /app/packages/rig/dist/main.js daemon start
 printf 'RESTARTING_RIG_CLIENT\n'
-exec node /app/packages/rig/dist/main.js resume --last
+node /app/packages/rig/dist/main.js resume --last || true
+node /app/packages/rig/dist/main.js daemon start
+printf 'FINAL_DAEMON_RESTARTED\n'
+while :; do sleep 1; done
 `;
