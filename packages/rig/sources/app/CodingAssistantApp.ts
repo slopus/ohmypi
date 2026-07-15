@@ -1220,7 +1220,9 @@ export class CodingAssistantApp implements Component, Focusable {
         );
         const input = this.#renderInput(safeWidth);
         const activeWork =
-            this.#selectionPanel === undefined ? this.#renderActiveWorkList(safeWidth) : [];
+            this.#selectionPanel === undefined
+                ? this.#renderActiveWorkList(safeWidth)
+                : this.#renderActiveToolRows(safeWidth);
         const pendingSteering =
             this.#selectionPanel === undefined
                 ? renderPendingSteeringMessages(
@@ -2854,7 +2856,9 @@ export class CodingAssistantApp implements Component, Focusable {
     }
 
     #renderTranscript(width: number): string[] {
-        const sourceEntries = this.#entries.slice(this.#transcriptStartIndex);
+        const sourceEntries = this.#entries
+            .slice(this.#transcriptStartIndex)
+            .filter((entry) => !this.#activeToolCallIds.has(entry.id));
         const entries = this.#showReasoning
             ? sourceEntries
             : sourceEntries.filter((entry) => entry.role !== "thinking");
@@ -3048,6 +3052,7 @@ export class CodingAssistantApp implements Component, Focusable {
             this.#isActiveSubagent(subagent),
         );
         const rows = [
+            ...this.#renderActiveToolRows(width),
             renderSubagentSummary({
                 count: activeSubagents.length,
                 elapsedMs: Math.max(
@@ -3063,6 +3068,11 @@ export class CodingAssistantApp implements Component, Focusable {
             renderBackgroundTerminalSummary(this.#backgroundProcesses.length, width),
         ];
         return rows.filter((row): row is string => row !== undefined);
+    }
+
+    #renderActiveToolRows(width: number): string[] {
+        const entry = this.#entries.find((candidate) => this.#activeToolCallIds.has(candidate.id));
+        return entry === undefined ? [] : this.#renderEntry(entry, width);
     }
 
     #usageFooter(): string {
@@ -3663,6 +3673,7 @@ export class CodingAssistantApp implements Component, Focusable {
         > &
             Partial<Pick<ToolResultBlock, "rendered">>,
     ): void {
+        this.#moveActiveToolEntryToTranscriptTail(block.toolCallId);
         this.#activeToolCallIds.delete(block.toolCallId);
         this.#awaitingApprovalToolCallIds.delete(block.toolCallId);
         this.#runningToolCallIds.delete(block.toolCallId);
@@ -3763,6 +3774,17 @@ export class CodingAssistantApp implements Component, Focusable {
         });
         if (appended.execCommand !== undefined) {
             this.#trackYieldedBackgroundTerminal(appended.execCommand);
+        }
+    }
+
+    #moveActiveToolEntryToTranscriptTail(toolCallId: string): void {
+        if (!this.#activeToolCallIds.has(toolCallId)) return;
+        const index = this.#entries.findIndex((entry) => entry.id === toolCallId);
+        if (index < 0 || index === this.#entries.length - 1) return;
+        const [entry] = this.#entries.splice(index, 1);
+        if (entry !== undefined) this.#entries.push(entry);
+        if (index < this.#transcriptStartIndex) {
+            this.#transcriptStartIndex = Math.max(0, this.#transcriptStartIndex - 1);
         }
     }
 
