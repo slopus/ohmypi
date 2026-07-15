@@ -67,7 +67,7 @@ describe("Claude task tools", () => {
             type: "tasks_changed",
         });
 
-        session.reset();
+        await session.reset();
 
         expect(session.listTasks()).toEqual([]);
         expect(session.createTask({ subject: "Fresh task", description: "Start over." }).id).toBe(

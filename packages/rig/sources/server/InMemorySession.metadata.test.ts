@@ -145,7 +145,7 @@ describe("InMemorySession metadata settlement", () => {
         await vi.advanceTimersByTimeAsync(60_000);
         expect(harness.session.snapshot().metadataRunId).toBe(first.runId);
 
-        harness.session.reset();
+        await harness.session.reset();
         expect(harness.session.snapshot()).toMatchObject({ titleStatus: "idle" });
         expect(harness.session.snapshot()).not.toHaveProperty("metadataRunId");
         expect(harness.session.snapshot()).not.toHaveProperty("metadataUpdatedAt");
