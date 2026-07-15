@@ -1,4 +1,5 @@
 const INPUT_BURST_WINDOW_MS = 8;
+const SUPPORTED_ALT_INPUTS = new Set(["m", "M", "v", "V", ",", "."]);
 
 export interface TerminalInputBurstHandler {
     dispose(): void;
@@ -44,6 +45,20 @@ export function createTerminalInputBurstHandler(
                 flush();
                 if (/^\x1b{2,}$/u.test(data)) {
                     for (const _escape of data) onInput("\x1b");
+                    return;
+                }
+                if (
+                    data.startsWith("\x1b") &&
+                    !data.startsWith("\x1b[") &&
+                    !data.startsWith("\x1bO") &&
+                    !data.startsWith("\x1b]") &&
+                    isTextInput(data.slice(1)) &&
+                    (data.length > 2 || !SUPPORTED_ALT_INPUTS.has(data.slice(1)))
+                ) {
+                    onInput("\x1b");
+                    buffer = data.slice(1);
+                    timer = setTimeout(flush, INPUT_BURST_WINDOW_MS);
+                    timer.unref?.();
                     return;
                 }
                 onInput(data);

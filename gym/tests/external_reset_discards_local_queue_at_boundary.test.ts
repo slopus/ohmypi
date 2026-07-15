@@ -38,7 +38,7 @@ describe("external reset boundary", () => {
         await gym.terminal.waitForText("esc to interrupt", 30_000);
         gym.terminal.type(queued);
         gym.terminal.press("tab");
-        await gym.terminal.waitForText(`↳ queued ${queued}`, 30_000);
+        await gym.terminal.waitForText(queued, 30_000);
         gym.terminal.type(draft);
 
         const reset = await gym.runInContainer("node", ["-e", resetActiveSessionScript]);

@@ -62,4 +62,26 @@ describe("createTerminalInputBurstHandler", () => {
 
         expect(received).toEqual(["\x1b", "\x1b"]);
     });
+
+    it("separates Escape from immediately coalesced ordinary typing", () => {
+        vi.useFakeTimers();
+        const received: string[] = [];
+        const handler = createTerminalInputBurstHandler((data) => received.push(data));
+
+        handler.handle("\x1bR");
+        handler.handle("etain this follow-up");
+        handler.handle("\r");
+
+        expect(received).toEqual(["\x1b", "Retain this follow-up", "\r"]);
+    });
+
+    it("preserves supported Alt shortcuts and terminal escape sequences", () => {
+        const received: string[] = [];
+        const handler = createTerminalInputBurstHandler((data) => received.push(data));
+
+        handler.handle("\x1bm");
+        handler.handle("\x1b[A");
+
+        expect(received).toEqual(["\x1bm", "\x1b[A"]);
+    });
 });
