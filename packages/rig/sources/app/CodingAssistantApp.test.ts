@@ -5134,7 +5134,7 @@ describe("CodingAssistantApp", () => {
         );
 
         const resized = stripAnsi(app.render(48).join("\n"));
-        expect(resized).toContain(">_ Rig");
+        expect(resized).toContain("██████╗");
         expect(resized).toContain("› first");
         expect(resized).toContain("• answer 4");
         expect(resized).toContain("Ask Rig to do anything");
