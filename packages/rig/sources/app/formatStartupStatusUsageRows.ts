@@ -21,13 +21,13 @@ export function formatStartupStatusUsageRows(
     }
 
     const rows = [
-        `usage: ${windows.map(({ label, value }) => `${label} ${value.percentLeft}% left`).join(" · ")}`,
+        `Usage: ${windows.map(({ label, value }) => `${label} ${value.percentLeft}% left`).join(" · ")}`,
     ];
     if (width < RESET_USAGE_WIDTH) return rows;
 
     const resets = windows.flatMap(({ label, value }) =>
         value.resetsIn === undefined ? [] : [`${label} in ${value.resetsIn}`],
     );
-    if (resets.length > 0) rows.push(`resets: ${resets.join(" · ")}`);
+    if (resets.length > 0) rows.push(`Resets: ${resets.join(" · ")}`);
     return rows;
 }

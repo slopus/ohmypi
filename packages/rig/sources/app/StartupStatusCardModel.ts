@@ -1,4 +1,5 @@
 export interface StartupStatusCardUsageWindow {
+    capturedAt?: number;
     percentLeft: number;
     resetsIn?: string;
 }

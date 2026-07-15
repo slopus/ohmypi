@@ -26,8 +26,8 @@ describe("renderStartupStatusCard", () => {
         expect(rendered).toContain("Model: GPT Test · Reasoning: High · Provider: Codex · Fast");
         expect(rendered).toContain("Workspace: /workspace · Environment: Local");
         expect(rendered).toContain("Access: Full access");
-        expect(rendered).toContain("usage: 5h 68% left · week 84% left");
-        expect(rendered).toContain("resets: 5h in 2h 14m · week in 4d 6h");
+        expect(rendered).toContain("Usage: 5h 68% left · week 84% left");
+        expect(rendered).toContain("Resets: 5h in 2h 14m · week in 4d 6h");
     });
 
     it("renders partial data and omits unavailable usage", () => {
@@ -40,8 +40,8 @@ describe("renderStartupStatusCard", () => {
                 width: 96,
             }).join("\n"),
         );
-        expect(partial).toContain("usage: week 84% left");
-        expect(partial).toContain("resets: week in 4d 6h");
+        expect(partial).toContain("Usage: week 84% left");
+        expect(partial).toContain("Resets: week in 4d 6h");
         expect(partial).not.toContain("5h");
 
         const unavailable = stripAnsi(
@@ -51,8 +51,8 @@ describe("renderStartupStatusCard", () => {
                 width: 96,
             }).join("\n"),
         );
-        expect(unavailable).not.toContain("usage:");
-        expect(unavailable).not.toContain("resets:");
+        expect(unavailable).not.toContain("Usage:");
+        expect(unavailable).not.toContain("Resets:");
     });
 
     it("keeps both percentages but drops reset countdowns at intermediate widths", () => {
@@ -69,8 +69,8 @@ describe("renderStartupStatusCard", () => {
             }).join("\n"),
         );
 
-        expect(rendered).toContain("usage: 5h 68% left · week 84% left");
-        expect(rendered).not.toContain("resets:");
+        expect(rendered).toContain("Usage: 5h 68% left · week 84% left");
+        expect(rendered).not.toContain("Resets:");
         expect(rendered).not.toContain("2h 14m");
         expect(rendered).not.toContain("4d 6h");
     });
@@ -98,7 +98,7 @@ describe("renderStartupStatusCard", () => {
         expect(rendered).toContain("Full access");
         expect(rendered).toContain("5h 68% left");
         expect(rendered).toContain("week 84% left");
-        expect(rendered).not.toContain("resets:");
+        expect(rendered).not.toContain("Resets:");
         expect(rendered).not.toContain("2h 14m");
         expect(rendered).not.toContain("Fast");
         expect(rendered).not.toContain("�");

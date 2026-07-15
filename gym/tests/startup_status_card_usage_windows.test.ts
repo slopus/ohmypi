@@ -29,8 +29,8 @@ describe("resolved startup status card usage windows", () => {
         const wide = await gym.terminal.waitUntil(
             (snapshot) =>
                 snapshot.text.includes("Rig 0.0.12 · New session") &&
-                snapshot.text.includes("usage: 5h 68% left · week 84% left") &&
-                snapshot.text.includes("resets: 5h in 2h 14m · week in 4d 6h") &&
+                snapshot.text.includes("Usage: 5h 68% left · week 84% left") &&
+                snapshot.text.includes("Resets: 5h in 2h 14m · week in 4d 6h") &&
                 snapshot.text.includes("Ask Rig"),
             "the complete two-window wide status card",
             30_000,
@@ -48,7 +48,7 @@ describe("resolved startup status card usage windows", () => {
             "both usage windows at nineteen columns",
             30_000,
         );
-        expect(narrow.text).not.toContain("resets:");
+        expect(narrow.text).not.toContain("Resets:");
         expect(narrow.text).not.toContain("2h 14m");
         expect(narrow.text).not.toContain("4d 6h");
         expect(narrow.rows.every((row) => visibleWidth(row) <= 19)).toBe(true);
@@ -62,13 +62,13 @@ describe("resolved startup status card usage windows", () => {
         const partial = await gym.terminal.waitUntil(
             (snapshot) =>
                 snapshot.text.includes("Rig 0.0.12 · New session") &&
-                snapshot.text.includes("usage: 5h 41% left") &&
+                snapshot.text.includes("Usage: 5h 41% left") &&
                 snapshot.text.includes("Ask Rig"),
             "the complete partial usage status card",
             30_000,
         );
         expect(partial.text).not.toContain("week");
-        expect(partial.text).not.toContain("resets:");
+        expect(partial.text).not.toContain("Resets:");
         await screenshot(partial, "usage-partial-wide.png");
     }, 120_000);
 
@@ -84,15 +84,15 @@ describe("resolved startup status card usage windows", () => {
             "the complete status card without usage data",
             30_000,
         );
-        expect(unavailable.text).not.toContain("usage:");
-        expect(unavailable.text).not.toContain("resets:");
+        expect(unavailable.text).not.toContain("Usage:");
+        expect(unavailable.text).not.toContain("Resets:");
         await screenshot(unavailable, "usage-unavailable-wide.png");
     }, 120_000);
 });
 
 async function createUsageGym(usage?: {
-    fiveHour?: { percentLeft: number; resetsIn?: string };
-    weekly?: { percentLeft: number; resetsIn?: string };
+    fiveHour?: { capturedAt?: number; percentLeft: number; resetsIn?: string };
+    weekly?: { capturedAt?: number; percentLeft: number; resetsIn?: string };
 }): Promise<Gym> {
     return createGym({
         cols: 96,
