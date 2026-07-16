@@ -13,16 +13,20 @@ export function replaceLastTurnToolResultImages(
             continue;
         }
 
-        for (let blockIndex = message.blocks.length - 1; blockIndex >= 0; blockIndex -= 1) {
-            const block = message.blocks[blockIndex];
-            if (block?.type !== "tool_result") {
-                continue;
-            }
-            if (!block.rendered.some((content) => content.type === "image")) {
-                return [];
+        const hasToolResult = message.blocks.some((block) => block.type === "tool_result");
+        if (!hasToolResult) continue;
+
+        let replacedImage = false;
+        const blocks = message.blocks.map((block) => {
+            if (
+                block.type !== "tool_result" ||
+                !block.rendered.some((content) => content.type === "image")
+            ) {
+                return block;
             }
 
-            const replacementBlock: ToolResultBlock = {
+            replacedImage = true;
+            return {
                 ...block,
                 display: replacementText,
                 rendered: block.rendered.map((content) =>
@@ -30,13 +34,13 @@ export function replaceLastTurnToolResultImages(
                         ? { type: "text" as const, text: replacementText }
                         : content,
                 ),
-            };
-            const blocks = [...message.blocks];
-            blocks[blockIndex] = replacementBlock;
-            const replacement: AgentMessage = { ...message, blocks };
-            messages[index] = replacement;
-            return [replacement];
-        }
+            } satisfies ToolResultBlock;
+        });
+        if (!replacedImage) return [];
+
+        const replacement: AgentMessage = { ...message, blocks };
+        messages[index] = replacement;
+        return [replacement];
     }
 
     return [];

@@ -55,6 +55,63 @@ describe("replaceLastTurnToolResultImages", () => {
             ],
         });
     });
+
+    it("replaces every image around text-only siblings in the latest parallel batch", () => {
+        const messages: Message[] = [
+            {
+                role: "user",
+                id: "user-1",
+                blocks: [{ type: "text", text: "Inspect the parallel results" }],
+            },
+            {
+                role: "agent",
+                id: "parallel-results",
+                blocks: [
+                    {
+                        type: "tool_result",
+                        toolCallId: "call-image-1",
+                        toolName: "view_image",
+                        rendered: [{ type: "image", mediaType: "image/png", data: "first" }],
+                        display: "Viewed first image",
+                    },
+                    {
+                        type: "tool_result",
+                        toolCallId: "call-image-2",
+                        toolName: "view_image",
+                        rendered: [{ type: "image", mediaType: "image/png", data: "second" }],
+                        display: "Viewed second image",
+                    },
+                    {
+                        type: "tool_result",
+                        toolCallId: "call-text",
+                        toolName: "read",
+                        rendered: [{ type: "text", text: "text result" }],
+                        display: "Read file",
+                    },
+                ],
+            },
+        ];
+
+        const replacements = replaceLastTurnToolResultImages(messages, "Invalid image");
+
+        expect(replacements).toHaveLength(1);
+        expect(messages[1]).toMatchObject({
+            blocks: [
+                {
+                    display: "Invalid image",
+                    rendered: [{ type: "text", text: "Invalid image" }],
+                },
+                {
+                    display: "Invalid image",
+                    rendered: [{ type: "text", text: "Invalid image" }],
+                },
+                {
+                    display: "Read file",
+                    rendered: [{ type: "text", text: "text result" }],
+                },
+            ],
+        });
+    });
 });
 
 function transcriptWithTwoImageResults(): Message[] {
