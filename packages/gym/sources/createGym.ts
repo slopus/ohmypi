@@ -135,8 +135,6 @@ export async function createGym(options: GymOptions): Promise<Gym> {
                 rows,
             },
         );
-        pty.onData((data) => startedGhostty.write(data));
-        startedGhostty.onPtyWrite((data) => pty.write(data));
         const startedGym = new Gym({
             containerName,
             ghostty: startedGhostty,

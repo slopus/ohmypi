@@ -3,6 +3,7 @@ import { readFile, rm } from "node:fs/promises";
 import { promisify } from "node:util";
 import type { IPty } from "@lydell/node-pty";
 
+import { connectGymTerminal } from "./connectGymTerminal.js";
 import { GhosttyTerminal } from "./GhosttyTerminal.js";
 import { GymTerminal } from "./GymTerminal.js";
 import type { InterceptingHttpProxy } from "./InterceptingHttpProxy.js";
@@ -18,6 +19,7 @@ export class Gym {
     readonly workspacePath: string;
 
     #containerName: string;
+    #disconnectTerminal: () => void;
     #disposed = false;
     #exit: Promise<{ exitCode: number; signal?: number }>;
     #ghostty: GhosttyTerminal;
@@ -34,6 +36,7 @@ export class Gym {
         workspacePath: string;
     }) {
         this.#containerName = options.containerName;
+        this.#disconnectTerminal = connectGymTerminal(options.pty, options.ghostty);
         this.#ghostty = options.ghostty;
         this.#homePath = options.homePath;
         this.#pty = options.pty;
@@ -49,6 +52,7 @@ export class Gym {
     async dispose(): Promise<void> {
         if (this.#disposed) return;
         this.#disposed = true;
+        this.#disconnectTerminal();
         this.#pty.kill();
         await execFileAsync("docker", ["rm", "--force", this.#containerName]).catch(() => {});
         this.#ghostty.close();
