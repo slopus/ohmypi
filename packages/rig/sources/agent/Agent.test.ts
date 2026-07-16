@@ -1038,6 +1038,83 @@ describe("Agent", () => {
         ]);
     });
 
+    it("preserves a tool result when aborting after execution completes", async () => {
+        const model = defineModel({
+            id: "openai/gpt-test",
+            name: "GPT Test",
+            thinkingLevels: ["off"],
+            defaultThinkingLevel: "off",
+        });
+        const provider = defineProvider({
+            id: "codex",
+            models: [model],
+            stream() {
+                return streamFor({
+                    role: "assistant",
+                    content: [
+                        {
+                            type: "toolCall",
+                            id: "call-complete",
+                            name: "complete",
+                            arguments: { value: "real result" },
+                        },
+                    ],
+                    api: "test",
+                    provider: "codex",
+                    model: model.id,
+                    usage: zeroUsage(),
+                    stopReason: "toolUse",
+                    timestamp: 1,
+                });
+            },
+        });
+        const completeTool = defineTool({
+            name: "complete",
+            label: "Complete",
+            description: "Completes immediately.",
+            arguments: Type.Object({ value: Type.String() }),
+            returnType: Type.Object({ value: Type.String() }),
+            shouldReviewInAutoMode: () => false,
+            execute(args: { value: string }) {
+                return args;
+            },
+            toLLM(result: { value: string }) {
+                return [{ type: "text", text: result.value }];
+            },
+            toUI(result: { value: string }) {
+                return `finished ${result.value}`;
+            },
+            locks: [],
+        });
+        const controller = new AbortController();
+        const harness = createJustBashToolHarness();
+        const agent = new Agent({
+            provider,
+            modelId: model.id,
+            context: harness.context,
+            tools: [completeTool],
+            printToConsole: false,
+            onEvent(event) {
+                if (event.type === "tool_execution_end") controller.abort();
+            },
+        });
+
+        const result = await agent.send("run the tool", { signal: controller.signal });
+
+        expect(result.stopReason).toBe("aborted");
+        expect(result.messages.at(-1)).toMatchObject({
+            role: "agent",
+            blocks: [
+                {
+                    type: "tool_result",
+                    toolCallId: "call-complete",
+                    rendered: [{ type: "text", text: "real result" }],
+                    display: "finished real result",
+                },
+            ],
+        });
+    });
+
     it("commits pending steering when inference is aborted", async () => {
         const model = defineModel({
             id: "openai/gpt-test",

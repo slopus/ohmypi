@@ -460,10 +460,16 @@ export async function runAgentLoop(options: RunAgentLoopOptions): Promise<AgentL
             return interrupted;
         }
 
-        const toolResultBlocks = await Promise.all(
+        const toolExecutionOutcomes = await Promise.all(
             toolCalls.map((toolCall) =>
                 toolLocks.run(resolveToolLockKeys(toolCall, toolsByName), async () => {
-                    if (options.signal?.aborted) return interruptedToolResultBlock(toolCall);
+                    if (options.signal?.aborted) {
+                        return {
+                            completedBeforeAbort: false,
+                            result: interruptedToolResultBlock(toolCall),
+                            toolCall,
+                        };
+                    }
                     await options.debug?.record("tool-call", {
                         iteration,
                         toolCall,
@@ -508,6 +514,7 @@ export async function runAgentLoop(options: RunAgentLoopOptions): Promise<AgentL
                         provider: options.provider,
                         ...(options.signal === undefined ? {} : { signal: options.signal }),
                     });
+                    const completedBeforeAbort = options.signal?.aborted !== true;
                     await options.debug?.record("tool-result", {
                         iteration,
                         result,
@@ -531,24 +538,16 @@ export async function runAgentLoop(options: RunAgentLoopOptions): Promise<AgentL
                         processes: toolContext.bash.activeSessions?.() ?? [],
                         running: toolContext.bash.activeSessionCount?.() ?? 0,
                     });
-                    return result;
+                    return { completedBeforeAbort, result, toolCall };
                 }),
             ),
         );
 
-        if (options.signal?.aborted) {
-            const interrupted = await appendInterruptedToolResults({
-                toolCalls,
-                transcript,
-                contextTranscript,
-                providerMessages,
-                idFactory,
-                now,
-                onMessage: options.onMessage,
-            });
-            await appendSteering(options, transcript, contextTranscript, providerMessages, now);
-            return interrupted;
-        }
+        const toolResultBlocks = toolExecutionOutcomes.map((outcome) =>
+            options.signal?.aborted && !outcome.completedBeforeAbort
+                ? interruptedToolResultBlock(outcome.toolCall)
+                : outcome.result,
+        );
 
         for (const resultBlock of toolResultBlocks) {
             providerMessages.push(toProviderToolResultMessage(resultBlock, now));
@@ -562,6 +561,14 @@ export async function runAgentLoop(options: RunAgentLoopOptions): Promise<AgentL
         transcript.push(toolResultMessage);
         contextTranscript.push(toolResultMessage);
         await options.onMessage?.(toolResultMessage);
+        if (options.signal?.aborted) {
+            await appendSteering(options, transcript, contextTranscript, providerMessages, now);
+            return {
+                messages: transcript,
+                contextMessages: contextTranscript,
+                stopReason: "aborted",
+            };
+        }
         await compactLoopContext(options, contextTranscript, providerMessages, model, now, {
             force: false,
             reportedTokens: assistantMessage.usage.totalTokens,
