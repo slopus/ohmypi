@@ -359,6 +359,7 @@ describe("CodingAssistantApp", () => {
             expect(abort).toHaveBeenCalledWith({
                 continuePendingSteering: true,
                 expectedRunId: "run-1",
+                steeringMessageIds: ["steer-1"],
             }),
         );
         expect(abort).toHaveBeenCalledTimes(1);

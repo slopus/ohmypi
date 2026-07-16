@@ -481,6 +481,7 @@ async function handleRequest(
     if (request.method === "POST" && route.name === "abort") {
         try {
             const expectedRunId = url.searchParams.get("expectedRunId") ?? undefined;
+            const steeringMessageIds = url.searchParams.getAll("steeringMessageId");
             sendJson<AbortRunResponse>(
                 response,
                 200,
@@ -488,6 +489,7 @@ async function handleRequest(
                     continuePendingSteering:
                         url.searchParams.get("continuePendingSteering") === "1",
                     ...(expectedRunId === undefined ? {} : { expectedRunId }),
+                    ...(steeringMessageIds.length === 0 ? {} : { steeringMessageIds }),
                 }),
             );
         } catch (error) {

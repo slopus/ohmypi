@@ -372,6 +372,7 @@ export interface AbortRunResponse {
 export interface AbortRunOptions {
     continuePendingSteering?: boolean;
     expectedRunId?: string;
+    steeringMessageIds?: readonly string[];
 }
 
 export type SessionEvent =

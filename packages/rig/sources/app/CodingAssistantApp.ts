@@ -255,8 +255,6 @@ interface LocalSteeringSubmission {
 }
 
 interface SteeringInterruptIntent {
-    accepted: boolean;
-    applied: boolean;
     runId: string;
 }
 
@@ -327,6 +325,7 @@ export class CodingAssistantApp implements Component, Focusable {
     #inFlightSteeringSubmissions = new Map<number, LocalSteeringSubmission>();
     #acceptedSteeringSubmissions: LocalSteeringSubmission[] = [];
     #rejectedSteeringSubmissions = new Map<number, LocalSteeringSubmission>();
+    #continuationRequestedSteeringMessageIds = new Set<string>();
     #nextSteeringSubmissionId = 1;
     #steeringInterruptIntent: SteeringInterruptIntent | undefined;
     #activeSessionRunId: string | undefined;
@@ -590,7 +589,6 @@ export class CodingAssistantApp implements Component, Focusable {
                     localSteering.runId = event.data.runId;
                 }
                 if (this.#steeringInterruptIntent?.runId === event.data.runId) {
-                    this.#steeringInterruptIntent.accepted = true;
                     this.#tryRequestSteeringInterrupt(event.data.runId);
                 }
                 this.#recordUserInput(event.createdAt);
@@ -631,15 +629,8 @@ export class CodingAssistantApp implements Component, Focusable {
                 const localSteering = this.#localSteeringSubmission(messageId);
                 if (localSteering !== undefined) localSteering.applied = true;
             }
-            this.#acceptedSteeringSubmissions = this.#acceptedSteeringSubmissions.filter(
-                (submission) => !submission.applied,
-            );
             this.#promotePendingSteeringMessages(event.data.messageIds);
             if (this.#steeringInterruptIntent?.runId === event.data.runId) {
-                this.#steeringInterruptIntent.applied = true;
-                this.#steeringInterruptIntent.accepted = this.#hasAcceptedSteering(
-                    event.data.runId,
-                );
                 this.#tryRequestSteeringInterrupt(event.data.runId);
             }
             return;
@@ -2266,48 +2257,18 @@ export class CodingAssistantApp implements Component, Focusable {
             [...this.#inFlightSteeringSubmissions.values()].some(
                 (submission) => submission.runId === runId,
             ) ||
-            this.#acceptedSteeringSubmissions.some((submission) => submission.runId === runId) ||
-            this.#pendingSteeringMessages.some((pending) => pending.runId === runId)
+            this.#steeringMessageIdsForRun(runId).length > 0
         );
     }
 
     #requestSteeringInterrupt(runId: string): void {
-        const accepted = this.#hasAcceptedSteering(runId);
-        const applied = this.#hasAppliedLocalSteering(runId);
-        if (this.#steeringInterruptIntent?.runId === runId) {
-            if (accepted) this.#steeringInterruptIntent.accepted = true;
-            if (applied) this.#steeringInterruptIntent.applied = true;
-        } else {
-            this.#steeringInterruptIntent = { accepted, applied, runId };
+        if (this.#steeringInterruptIntent?.runId !== runId) {
+            this.#steeringInterruptIntent = { runId };
         }
         this.#interruptSettlementRunId = runId;
         this.#statusText = "Sending pending messages";
         this.#requestRender();
         this.#tryRequestSteeringInterrupt(runId);
-    }
-
-    #hasAcceptedSteering(runId: string): boolean {
-        return (
-            [...this.#inFlightSteeringSubmissions.values()].some(
-                (submission) =>
-                    submission.runId === runId && submission.accepted && !submission.applied,
-            ) ||
-            this.#acceptedSteeringSubmissions.some(
-                (submission) => submission.runId === runId && !submission.applied,
-            ) ||
-            this.#pendingSteeringMessages.some((pending) => pending.runId === runId)
-        );
-    }
-
-    #hasAppliedLocalSteering(runId: string): boolean {
-        return (
-            [...this.#inFlightSteeringSubmissions.values()].some(
-                (submission) => submission.runId === runId && submission.applied,
-            ) ||
-            this.#acceptedSteeringSubmissions.some(
-                (submission) => submission.runId === runId && submission.applied,
-            )
-        );
     }
 
     #tryRequestSteeringInterrupt(runId: string): void {
@@ -2324,18 +2285,30 @@ export class CodingAssistantApp implements Component, Focusable {
             this.#clearSteeringInterrupt(runId);
             return;
         }
-        if (!intent.accepted) {
-            if (intent.applied) {
-                this.#steeringInterruptIntent = undefined;
-                this.#requestSessionInterrupt(false);
-                return;
-            }
+        const steeringMessageIds = this.#steeringMessageIdsForRun(runId);
+        if (steeringMessageIds.length === 0) {
             this.#clearSteeringInterrupt(runId);
             return;
         }
 
         this.#steeringInterruptIntent = undefined;
-        this.#requestSessionInterrupt(true);
+        this.#requestSessionInterrupt(true, steeringMessageIds);
+    }
+
+    #steeringMessageIdsForRun(runId: string): string[] {
+        const messageIds = [
+            ...this.#acceptedSteeringSubmissions
+                .filter((submission) => submission.runId === runId && submission.accepted)
+                .sort((left, right) => left.id - right.id)
+                .map((submission) => submission.messageId),
+            ...this.#pendingSteeringMessages
+                .filter((pending) => pending.runId === runId)
+                .sort((left, right) => left.transcriptIndex - right.transcriptIndex)
+                .map((pending) => pending.id),
+        ];
+        return [...new Set(messageIds)].filter(
+            (messageId) => !this.#continuationRequestedSteeringMessageIds.has(messageId),
+        );
     }
 
     #clearSteeringInterrupt(runId: string): void {
@@ -2352,18 +2325,27 @@ export class CodingAssistantApp implements Component, Focusable {
         this.#requestRender();
     }
 
-    #requestSessionInterrupt(continuePendingSteering: boolean): void {
+    #requestSessionInterrupt(
+        continuePendingSteering: boolean,
+        steeringMessageIds: readonly string[] = [],
+    ): void {
         if (this.#agent.abort === undefined || this.#interruptRequestInFlight) return;
         this.#interruptRequestInFlight = true;
         this.#interruptSettlementRunId = this.#activeSessionRunId;
         this.#statusText = continuePendingSteering ? "Sending pending messages" : "Stopping";
         this.#requestRender();
+        if (continuePendingSteering) {
+            for (const messageId of steeringMessageIds) {
+                this.#continuationRequestedSteeringMessageIds.add(messageId);
+            }
+        }
         const request = continuePendingSteering
             ? this.#agent.abort({
                   continuePendingSteering: true,
                   ...(this.#activeSessionRunId === undefined
                       ? {}
                       : { expectedRunId: this.#activeSessionRunId }),
+                  steeringMessageIds,
               })
             : this.#agent.abort(
                   this.#activeSessionRunId === undefined
@@ -2371,10 +2353,18 @@ export class CodingAssistantApp implements Component, Focusable {
                       : { expectedRunId: this.#activeSessionRunId },
               );
         void request
-            .then(() => {
+            .then((response) => {
+                if (continuePendingSteering && response.continued !== true) {
+                    for (const messageId of steeringMessageIds) {
+                        this.#continuationRequestedSteeringMessageIds.delete(messageId);
+                    }
+                }
                 if (this.#running) this.#statusText = "Running";
             })
             .catch((error: unknown) => {
+                for (const messageId of steeringMessageIds) {
+                    this.#continuationRequestedSteeringMessageIds.delete(messageId);
+                }
                 this.#interruptSettlementRunId = undefined;
                 this.#statusText = "Error";
                 this.#appendEntry({ role: "error", text: this.#formatError(error) });
@@ -2496,15 +2486,11 @@ export class CodingAssistantApp implements Component, Focusable {
             if (local.runEnded && !local.applied) {
                 this.#rejectedSteeringSubmissions.set(local.id, local);
                 this.#removePendingSteeringMessage(local.messageId);
-            } else if (!local.runEnded && !local.applied) {
-                this.#acceptedSteeringSubmissions.push(local);
-            }
-            if (
-                this.#steeringInterruptIntent?.runId === local.runId &&
+            } else if (
                 !local.runEnded &&
-                !local.applied
+                !this.#acceptedSteeringSubmissions.some((submission) => submission.id === local.id)
             ) {
-                this.#steeringInterruptIntent.accepted = true;
+                this.#acceptedSteeringSubmissions.push(local);
             }
         } else {
             this.#rejectedSteeringSubmissions.set(local.id, local);
@@ -2555,6 +2541,19 @@ export class CodingAssistantApp implements Component, Focusable {
     }
 
     #finishLocalSteeringRun(runId: string): void {
+        for (const submission of [
+            ...this.#inFlightSteeringSubmissions.values(),
+            ...this.#acceptedSteeringSubmissions,
+        ]) {
+            if (submission.runId === runId) {
+                this.#continuationRequestedSteeringMessageIds.delete(submission.messageId);
+            }
+        }
+        for (const pending of this.#pendingSteeringMessages) {
+            if (pending.runId === runId) {
+                this.#continuationRequestedSteeringMessageIds.delete(pending.id);
+            }
+        }
         for (const submission of this.#inFlightSteeringSubmissions.values()) {
             if (submission.runId === runId) submission.runEnded = true;
         }
@@ -2584,6 +2583,7 @@ export class CodingAssistantApp implements Component, Focusable {
         this.#inFlightSteeringSubmissions.clear();
         this.#acceptedSteeringSubmissions = [];
         this.#rejectedSteeringSubmissions.clear();
+        this.#continuationRequestedSteeringMessageIds.clear();
         this.#steeringInterruptIntent = undefined;
         if (!this.#interruptRequestInFlight) this.#interruptSettlementRunId = undefined;
     }

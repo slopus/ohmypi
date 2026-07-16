@@ -163,6 +163,150 @@ describe("InMemorySession abort", () => {
         expect(events.filter((event) => event.type === "run_finished")).toHaveLength(1);
     });
 
+    it("continues from already-applied steering without storing or applying it again", async () => {
+        const firstInferenceStarted = deferred<void>();
+        const releaseFirstInference = deferred<void>();
+        const secondInferenceStarted = deferred<void>();
+        const contexts: Context[] = [];
+        const model = defineModel({
+            defaultThinkingLevel: "off",
+            id: "test/applied-steering-continuation",
+            name: "Applied steering continuation",
+            thinkingLevels: ["off"],
+        });
+        const provider = defineProvider({
+            id: "test",
+            models: [model],
+            stream(_model, context, options) {
+                contexts.push(context);
+                if (contexts.length === 1) {
+                    return gatedToolCallStream(
+                        model.id,
+                        firstInferenceStarted.resolve,
+                        releaseFirstInference.promise,
+                    );
+                }
+                if (contexts.length === 2) {
+                    return abortableStream(options?.signal, secondInferenceStarted.resolve);
+                }
+                return responseStream("Continued from applied steering.");
+            },
+        });
+        const session = createSession(provider, model, "/tmp/rig-applied-steering");
+        const submitted = session.submit({ text: "Start the applied steering run." });
+        await firstInferenceStarted.promise;
+        session.steer({
+            clientSubmissionId: "already-applied",
+            expectedRunId: submitted.runId,
+            text: "Use this exactly once.",
+        });
+        releaseFirstInference.resolve();
+        await secondInferenceStarted.promise;
+        expect(
+            session.events
+                .since(undefined)
+                ?.filter(
+                    (event) =>
+                        event.type === "steering_applied" &&
+                        event.data.messageIds.includes("already-applied"),
+                ),
+        ).toHaveLength(1);
+
+        await expect(
+            session.abort({
+                continuePendingSteering: true,
+                expectedRunId: submitted.runId,
+                pauseDescendants: false,
+                steeringMessageIds: ["already-applied"],
+            }),
+        ).resolves.toMatchObject({ aborted: true, continued: true });
+        await expect(session.waitForRun(submitted.runId)).resolves.toEqual({
+            status: "completed",
+        });
+
+        expect(contexts).toHaveLength(3);
+        expect(
+            userTexts(contexts[2]).filter((text) => text === "Use this exactly once."),
+        ).toHaveLength(1);
+        const events = session.events.since(undefined) ?? [];
+        expect(events.filter((event) => event.type === "abort_requested")).toHaveLength(1);
+        expect(
+            events.filter(
+                (event) =>
+                    event.type === "message_submitted" &&
+                    event.data.message.id === "already-applied",
+            ),
+        ).toHaveLength(1);
+        expect(
+            events.flatMap((event) =>
+                event.type === "steering_applied"
+                    ? event.data.messageIds.filter((id) => id === "already-applied")
+                    : [],
+            ),
+        ).toHaveLength(1);
+    });
+
+    it("continues mixed applied and pending steering in FIFO order exactly once", async () => {
+        const firstInferenceStarted = deferred<void>();
+        const releaseFirstInference = deferred<void>();
+        const secondInferenceStarted = deferred<void>();
+        const contexts: Context[] = [];
+        const model = defineModel({
+            defaultThinkingLevel: "off",
+            id: "test/mixed-steering-continuation",
+            name: "Mixed steering continuation",
+            thinkingLevels: ["off"],
+        });
+        const provider = defineProvider({
+            id: "test",
+            models: [model],
+            stream(_model, context, options) {
+                contexts.push(context);
+                if (contexts.length === 1) {
+                    return gatedToolCallStream(
+                        model.id,
+                        firstInferenceStarted.resolve,
+                        releaseFirstInference.promise,
+                    );
+                }
+                if (contexts.length === 2) {
+                    return abortableStream(options?.signal, secondInferenceStarted.resolve);
+                }
+                return responseStream("Continued mixed steering.");
+            },
+        });
+        const session = createSession(provider, model, "/tmp/rig-mixed-steering");
+        const submitted = session.submit({ text: "Start the mixed steering run." });
+        await firstInferenceStarted.promise;
+        session.steer({ clientSubmissionId: "applied-first", text: "Applied first." });
+        releaseFirstInference.resolve();
+        await secondInferenceStarted.promise;
+        session.steer({ clientSubmissionId: "pending-second", text: "Pending second." });
+
+        await expect(
+            session.abort({
+                continuePendingSteering: true,
+                expectedRunId: submitted.runId,
+                pauseDescendants: false,
+                steeringMessageIds: ["applied-first", "pending-second"],
+            }),
+        ).resolves.toMatchObject({ aborted: true, continued: true });
+        await expect(session.waitForRun(submitted.runId)).resolves.toEqual({
+            status: "completed",
+        });
+
+        const continuedTexts = userTexts(contexts[2]);
+        expect(continuedTexts.filter((text) => text === "Applied first.")).toHaveLength(1);
+        expect(continuedTexts.filter((text) => text === "Pending second.")).toHaveLength(1);
+        expect(continuedTexts.indexOf("Applied first.")).toBeLessThan(
+            continuedTexts.indexOf("Pending second."),
+        );
+        const appliedIds = session.events
+            .since(undefined)
+            ?.flatMap((event) => (event.type === "steering_applied" ? event.data.messageIds : []));
+        expect(appliedIds).toEqual(["applied-first", "pending-second"]);
+    });
+
     it("coalesces overlapping interrupts and retains steering submitted during settlement", async () => {
         const started = deferred<void>();
         const releaseDescendants = deferred<number>();
@@ -303,8 +447,61 @@ describe("InMemorySession abort", () => {
                         event.type === "message_submitted" && event.data.delivery === "steer",
                 ),
         ).toHaveLength(0);
+        await expect(
+            session.abort({
+                continuePendingSteering: true,
+                expectedRunId: replacement.runId,
+                steeringMessageIds: ["steering-from-the-finished-run"],
+            }),
+        ).resolves.toEqual({ aborted: false });
+        expect(session.summary()).toMatchObject({ status: "running" });
 
         await expect(session.abort({ expectedRunId: replacement.runId })).resolves.toMatchObject({
+            aborted: true,
+        });
+    });
+
+    it("does not continue from notification steering IDs", async () => {
+        const started = deferred<void>();
+        const model = defineModel({
+            defaultThinkingLevel: "off",
+            id: "test/notification-continuation",
+            name: "Notification continuation",
+            thinkingLevels: ["off"],
+        });
+        const provider = defineProvider({
+            id: "test",
+            models: [model],
+            stream(_model, _context, options) {
+                return abortableStream(options?.signal, started.resolve);
+            },
+        });
+        const session = createSession(provider, model, "/tmp/rig-notification-continuation");
+        const submitted = session.submit({ text: "Keep running." });
+        await started.promise;
+        const notification = session.deliverNotification({ text: "Background work completed." });
+        const notificationEvent = session.events
+            .since(undefined)
+            ?.find((event) => event.id === notification.eventId);
+        expect(notificationEvent?.type).toBe("message_submitted");
+        const notificationMessageId =
+            notificationEvent?.type === "message_submitted"
+                ? notificationEvent.data.message.id
+                : "missing";
+
+        await expect(
+            session.abort({
+                continuePendingSteering: true,
+                expectedRunId: submitted.runId,
+                steeringMessageIds: [notificationMessageId],
+            }),
+        ).resolves.toEqual({ aborted: false });
+        expect(session.summary()).toMatchObject({ status: "running" });
+        expect(
+            session.events.since(undefined)?.filter((event) => event.type === "abort_requested"),
+        ).toHaveLength(0);
+
+        await expect(session.abort({ expectedRunId: submitted.runId })).resolves.toMatchObject({
             aborted: true,
         });
     });
@@ -400,6 +597,65 @@ function createRuntime(
         cwd: options.cwd,
         processManager,
         provider,
+    };
+}
+
+function createSession(
+    provider: ReturnType<typeof defineProvider>,
+    model: ReturnType<typeof defineModel>,
+    cwd: string,
+): InMemorySession {
+    return new InMemorySession({
+        createEventId: createEventIdFactory(),
+        createRuntime: (options) => createRuntime(options, provider),
+        modelCatalog: {
+            defaultModelId: model.id,
+            defaultProviderId: provider.id,
+            models: [model],
+            providers: [{ models: [model], providerId: provider.id }],
+        },
+        request: { cwd, modelId: model.id },
+    });
+}
+
+function userTexts(context: Context | undefined): string[] {
+    return (
+        context?.messages.flatMap((message) =>
+            message.role === "user" && Array.isArray(message.content)
+                ? message.content.flatMap((block) => (block.type === "text" ? [block.text] : []))
+                : [],
+        ) ?? []
+    );
+}
+
+function gatedToolCallStream(
+    model: string,
+    onStart: () => void,
+    release: Promise<void>,
+): InferenceStream {
+    const message: AssistantMessage = {
+        ...assistantMessage("", model),
+        content: [
+            {
+                arguments: {},
+                id: "unknown-boundary-tool",
+                name: "unknown-boundary-tool",
+                type: "toolCall",
+            },
+        ],
+        stopReason: "toolUse",
+    };
+    return {
+        async *[Symbol.asyncIterator]() {
+            onStart();
+            await release;
+            yield { partial: message, type: "start" as const };
+            yield { message, reason: "toolUse" as const, type: "done" as const };
+        },
+        async result() {
+            await release;
+            return message;
+        },
     };
 }
 

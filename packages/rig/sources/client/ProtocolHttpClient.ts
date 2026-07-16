@@ -86,6 +86,9 @@ export class ProtocolHttpClient {
         if (options.expectedRunId !== undefined) {
             parameters.set("expectedRunId", options.expectedRunId);
         }
+        for (const messageId of options.steeringMessageIds ?? []) {
+            parameters.append("steeringMessageId", messageId);
+        }
         const query = parameters.size > 0 ? `?${parameters.toString()}` : "";
         return this.#requestJson(
             "POST",

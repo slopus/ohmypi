@@ -12,6 +12,85 @@ afterEach(async () => {
 });
 
 describe("steering submit and immediate Escape", () => {
+    it("continues mixed already-applied and coalesced delayed steering once", async () => {
+        const appliedMessage = "Steering applied before coalesced Escape.";
+        const delayedMessage = "Steering delayed in the coalesced Escape burst.";
+        const messages = [appliedMessage, delayedMessage];
+        const releaseAppliedBoundary = deferred<void>();
+        const releaseContinuation = deferred<void>();
+        const gym = await createGym({
+            inference: async (request, callIndex) => {
+                if (callIndex === 0) {
+                    await releaseAppliedBoundary.promise;
+                    return {
+                        content: [
+                            {
+                                arguments: { cmd: "printf 'APPLIED_STEERING_BOUNDARY\\n'" },
+                                id: "applied-steering-boundary",
+                                name: "exec_command",
+                                type: "toolCall",
+                            },
+                        ],
+                    };
+                }
+                if (callIndex === 1) {
+                    return {
+                        content: [{ text: "UNREACHABLE_AFTER_APPLIED_STEERING", type: "text" }],
+                        delayMs: 60_000,
+                    };
+                }
+
+                expect(callIndex).toBe(2);
+                const continuedTexts = request.context.messages.flatMap(userText);
+                expect(continuedTexts.filter((text) => messages.includes(text))).toEqual(messages);
+                await releaseContinuation.promise;
+                return { content: [{ text: "MIXED_STEERING_RACE_CONTINUED", type: "text" }] };
+            },
+            rows: 40,
+        });
+        running.add(gym);
+
+        submit(gym, "Start a run for mixed applied steering.");
+        await gym.terminal.waitForText("esc to interrupt", 30_000);
+        submit(gym, appliedMessage);
+        await gym.terminal.waitForText("Messages to be submitted after next tool call", 30_000);
+        releaseAppliedBoundary.resolve();
+        await gym.terminal.waitUntil(
+            (snapshot) =>
+                agentRequests(gym).length === 2 &&
+                snapshot.rows.filter((row) => row.trim() === `› ${appliedMessage}`).length === 1 &&
+                !snapshot.text.includes("Messages to be submitted after next tool call"),
+            "the first steering message to be applied before Escape",
+            30_000,
+        );
+
+        gym.terminal.write(`${delayedMessage}\r\x1b\x1b`);
+        const continued = await gym.terminal.waitUntil(
+            (snapshot) =>
+                agentRequests(gym).length === 3 &&
+                messages.every(
+                    (message) =>
+                        snapshot.rows.filter((row) => row.trim() === `› ${message}`).length === 1,
+                ) &&
+                !snapshot.text.includes("Messages to be submitted after next tool call"),
+            "applied and delayed steering to continue from one coalesced Escape burst",
+            30_000,
+        );
+        expect(continued.text).not.toContain("Session interrupted");
+
+        const events = await readRaceEvents(gym);
+        expect(events.abortRequested).toBe(1);
+        expect(events.submittedTexts).toEqual(messages);
+        expect(events.appliedCounts).toEqual([1, 1]);
+        expect(events.firstAppliedBeforeSecondSubmitted).toBe(true);
+        expect(events.pendingSubmittedIds).toEqual([]);
+        await screenshot(gym, "mixed-applied-and-coalesced-delayed-continued.png");
+
+        releaseContinuation.resolve();
+        await gym.terminal.waitForText("MIXED_STEERING_RACE_CONTINUED", 30_000);
+        expect(agentRequests(gym)).toHaveLength(3);
+    }, 120_000);
+
     it.each([
         {
             label: "coalesced PTY burst",
@@ -138,6 +217,7 @@ function userText(message: { role: string; content: unknown }): string[] {
 async function readRaceEvents(gym: Gym): Promise<{
     abortRequested: number;
     appliedCounts: number[];
+    firstAppliedBeforeSecondSubmitted: boolean;
     pendingSubmittedIds: string[];
     submittedTexts: string[];
 }> {
@@ -157,10 +237,18 @@ const appliedIds = events.flatMap((event) =>
   event.type === "steering_applied" ? event.data.messageIds : []
 );
 const submittedIds = submitted.map((event) => event.data.message.id);
+const firstAppliedIndex = events.findIndex((event) =>
+  event.type === "steering_applied" && event.data.messageIds.includes(submittedIds[0])
+);
+const secondSubmittedIndex = events.findIndex((event) =>
+  event.type === "message_submitted" && event.data.message.id === submittedIds[1]
+);
 database.close();
 process.stdout.write(JSON.stringify({
   abortRequested: events.filter((event) => event.type === "abort_requested").length,
   appliedCounts: submittedIds.map((id) => appliedIds.filter((appliedId) => appliedId === id).length),
+  firstAppliedBeforeSecondSubmitted:
+    firstAppliedIndex >= 0 && secondSubmittedIndex >= 0 && firstAppliedIndex < secondSubmittedIndex,
   pendingSubmittedIds: submittedIds.filter((id) => !appliedIds.includes(id)),
   submittedTexts: submitted.map((event) => event.data.displayText),
 }));
@@ -170,6 +258,7 @@ process.stdout.write(JSON.stringify({
     return JSON.parse(result.stdout) as {
         abortRequested: number;
         appliedCounts: number[];
+        firstAppliedBeforeSecondSubmitted: boolean;
         pendingSubmittedIds: string[];
         submittedTexts: string[];
     };

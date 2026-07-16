@@ -85,6 +85,7 @@ import { generateSessionMetadata } from "./generateSessionMetadata.js";
 import { createGoalTitle } from "./createGoalTitle.js";
 import { getProviderIdForModel } from "./getProviderIdForModel.js";
 import { resolveInitialModelSelection } from "./resolveInitialModelSelection.js";
+import { resolveSteeringContinuationMessageIds } from "./resolveSteeringContinuationMessageIds.js";
 import { SessionEventLog } from "./SessionEventLog.js";
 import type { AgentSessionManager } from "./AgentSessionManager.js";
 import type { DockerExecutionConfig } from "../execution/index.js";
@@ -462,6 +463,7 @@ export class InMemorySession {
             continuePendingSteering?: boolean;
             expectedRunId?: string;
             pauseDescendants?: boolean;
+            steeringMessageIds?: readonly string[];
         } = {},
     ): Promise<AbortRunResponse> {
         if (
@@ -483,21 +485,32 @@ export class InMemorySession {
         continuePendingSteering?: boolean;
         expectedRunId?: string;
         pauseDescendants?: boolean;
+        steeringMessageIds?: readonly string[];
     }): Promise<AbortRunResponse> {
         const runId = this.#activeRun?.runId;
         if (options.expectedRunId !== undefined && runId !== options.expectedRunId) {
             return { aborted: false };
         }
-        const shouldContinuePendingSteering =
-            options.continuePendingSteering === true &&
-            runId !== undefined &&
-            [...this.#pendingSteeringMessages.values()].some((pending) => pending.runId === runId);
+        const continuationMessageIds =
+            options.continuePendingSteering === true && runId !== undefined
+                ? resolveSteeringContinuationMessageIds({
+                      events: this.events.since(undefined) ?? [],
+                      pendingMessageIds: new Set(
+                          [...this.#pendingSteeringMessages].flatMap(([messageId, pending]) =>
+                              pending.runId === runId ? [messageId] : [],
+                          ),
+                      ),
+                      requestedMessageIds: options.steeringMessageIds,
+                      runId,
+                  })
+                : undefined;
+        const shouldContinuePendingSteering = continuationMessageIds !== undefined;
         if (
             options.continuePendingSteering === true &&
             runId !== undefined &&
             !shouldContinuePendingSteering
         ) {
-            return { aborted: false, continued: true };
+            return { aborted: false };
         }
         let continuation: PendingSteeringContinuation | undefined;
         if (shouldContinuePendingSteering && runId !== undefined) {

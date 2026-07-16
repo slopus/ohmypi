@@ -16,6 +16,7 @@ describe("CodingAssistantApp steering submit and Escape race", () => {
         const { app } = createRaceApp({ abort, steer });
 
         submit(app, "Accept this direction before interrupting.");
+        const messageId = steeringMessageId(steer);
         app.handleInput("\x1b");
         app.handleInput("\x1b");
 
@@ -29,6 +30,7 @@ describe("CodingAssistantApp steering submit and Escape race", () => {
         expect(abort).toHaveBeenCalledWith({
             continuePendingSteering: true,
             expectedRunId: "run-1",
+            steeringMessageIds: [messageId],
         });
     });
 
@@ -44,6 +46,7 @@ describe("CodingAssistantApp steering submit and Escape race", () => {
 
         submit(app, "First rapid direction.");
         submit(app, "Second rapid direction.");
+        const messageIds = [steeringMessageId(steer, 0), steeringMessageId(steer, 1)];
         app.handleInput("\x1b");
 
         expect(steer.mock.calls.map(([content]) => content)).toEqual([
@@ -60,6 +63,7 @@ describe("CodingAssistantApp steering submit and Escape race", () => {
         expect(abort).toHaveBeenCalledWith({
             continuePendingSteering: true,
             expectedRunId: "run-1",
+            steeringMessageIds: messageIds,
         });
     });
 
@@ -269,6 +273,7 @@ describe("CodingAssistantApp steering submit and Escape race", () => {
         expect(abort).toHaveBeenCalledWith({
             continuePendingSteering: true,
             expectedRunId: "run-1",
+            steeringMessageIds: [firstId, secondId],
         });
         const rendered = stripAnsi(app.render(100).join("\n"));
         expect(rendered).not.toContain("Concurrent A.\n  Concurrent A.");
@@ -325,7 +330,7 @@ describe("CodingAssistantApp steering submit and Escape race", () => {
         expect(rendered).not.toContain("Messages to be submitted after next tool call");
     });
 
-    it("does not recreate accepted state when steering is applied before HTTP settles", async () => {
+    it("continues once when accepted steering is already applied before repeated Escape", async () => {
         const acceptance = deferred<{
             eventId: string;
             runId: string;
@@ -337,7 +342,6 @@ describe("CodingAssistantApp steering submit and Escape race", () => {
         const text = "Apply before the response settles.";
 
         submit(app, text);
-        app.handleInput("\x1b");
         const messageId = steeringMessageId(steer);
         app.applySessionEvent({
             createdAt: 2,
@@ -369,8 +373,16 @@ describe("CodingAssistantApp steering submit and Escape race", () => {
         });
 
         await app.waitForIdle();
+        expect(abort).not.toHaveBeenCalled();
+        app.handleInput("\x1b");
+        app.handleInput("\x1b");
+        await vi.waitFor(() => expect(abort).toHaveBeenCalledOnce());
         expect(abort).toHaveBeenCalledOnce();
-        expect(abort).toHaveBeenCalledWith({ expectedRunId: "run-1" });
+        expect(abort).toHaveBeenCalledWith({
+            continuePendingSteering: true,
+            expectedRunId: "run-1",
+            steeringMessageIds: [messageId],
+        });
         const rendered = stripAnsi(app.render(100).join("\n"));
         expect(rendered.match(new RegExp(`› ${text}`, "gu"))).toHaveLength(1);
         expect(rendered).not.toContain("Messages to be submitted after next tool call");
@@ -408,6 +420,7 @@ describe("CodingAssistantApp steering submit and Escape race", () => {
             expect(abort).toHaveBeenCalledWith({
                 continuePendingSteering: true,
                 expectedRunId: "run-1",
+                steeringMessageIds: [messageId],
             }),
         );
         const rendered = stripAnsi(app.render(100).join("\n"));

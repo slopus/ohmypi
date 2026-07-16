@@ -27,11 +27,16 @@ describe("ProtocolHttpClient", () => {
                 client.abort("session-1", {
                     continuePendingSteering: true,
                     expectedRunId: "run/replaced 1",
+                    steeringMessageIds: ["steer/one", "steer two"],
                 }),
             ).resolves.toEqual({ aborted: false });
             expect(requestedUrl?.pathname).toBe("/sessions/session-1/abort");
             expect(requestedUrl?.searchParams.get("continuePendingSteering")).toBe("1");
             expect(requestedUrl?.searchParams.get("expectedRunId")).toBe("run/replaced 1");
+            expect(requestedUrl?.searchParams.getAll("steeringMessageId")).toEqual([
+                "steer/one",
+                "steer two",
+            ]);
         } finally {
             await new Promise<void>((resolve) => server.close(() => resolve()));
             await rm(directory, { recursive: true, force: true });
