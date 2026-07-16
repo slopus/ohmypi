@@ -15,6 +15,7 @@ import { applyCodexImageDetailsToPayload } from "./applyCodexImageDetailsToPaylo
 import { classifyCodexErrorCode } from "./classifyCodexErrorCode.js";
 import { collectOriginalImageUrls } from "./collectOriginalImageUrls.js";
 import { CODEX_ULTRA_INSTRUCTIONS } from "./codexUltraInstructions.js";
+import { createPiCodexModel } from "./createPiCodexModel.js";
 import {
     modelOpenaiGpt54,
     modelOpenaiGpt55,
@@ -24,7 +25,7 @@ import {
 } from "./models.js";
 import { normalizeCodexThinkingLevel } from "./normalizeCodexThinkingLevel.js";
 import { toPiContext, wrapPiStream } from "./pi-bridge.js";
-import { defineProvider, type Model, type Provider, type StreamOptions } from "./types.js";
+import { defineProvider, type Provider, type StreamOptions } from "./types.js";
 import { createProviderQuotaCache } from "./createProviderQuotaCache.js";
 import { fetchCodexProviderQuota } from "./fetchCodexProviderQuota.js";
 import { getCodexAuthPath } from "./getCodexAuthPath.js";
@@ -54,8 +55,6 @@ const codexModels = [
     modelOpenaiGpt55,
     modelOpenaiGpt54,
 ] as const;
-const codexThinkingLevels = ["minimal", "low", "medium", "high", "xhigh", "max", "ultra"];
-
 export function createCodexProvider(options: CodexProviderOptions = {}): Provider {
     const authPath = getCodexAuthPath({
         ...(options.codexAuthPath === undefined ? {} : { authFile: options.codexAuthPath }),
@@ -67,7 +66,7 @@ export function createCodexProvider(options: CodexProviderOptions = {}): Provide
     for (const model of codexModels) {
         const piModelId = toPiCodexModelId(model.id);
         if (!piModelById.has(piModelId)) {
-            piModelById.set(piModelId, createPiCodexModel(model));
+            piModelById.set(piModelId, createPiCodexModel(model, piModelId));
         }
     }
     if (options.baseUrl !== undefined) {
@@ -158,32 +157,6 @@ function readLocalCodexAccessToken(authPath: string): string | undefined {
     } catch {
         return undefined;
     }
-}
-
-function createPiCodexModel(model: Model): PiModel<"openai-codex-responses"> {
-    return {
-        id: toPiCodexModelId(model.id),
-        name: model.name,
-        api: "openai-codex-responses",
-        provider: CODEX_PROVIDER_ID,
-        baseUrl: "https://chatgpt.com/backend-api",
-        reasoning: true,
-        thinkingLevelMap: Object.fromEntries(
-            codexThinkingLevels.map((level) => [
-                level,
-                model.thinkingLevels.includes(level) ? level : null,
-            ]),
-        ),
-        input: ["text", "image"],
-        cost: {
-            input: 5,
-            output: 30,
-            cacheRead: 0.5,
-            cacheWrite: 0,
-        },
-        contextWindow: 372000,
-        maxTokens: 128000,
-    } as PiModel<"openai-codex-responses">;
 }
 
 function toPiStreamOptions(
