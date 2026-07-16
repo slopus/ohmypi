@@ -9,6 +9,7 @@ export interface UserInputQuestion {
     multiSelect: boolean;
     options: readonly UserInputOption[];
     question: string;
+    required?: boolean;
 }
 
 export interface UserInputRequest {

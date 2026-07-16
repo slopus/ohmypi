@@ -1040,6 +1040,12 @@ export class InMemorySession {
         for (const question of pending.request.questions) {
             const selected = (responseAnswers as Record<string, unknown>)[question.id];
             if (
+                question.required === false &&
+                (selected === undefined || (Array.isArray(selected) && selected.length === 0))
+            ) {
+                continue;
+            }
+            if (
                 !Array.isArray(selected) ||
                 selected.length === 0 ||
                 selected.some((answer) => typeof answer !== "string" || answer.trim() === "")

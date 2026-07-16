@@ -4331,6 +4331,13 @@ export class CodingAssistantApp implements Component, Focusable {
                 description: `Submit ${active.selected.size} selected answer${active.selected.size === 1 ? "" : "s"}.`,
             });
         }
+        if (question.required === false) {
+            items.push({
+                value: "skip",
+                label: "Leave unset",
+                description: "Leave this optional answer unset.",
+            });
+        }
         items.push({
             value: "other",
             label: "Type another answer",
@@ -4359,6 +4366,10 @@ export class CodingAssistantApp implements Component, Focusable {
                         this.#commitUserInputAnswer([...active.selected]);
                         return;
                     }
+                    if (item.value === "skip") {
+                        this.#commitUserInputAnswer([]);
+                        return;
+                    }
 
                     const optionIndex = Number.parseInt(item.value.slice("option:".length), 10);
                     const option = question.options[optionIndex];
@@ -4384,9 +4395,11 @@ export class CodingAssistantApp implements Component, Focusable {
     #commitUserInputAnswer(answers: readonly string[]): void {
         const active = this.#activeUserInput;
         const question = active?.request.questions[active.questionIndex];
-        if (active === undefined || question === undefined || answers.length === 0) return;
+        if (active === undefined || question === undefined) return;
+        if (answers.length === 0 && question.required !== false) return;
 
-        active.answers[question.id] = [...answers];
+        if (answers.length === 0) delete active.answers[question.id];
+        else active.answers[question.id] = [...answers];
         active.questionIndex += 1;
         active.selected = new Set();
         if (active.questionIndex < active.request.questions.length) {

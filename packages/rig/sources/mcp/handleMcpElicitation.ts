@@ -47,16 +47,12 @@ export async function handleMcpElicitation(
             header: header.length > 12 ? `${header.slice(0, 11).trimEnd()}…` : header,
             id,
             multiSelect: property.type === "array",
-            options: [
-                ...enumValues.map((value, index) => ({
-                    label: enumNames[index] ?? value,
-                    description: property.description ?? `Use ${value}.`,
-                })),
-                ...(enumValues.length === 0 && !required
-                    ? [{ label: "Skip", description: "Leave this optional value unset." }]
-                    : []),
-            ],
+            options: enumValues.map((value, index) => ({
+                label: enumNames[index] ?? value,
+                description: property.description ?? `Use ${value}.`,
+            })),
             question: property.description ?? message,
+            required,
         };
     });
     if (questions.length === 0) {
@@ -90,7 +86,6 @@ export async function handleMcpElicitation(
     const content: Record<string, string | number | boolean | string[]> = {};
     for (const [id, property] of entries) {
         const answers = response.answers[id] ?? [];
-        if (answers.includes("Skip")) continue;
         const normalized = answers.map((answer) => valuesByLabel.get(id)?.get(answer) ?? answer);
         const raw = property.type === "array" ? normalized : normalized[0];
         if (raw === undefined || (Array.isArray(raw) && raw.length === 0)) {

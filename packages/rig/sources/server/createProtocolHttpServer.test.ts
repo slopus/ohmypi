@@ -949,6 +949,22 @@ describe("createProtocolHttpServer", () => {
                     answers: { database: ["PostgreSQL"] },
                 }),
             ).rejects.toThrow("no longer waiting");
+
+            const optional = session?.requestUserInput({
+                requestId: "question/optional",
+                questions: [
+                    {
+                        header: "Nickname",
+                        id: "nickname",
+                        multiSelect: false,
+                        options: [],
+                        question: "Choose an optional nickname.",
+                        required: false,
+                    },
+                ],
+            });
+            await client.answerUserInput(created.session.id, "question/optional", { answers: {} });
+            await expect(optional).resolves.toEqual({ answers: {} });
         } finally {
             await close();
         }

@@ -6665,6 +6665,63 @@ describe("CodingAssistantApp", () => {
         );
     });
 
+    it("submits optional structured questions without an answer", async () => {
+        const model = defineModel({
+            id: "openai/gpt-test",
+            name: "GPT Test",
+            thinkingLevels: ["off"],
+            defaultThinkingLevel: "off",
+        });
+        const provider = defineProvider({
+            id: "codex",
+            models: [model],
+            stream() {
+                return streamText("unused");
+            },
+        });
+        const harness = createJustBashToolHarness();
+        const respondUserInput = vi.fn(async () => undefined);
+        const app = new CodingAssistantApp({
+            agent: new Agent({
+                provider,
+                modelId: model.id,
+                context: harness.context,
+                printToConsole: false,
+            }),
+            cwd: harness.context.fs.cwd,
+            processManager: new NativeProxessManager(),
+            respondUserInput,
+            tui: fakeTui(),
+        });
+
+        app.applySessionEvent({
+            createdAt: 1,
+            data: {
+                requestId: "call-optional",
+                questions: [
+                    {
+                        header: "Nickname",
+                        id: "nickname",
+                        multiSelect: false,
+                        options: [],
+                        question: "Choose an optional nickname.",
+                        required: false,
+                    },
+                ],
+            },
+            id: "event-optional",
+            sessionId: "session-1",
+            type: "user_input_requested",
+        });
+
+        expect(stripAnsi(app.render(100).join("\n"))).toContain("Leave unset");
+        app.handleInput("\r");
+
+        await vi.waitFor(() =>
+            expect(respondUserInput).toHaveBeenCalledWith("call-optional", { answers: {} }),
+        );
+    });
+
     it("keeps activity visible after text_start until the first text delta", async () => {
         const model = defineModel({
             id: "openai/gpt-test",

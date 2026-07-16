@@ -44,6 +44,33 @@ describe("handleMcpElicitation", () => {
         });
     });
 
+    it("preserves a required enum value named Skip", async () => {
+        const client = {} as Client;
+        const harness = createJustBashToolHarness();
+        harness.context.userInput = {
+            request: async () => ({ answers: { action: ["Skip"] } }),
+        };
+        const request = {
+            method: "elicitation/create",
+            params: {
+                message: "Choose an action.",
+                requestedSchema: {
+                    type: "object",
+                    properties: {
+                        action: { type: "string", enum: ["Skip", "Continue"] },
+                    },
+                    required: ["action"],
+                },
+            },
+        } as ElicitRequest;
+
+        const result = await runMcpClientCall(client, harness.context, () =>
+            handleMcpElicitation(client, request),
+        );
+
+        expect(result).toEqual({ action: "accept", content: { action: "Skip" } });
+    });
+
     it("asks for confirmation before accepting an empty schema", async () => {
         const client = {} as Client;
         const harness = createJustBashToolHarness();
