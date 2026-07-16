@@ -23,6 +23,7 @@ export function createGrokProvider(options: GrokProviderOptions = {}): Provider 
     const models = [modelXaiGrokBuild, modelXaiGrok45, modelXaiGrokComposer25Fast];
     return defineProvider({
         id: providerId,
+        imageProfile: () => "codex",
         models,
         stream(model, context, streamOptions) {
             const availableModel = models.find((candidate) => candidate.id === model.id);

@@ -10,6 +10,7 @@ import type { ProviderQuota } from "./providerQuota.js";
 
 export type StopReason = "stop" | "length" | "toolUse" | "error" | "aborted";
 export type ProviderErrorCode = "incomplete_response" | "invalid_image_request";
+export type ProviderImageProfile = "claude" | "codex";
 export type ServiceTier = "fast";
 
 /** Plain text content block. */
@@ -159,6 +160,7 @@ export interface Provider {
     readonly id: string;
     readonly models: readonly Model[];
     readonly serviceTiers?: readonly ServiceTier[];
+    imageProfile(model: Model): ProviderImageProfile;
     quota?(options?: { fresh?: boolean }): Promise<ProviderQuota>;
     stream<TThinkingLevel extends string>(
         model: Model<TThinkingLevel>,
@@ -197,6 +199,7 @@ export function defineProvider(provider: {
     id: string;
     models: readonly Model[];
     serviceTiers?: readonly ServiceTier[];
+    imageProfile?: (model: Model) => ProviderImageProfile;
     quota?: (options?: { fresh?: boolean }) => Promise<ProviderQuota>;
     stream<TThinkingLevel extends string>(
         model: Model<TThinkingLevel>,
@@ -204,5 +207,5 @@ export function defineProvider(provider: {
         options?: StreamOptions<TThinkingLevel>,
     ): InferenceStream;
 }): Provider {
-    return provider;
+    return { imageProfile: () => "codex", ...provider };
 }

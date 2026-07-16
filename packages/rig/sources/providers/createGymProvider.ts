@@ -6,6 +6,7 @@ import {
     type AssistantMessage,
     type AssistantMessageEvent,
     type Model,
+    type Provider,
     type ServiceTier,
     type StreamOptions,
     type Usage,
@@ -23,6 +24,7 @@ export interface CreateGymProviderOptions {
     contextWindow?: number;
     endpoint: string;
     fetch?: typeof globalThis.fetch;
+    imageProfile?: Provider["imageProfile"];
     models?: readonly Model[];
     providerId?: string;
     serviceTiers?: readonly ServiceTier[];
@@ -38,6 +40,7 @@ export function createGymProvider(options: CreateGymProviderOptions) {
         contextWindow === undefined ? models : models.map((model) => ({ ...model, contextWindow }));
     return defineProvider({
         id: providerId,
+        ...(options.imageProfile === undefined ? {} : { imageProfile: options.imageProfile }),
         models: configuredModels,
         ...(options.providerId === undefined
             ? { serviceTiers: ["fast"] as const }

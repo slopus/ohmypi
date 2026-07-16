@@ -10,6 +10,17 @@ import { createClaudeSdkProvider, type ClaudeSdkQuery } from "./claude-sdk.js";
 import type { Context } from "./types.js";
 
 describe("Claude SDK provider", () => {
+    it("keeps Claude image constraints under a custom provider key", () => {
+        const harness = createJustBashToolHarness();
+        const provider = createClaudeSdkProvider({
+            agentContext: harness.context,
+            id: "company-claude",
+            pathToClaudeCodeExecutable: "/test/claude",
+        });
+
+        expect(provider.imageProfile(modelAnthropicOpus48)).toBe("claude");
+    });
+
     it("maps and caches quota through the documented SDK usage control API", async () => {
         const harness = createJustBashToolHarness();
         const calls: Parameters<ClaudeSdkQuery>[0][] = [];

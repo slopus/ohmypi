@@ -1,8 +1,5 @@
-import type { Message } from "../providers/types.js";
-import {
-    prepareProviderImageContent,
-    type ProviderImageProfile,
-} from "./prepareProviderImageContent.js";
+import type { Message, ProviderImageProfile } from "../providers/types.js";
+import { prepareProviderImageContent } from "./prepareProviderImageContent.js";
 
 export async function prepareProviderMessageImages(
     messages: readonly Message[],

@@ -16,6 +16,7 @@ export function createDebugProvider(
 
     return defineProvider({
         id: provider.id,
+        imageProfile: (model) => provider.imageProfile(model),
         models: provider.models,
         ...(provider.serviceTiers === undefined ? {} : { serviceTiers: provider.serviceTiers }),
         stream(model, context, streamOptions = {}) {

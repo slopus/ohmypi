@@ -50,6 +50,8 @@ export function createBedrockProvider(options: BedrockProviderOptions = {}): Pro
 
     return defineProvider({
         id: options.id ?? BEDROCK_PROVIDER_ID,
+        imageProfile: (model) =>
+            getBedrockModelRoute(model.id)?.provider === "anthropic" ? "claude" : "codex",
         models: routes.map((route) => route.model),
         stream(model, context, streamOptions) {
             const endpoint = resolveBedrockModelEndpoint(model.id, options.modelOverrides);

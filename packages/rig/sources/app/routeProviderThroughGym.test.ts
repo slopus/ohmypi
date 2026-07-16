@@ -21,6 +21,7 @@ describe("routeProviderThroughGym", () => {
         }));
         const native = defineProvider({
             id: "codex",
+            imageProfile: () => "claude",
             models: [model],
             quota,
             stream: () => {
@@ -36,6 +37,7 @@ describe("routeProviderThroughGym", () => {
         await routed.quota?.({ fresh: true });
         expect(quota).toHaveBeenCalledWith({ fresh: true });
         expect(routed.id).toBe("codex");
+        expect(routed.imageProfile(model)).toBe("claude");
         expect(routed.models).toEqual([model]);
     });
 });

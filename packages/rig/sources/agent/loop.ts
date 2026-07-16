@@ -207,7 +207,7 @@ export async function runAgentLoop(options: RunAgentLoopOptions): Promise<AgentL
                 try {
                     const preparedProviderMessages = await prepareProviderMessageImages(
                         providerMessages,
-                        options.provider.id === "claude" ? "claude" : "codex",
+                        options.provider.imageProfile(model),
                     );
                     const stream = options.provider.stream(
                         model,

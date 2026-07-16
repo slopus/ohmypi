@@ -91,6 +91,7 @@ export function createClaudeSdkProvider(options: ClaudeSdkProviderOptions) {
 
     return defineProvider({
         id: options.id ?? CLAUDE_PROVIDER_ID,
+        imageProfile: () => "claude",
         models: [
             modelAnthropicFable5,
             modelAnthropicOpus48,

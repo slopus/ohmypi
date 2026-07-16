@@ -53,6 +53,16 @@ describe("Amazon Bedrock provider", () => {
         );
     });
 
+    it("selects image constraints from each model's native provider", () => {
+        const provider = createBedrockProvider({
+            bearerToken: "bedrock-token",
+            region: "us-east-1",
+        });
+
+        expect(provider.imageProfile(modelAnthropicOpus48)).toBe("claude");
+        expect(provider.imageProfile(modelOpenaiGpt56Sol)).toBe("codex");
+    });
+
     it("routes Anthropic models through Bedrock Runtime with adaptive thinking", async () => {
         const piStream = {} as AssistantMessageEventStream;
         const streamRuntime = vi.fn(

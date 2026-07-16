@@ -19,6 +19,7 @@ export function routeProviderThroughGym(provider: Provider, env: NodeJS.ProcessE
     const gymProvider = createGymProvider({
         ...(contextWindow === undefined ? {} : { contextWindow }),
         endpoint,
+        imageProfile: (model) => provider.imageProfile(model),
         models: provider.models,
         providerId: provider.id,
         ...(provider.serviceTiers === undefined ? {} : { serviceTiers: provider.serviceTiers }),

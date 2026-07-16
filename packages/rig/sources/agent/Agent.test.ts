@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { codexViewImageTool } from "../tools/codex/view_image.js";
 import { createJustBashToolHarness } from "../tools/testing/createJustBashToolHarness.js";
 import { validPng32Base64 } from "../tools/testing/validImageFixtures.js";
+import { getImageProcessor } from "../tools/utils/getImageProcessor.js";
 import { Agent } from "./Agent.js";
 import { defineTool, type Message } from "./types.js";
 import {
@@ -18,6 +19,71 @@ import {
 import type { DebugLog } from "../debug/index.js";
 
 describe("Agent", () => {
+    it("uses the provider image profile independently of its identifier", async () => {
+        const model = defineModel({
+            id: "anthropic/claude-test",
+            name: "Claude Test",
+            thinkingLevels: ["off"],
+            defaultThinkingLevel: "off",
+        });
+        const contexts: Context[] = [];
+        const provider = defineProvider({
+            id: "custom-bedrock",
+            imageProfile: () => "claude",
+            models: [model],
+            stream(_model, context) {
+                contexts.push(context);
+                return streamFor({
+                    role: "assistant",
+                    content: [{ type: "text", text: "done" }],
+                    api: "test",
+                    provider: "custom-bedrock",
+                    model: model.id,
+                    usage: zeroUsage(),
+                    stopReason: "stop",
+                    timestamp: 1,
+                });
+            },
+        });
+        const sharp = await getImageProcessor();
+        const image = await sharp({
+            create: {
+                width: 2400,
+                height: 1200,
+                channels: 3,
+                background: { r: 30, g: 60, b: 90 },
+            },
+        })
+            .png()
+            .toBuffer();
+        const harness = createJustBashToolHarness();
+        const agent = new Agent({
+            provider,
+            modelId: model.id,
+            context: harness.context,
+            printToConsole: false,
+        });
+
+        await agent.send([
+            {
+                type: "image",
+                data: image.toString("base64"),
+                mediaType: "image/png",
+            },
+        ]);
+
+        const userMessage = contexts[0]?.messages[0];
+        if (userMessage?.role !== "user" || typeof userMessage.content === "string") {
+            throw new Error("The provider did not receive the image message.");
+        }
+        const preparedImage = userMessage.content[0];
+        if (preparedImage?.type !== "image") {
+            throw new Error("The provider image was omitted.");
+        }
+        const metadata = await sharp(Buffer.from(preparedImage.data, "base64")).metadata();
+        expect(metadata).toMatchObject({ width: 2000, height: 1000 });
+    });
+
     it("queues steering and user messages, runs the loop, and prints messages", async () => {
         const model = defineModel({
             id: "openai/gpt-test",

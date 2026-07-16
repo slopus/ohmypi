@@ -1,12 +1,10 @@
-import type { ToolResultContent, UserContent } from "../providers/types.js";
+import type { ProviderImageProfile, ToolResultContent, UserContent } from "../providers/types.js";
 import {
     IMAGE_PROCESSING_ERROR_PLACEHOLDER,
     ImageProcessingError,
     prepareImageForClaude,
     prepareImageForPrompt,
 } from "../tools/utils/index.js";
-
-export type ProviderImageProfile = "claude" | "codex";
 
 export async function prepareProviderImageContent(
     content: UserContent | ToolResultContent,
