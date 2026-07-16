@@ -4,38 +4,30 @@ This file tracks known defects, verified coverage gaps, and concrete follow-up w
 
 ## Product defects
 
-- [ ] Generate a conservative session title and recap after the session settles.
-    - Replace immediate first-message title generation with one structured title-and-recap call after the foreground agent stops, one minute passes without user input, and no subagent, workflow, or background terminal remains active.
-    - Cancel or restart settlement on user activity or renewed work, and discard stale generation results with a revision token.
-    - Send only a bounded set of recent real user messages and the final visible assistant text block from relevant turns; exclude tools, thinking, notifications, and intermediate stream deltas, with a marked partial fallback for interrupted turns.
-    - Ask for a 2–6 word title and short recap, conservatively preserving the current title unless it has become clearly misleading.
-    - Persist both values and show a one-line recap beneath each session in the resume picker.
-    - Add fake-clock state-machine coverage and a real session/resume regression.
+- [x] Generate a conservative session title and recap after the session settles.
+    - A structured metadata call runs after one idle minute with no foreground, subagent, workflow, or background-terminal work.
+    - User activity and renewed work restart settlement, while revision tokens and aborts discard stale generation results.
+    - Bounded real-user and final-visible-assistant context drives a 2–6 word title and short recap; existing titles are retained unless clearly misleading.
+    - Both values persist, the resume picker shows the recap, and fake-clock plus real session/resume Gym coverage protects the flow.
 
-- [ ] Render the completed-turn elapsed time below the assistant output.
-    - The immutable `Worked for …` row currently appears before the completed response.
-    - Move it below that response, occupying the position where the live working status was, without moving earlier transcript content or making the composer jump.
-    - Add a real Gym/PTTY regression that verifies final row ordering for normal, interrupted, and tool-using turns.
+- [x] Render the completed-turn elapsed time below the assistant output.
+    - The immutable `Worked for …` row replaces the live status below the completed response without moving earlier transcript content.
+    - Unit coverage handles tool-only, queued, error, and interrupted endings; a real multi-tool Gym regression verifies final response, timer, and composer ordering.
 
-- [ ] Render blocked MCP servers as structured child rows.
-    - Keep `MCP servers blocked` as the parent row, then render each humanized server name and reason below it with a fixed child indent like `/agents`.
-    - Preserve stable wrapping, terminal-width bounds, input order, and immutable transcript behavior.
-    - Add exact wide/narrow row assertions and a two-server real Gym regression.
+- [x] Render blocked MCP servers as structured child rows.
+    - `MCP servers blocked` remains the parent while humanized server names and reasons render beneath it with stable child indentation.
+    - Exact wide/narrow assertions and a two-server Gym regression cover wrapping, width bounds, input order, and immutable transcript behavior.
 
 - [ ] Simplify nested terminal layouts to a single final child connector.
     - Replace continuous `│` rails in wrapped tool output and subagent/status lists with one `└` connector at the start of the child block; align later wrapped lines with spaces.
     - Apply the same visual grammar to tool output, `/agents`, blocked MCP servers, and other parent-with-children rows without changing durable event grouping.
     - Add exact wide/narrow rendering assertions and real Gym screenshots for tool and agent layouts.
 
-- [ ] Dedent pending steering messages by one terminal cell.
-    - Move `Messages to be submitted after next tool call` and its `↳` children one column left while preserving the order between live status and composer.
-    - Add a concise `(esc to send now)` hint while pending messages exist.
-    - When pending messages exist, the first Escape must interrupt the current response, promote every pending message into durable conversation exactly once, and immediately start the continued turn with them; no second submission is required.
-    - Escape stops interaction only when no pending message exists.
-    - Double Escape clears the current composer draft but retains that cleared text in local input history.
-    - Up/Down cycles through recent submitted user messages and drafts cleared by double Escape, loading them into the composer for editing.
-    - Reproduce the reported pending-message loss through a real PTY test before changing production code.
-    - Add exact row-position coverage at normal and narrow widths.
+- [x] Dedent pending steering messages by one terminal cell.
+    - The pending heading and single-connector child block render one cell left with an `(esc to send now)` hint at normal and narrow widths.
+    - Escape with pending messages interrupts, promotes every message exactly once, and immediately continues; without pending messages it stops interaction normally.
+    - Double Escape clears the draft into local history, and Up/Down cycles submitted messages and cleared drafts for editing.
+    - Real PTY regressions cover the original message-loss path, exact row positions, immediate continuation, and input-history behavior.
 
 - [ ] Show active agents first with elapsed time and token usage.
     - Sort `/agents` with running, waiting, and suspended agents before completed agents while retaining stable ordering within each group.
@@ -192,9 +184,9 @@ This file tracks known defects, verified coverage gaps, and concrete follow-up w
     - Active tools, subagents, workflows, and background terminals already render as one compact count-based row per category in the live tail.
     - Empty polling remains live-only while durable start and completion history is preserved.
 
-- [ ] Add an optional terminal-completion chime.
-    - Emit one opt-in chime when delayed title/recap settlement completes, meaning foreground work and all session-owned background work are finished.
-    - Never chime while replaying persisted history.
+- [x] Add an optional terminal-completion chime.
+    - The opt-in chime fires once when delayed title/recap settlement completes after foreground and session-owned background work becomes idle.
+    - Session-event replay never chimes; a real resume regression verifies the live-only boundary.
 
 - [ ] Explore cmux integration.
     - Identify the high-value session, pane, and background-terminal workflows before choosing an integration surface.
