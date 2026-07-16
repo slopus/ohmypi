@@ -9,6 +9,12 @@ describe("Claude Code Bash tool", () => {
     it("executes commands through the agent context bash", async () => {
         const harness = createJustBashToolHarness();
         const progress: string[] = [];
+        const startSession = harness.context.bash.startSession.bind(harness.context.bash);
+        let observedTimeout: number | undefined;
+        harness.context.bash.startSession = (options) => {
+            observedTimeout = options.timeoutMs;
+            return startSession(options);
+        };
 
         const result = await claudeBashTool.execute(
             { command: "echo claude > note.txt && cat note.txt" },
@@ -19,6 +25,7 @@ describe("Claude Code Bash tool", () => {
         expect(result.stdout).toBe("claude\n");
         expect(await harness.readFile("/workspace/note.txt")).toBe("claude\n");
         expect(progress).toContain("claude\n");
+        expect(observedTimeout).toBe(120_000);
     });
 
     it("runs commands in the background and retrieves their output", async () => {

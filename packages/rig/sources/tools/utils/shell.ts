@@ -4,6 +4,8 @@ import type { AgentContext } from "../../agent/context/AgentContext.js";
 import type { ContentBlock } from "../../agent/types.js";
 import { readSessionWithProgress } from "./readSessionWithProgress.js";
 
+const DEFAULT_FOREGROUND_TIMEOUT_MS = 120_000;
+
 export const shellToolOutputSchema = Type.Object({
     backgroundTaskId: Type.Optional(Type.String()),
     stdout: Type.String(),
@@ -38,8 +40,8 @@ export async function runShellCommand(
     const runOptions: Parameters<AgentContext["bash"]["run"]>[0] = {
         command,
         cwd: options.cwd ?? context.bash.cwd,
+        timeoutMs: options.timeoutMs ?? DEFAULT_FOREGROUND_TIMEOUT_MS,
     };
-    if (options.timeoutMs !== undefined) runOptions.timeoutMs = options.timeoutMs;
     if (options.maxOutputBytes !== undefined) runOptions.maxOutputBytes = options.maxOutputBytes;
     if (options.secrets !== undefined) runOptions.secrets = options.secrets;
     if (options.signal !== undefined) runOptions.signal = options.signal;
