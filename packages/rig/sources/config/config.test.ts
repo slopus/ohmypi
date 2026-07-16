@@ -227,6 +227,15 @@ bearer_token_env_var = "WORK_BEDROCK_TOKEN"
         );
     });
 
+    it("rejects invalid permission modes", () => {
+        const expectedMessage =
+            'defaults.permission_mode must be "auto", "workspace_write", "read_only", or "full_access".';
+        expect(() => parseConfigToml('[defaults]\npermission_mode = "readonly"\n')).toThrow(
+            expectedMessage,
+        );
+        expect(() => parseConfigToml("[defaults]\npermission_mode = 1\n")).toThrow(expectedMessage);
+    });
+
     it("describes only the machine-level project settings that were ignored", () => {
         const providers = {
             codex: { enabled: false, type: "codex" as const },

@@ -480,8 +480,14 @@ function readOptionalStringRecord<TKey extends string>(
 }
 
 function readPermissionMode(table: TomlTable, key: string): PermissionMode | undefined {
-    const value = readString(table, key);
-    return isPermissionMode(value) ? value : undefined;
+    const value = table[key];
+    if (value === undefined) return undefined;
+    if (!isPermissionMode(value)) {
+        throw new Error(
+            'defaults.permission_mode must be "auto", "workspace_write", "read_only", or "full_access".',
+        );
+    }
+    return value;
 }
 
 function isTomlTable(value: TomlValue | undefined): value is TomlTable {
