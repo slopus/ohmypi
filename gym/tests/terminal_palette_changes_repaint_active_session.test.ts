@@ -115,6 +115,15 @@ function assertStablePalette(snapshot: TerminalSnapshot, colorScheme: TerminalCo
     expect(snapshot.text).toContain(composerPlaceholder);
     expect(snapshot.text).toContain("gym off · /workspace · full access");
 
+    const waveForegrounds = foregroundPaletteIndexesForText(snapshot, "Working");
+    expect(waveForegrounds).toHaveLength("Working".length);
+    const minimumWaveForeground = light ? 232 : 244;
+    const maximumWaveForeground = light ? 243 : 255;
+    for (const foreground of waveForegrounds) {
+        expect(foreground).toBeGreaterThanOrEqual(minimumWaveForeground);
+        expect(foreground).toBeLessThanOrEqual(maximumWaveForeground);
+    }
+
     const explicitBackgrounds = snapshot.cells
         .map((cell) => cell.background)
         .filter((background): background is NonNullable<typeof background> => background !== null);
@@ -157,6 +166,21 @@ function rowBackgroundIndexes(snapshot: TerminalSnapshot, row: number): number[]
             ),
         ),
     ].sort((left, right) => left - right);
+}
+
+function foregroundPaletteIndexesForText(snapshot: TerminalSnapshot, text: string): number[] {
+    const row = rowContaining(snapshot, text);
+    const start = snapshot.rows[row]?.indexOf(text) ?? -1;
+    return cellsOnRow(snapshot, row)
+        .filter((cell) => cell.x >= start && cell.x < start + text.length)
+        .map((cell) => {
+            if (cell.foreground?.kind !== "palette") {
+                throw new Error(
+                    `Expected ${JSON.stringify(text)} to use palette foregrounds, received ${JSON.stringify(cell.foreground)}.`,
+                );
+            }
+            return cell.foreground.index;
+        });
 }
 
 function rowContaining(snapshot: TerminalSnapshot, text: string): number {

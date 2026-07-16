@@ -131,7 +131,7 @@ export class StartupStatusApp implements Component, Focusable {
         const elapsedSuffix =
             elapsed === undefined ? "" : ` ${DIM}${this.#theme.secondary}(${elapsed})${RESET}`;
         return this.#fitLine(
-            `${this.#theme.brand}•${RESET} ${renderActivityWave(this.#status, this.#activityAnimationFrame)}${elapsedSuffix}`,
+            `${this.#theme.brand}•${RESET} ${renderActivityWave(this.#status, this.#activityAnimationFrame, this.#theme)}${elapsedSuffix}`,
             width,
         );
     }

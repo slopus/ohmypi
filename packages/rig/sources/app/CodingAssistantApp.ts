@@ -5267,7 +5267,10 @@ export class CodingAssistantApp implements Component, Focusable {
         const elapsedSuffix = ` ${DIM}${this.#theme.secondary}(${elapsedText} · esc to interrupt)${RESET}`;
 
         return [
-            this.#fitLine(`${prefix}${renderActivityWave(label, frame)}${elapsedSuffix}`, width),
+            this.#fitLine(
+                `${prefix}${renderActivityWave(label, frame, this.#theme)}${elapsedSuffix}`,
+                width,
+            ),
         ];
     }
 
