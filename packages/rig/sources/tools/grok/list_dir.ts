@@ -2,8 +2,9 @@
 import { Type } from "@sinclair/typebox";
 
 import { defineTool } from "../../agent/types.js";
+import { resolveFileSystemPath } from "../../agent/context/resolveFileSystemPath.js";
 import { shouldReviewPathInAutoMode } from "../../permissions/shouldReviewPathInAutoMode.js";
-import { countTextLines, resolveToolPath, textOutputSchema, toTextBlocks } from "../utils/index.js";
+import { countTextLines, textOutputSchema, toTextBlocks } from "../utils/index.js";
 
 const MAX_ENTRIES = 500;
 
@@ -27,13 +28,15 @@ Other details:
     shouldRunInFullAccessInAutoMode: ({ target_directory }, context) =>
         shouldReviewPathInAutoMode(target_directory, context, { write: false }),
     execute: async ({ target_directory }, context) => {
-        const path = resolveToolPath(target_directory, context.fs.cwd);
+        const path = resolveFileSystemPath(target_directory, context.fs.cwd, context.fs.home);
         const entries = (await context.fs.readdir(path))
             .filter((entry) => !entry.startsWith("."))
             .sort((left, right) => left.localeCompare(right));
         const output: string[] = [];
         for (const entry of entries.slice(0, MAX_ENTRIES)) {
-            const stats = await context.fs.stat(resolveToolPath(entry, path));
+            const stats = await context.fs.stat(
+                resolveFileSystemPath(entry, path, context.fs.home),
+            );
             output.push(stats.isDirectory ? `${entry}/` : entry);
         }
         if (entries.length > MAX_ENTRIES) output.push("... (directory listing truncated)");

@@ -2,7 +2,7 @@ import type { AgentContext } from "../agent/context/AgentContext.js";
 import { isPathInsideWorkspace } from "../agent/context/isPathInsideWorkspace.js";
 import { isProtectedGitControlPath } from "../agent/context/isProtectedGitControlPath.js";
 import { resolvePotentialPath } from "../agent/context/resolvePotentialPath.js";
-import { resolveFileSystemPath } from "../tools/utils/resolveFileSystemPath.js";
+import { resolveFileSystemPath } from "../agent/context/resolveFileSystemPath.js";
 
 export async function shouldReviewPathInAutoMode(
     path: string,

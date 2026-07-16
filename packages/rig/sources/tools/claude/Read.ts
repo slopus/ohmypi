@@ -1,6 +1,7 @@
 import { Type } from "@sinclair/typebox";
 
 import { defineTool } from "../../agent/types.js";
+import { resolveFileSystemPath } from "../../agent/context/resolveFileSystemPath.js";
 import { shouldReviewPathInAutoMode } from "../../permissions/shouldReviewPathInAutoMode.js";
 import {
     mediaTypeForPath,
@@ -61,17 +62,20 @@ export const claudeReadTool = defineTool({
     shouldRunInFullAccessInAutoMode: ({ file_path }, context) =>
         shouldReviewPathInAutoMode(file_path, context, { write: false }),
     execute: async ({ file_path, offset, limit }, context) => {
-        const lower = file_path.toLowerCase();
+        const resolvedPath = resolveFileSystemPath(file_path, context.fs.cwd, context.fs.home);
+        const lower = resolvedPath.toLowerCase();
         if (lower.endsWith(".ipynb")) {
             return {
                 text: "Jupyter notebooks are not supported. Export the notebook to a plain-text format first.",
             };
         }
         if (/\.(png|jpe?g|gif|webp|bmp)$/.test(lower)) {
-            const mediaType = mediaTypeForPath(file_path);
-            const data = Buffer.from(await context.fs.readFileBuffer(file_path)).toString("base64");
-            const stats = await context.fs.stat(file_path);
-            context.fileReads?.recordRead(file_path, stats.mtimeMs);
+            const mediaType = mediaTypeForPath(resolvedPath);
+            const data = Buffer.from(await context.fs.readFileBuffer(resolvedPath)).toString(
+                "base64",
+            );
+            const stats = await context.fs.stat(resolvedPath);
+            context.fileReads?.recordRead(resolvedPath, stats.mtimeMs);
             return {
                 image_url: `data:${mediaType};base64,${data}`,
                 mediaType,
@@ -79,7 +83,7 @@ export const claudeReadTool = defineTool({
         }
 
         const options: Parameters<typeof readTextFile>[0] = {
-            path: file_path,
+            path: resolvedPath,
             numbered: true,
         };
         if (offset !== undefined) options.offset = offset;

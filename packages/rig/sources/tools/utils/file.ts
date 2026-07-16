@@ -3,8 +3,9 @@ import { dirname } from "node:path";
 import { Type } from "@sinclair/typebox";
 
 import type { AgentContext } from "../../agent/context/AgentContext.js";
+import { resolveFileSystemPath } from "../../agent/context/resolveFileSystemPath.js";
 import { assertReadBeforeModify } from "./assertReadBeforeModify.js";
-import { resolveToolPath, splitLines } from "./path.js";
+import { splitLines } from "./path.js";
 
 export const readFileReturnSchema = Type.Object({
     path: Type.String(),
@@ -50,7 +51,11 @@ export async function readTextFile(
     options: ReadFileOptions,
     context: AgentContext,
 ): Promise<ReadFileResult> {
-    const filePath = resolveToolPath(options.path, options.cwd ?? context.fs.cwd);
+    const filePath = resolveFileSystemPath(
+        options.path,
+        options.cwd ?? context.fs.cwd,
+        context.fs.home,
+    );
     const stats = await context.fs.stat(filePath);
     if (stats.isDirectory) {
         throw new Error(`Path is a directory: ${options.path}`);
@@ -94,7 +99,11 @@ export async function writeTextFile(
     options: WriteFileOptions,
     context: AgentContext,
 ): Promise<WriteFileResult> {
-    const filePath = resolveToolPath(options.path, options.cwd ?? context.fs.cwd);
+    const filePath = resolveFileSystemPath(
+        options.path,
+        options.cwd ?? context.fs.cwd,
+        context.fs.home,
+    );
     await assertReadBeforeModify(filePath, context);
     const created = !(await context.fs.exists(filePath));
     await context.fs.mkdir(dirname(filePath), { recursive: true });
@@ -155,7 +164,11 @@ export async function planTextEdit(
     options: EditFileOptions,
     context: AgentContext,
 ): Promise<TextEditPlan> {
-    const filePath = resolveToolPath(options.path, options.cwd ?? context.fs.cwd);
+    const filePath = resolveFileSystemPath(
+        options.path,
+        options.cwd ?? context.fs.cwd,
+        context.fs.home,
+    );
     const content = await context.fs.readFile(filePath);
     return planTextEditInContent(content, filePath, options);
 }
@@ -438,7 +451,11 @@ export async function editTextFileBatch(
         throw new Error("At least one edit is required.");
     }
 
-    const filePath = resolveToolPath(options.path, options.cwd ?? context.fs.cwd);
+    const filePath = resolveFileSystemPath(
+        options.path,
+        options.cwd ?? context.fs.cwd,
+        context.fs.home,
+    );
     await assertReadBeforeModify(filePath, context);
     const rawContent = await context.fs.readFile(filePath);
     const matches = options.edits.map((edit, editIndex) => {

@@ -1,5 +1,5 @@
 import type { AgentContext } from "../agent/context/AgentContext.js";
-import { resolveFileSystemPath } from "../tools/utils/resolveFileSystemPath.js";
+import { resolveFileSystemPath } from "../agent/context/resolveFileSystemPath.js";
 import { shouldReviewPathInAutoMode } from "./shouldReviewPathInAutoMode.js";
 
 export async function shouldReviewPatchInAutoMode(

@@ -1,7 +1,7 @@
 import { join, relative, sep } from "node:path";
 
 import type { AgentContext } from "../../agent/context/AgentContext.js";
-import { resolveToolPath } from "./path.js";
+import { resolveFileSystemPath } from "../../agent/context/resolveFileSystemPath.js";
 import { runCommand } from "./shell.js";
 
 export interface GrepOptions {
@@ -31,7 +31,7 @@ export interface GrepResult {
 
 export async function runRipgrep(options: GrepOptions, context: AgentContext): Promise<GrepResult> {
     const cwd = options.cwd ?? context.bash.cwd;
-    const target = options.path ? resolveToolPath(options.path, cwd) : cwd;
+    const target = options.path ? resolveFileSystemPath(options.path, cwd, context.fs.home) : cwd;
     const args: string[] = [];
     const outputMode = options.outputMode ?? "files_with_matches";
     if (outputMode === "files_with_matches") {
@@ -95,7 +95,7 @@ export async function globFiles(
     context: AgentContext,
 ): Promise<readonly string[]> {
     const cwd = options.cwd ?? context.fs.cwd;
-    const root = options.path ? resolveToolPath(options.path, cwd) : cwd;
+    const root = options.path ? resolveFileSystemPath(options.path, cwd, context.fs.home) : cwd;
     const regex = globToRegExp(options.pattern);
     const files: { path: string; mtimeMs: number }[] = [];
     await walkFiles(root, context, options.signal, async (filePath, mtimeMs) => {

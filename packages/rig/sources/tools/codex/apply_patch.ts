@@ -3,7 +3,7 @@ import { Type } from "@sinclair/typebox";
 import { defineTool } from "../../agent/types.js";
 import { shouldReviewPatchInAutoMode } from "../../permissions/shouldReviewPatchInAutoMode.js";
 import { applyPatchText } from "../utils/index.js";
-import { resolveFileSystemPath } from "../utils/resolveFileSystemPath.js";
+import { resolveFileSystemPath } from "../../agent/context/resolveFileSystemPath.js";
 
 const fileDiffLineSchema = Type.Object({
     kind: Type.Union([Type.Literal("add"), Type.Literal("context"), Type.Literal("delete")]),

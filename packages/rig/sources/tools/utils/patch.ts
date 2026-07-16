@@ -5,7 +5,7 @@ import type { AgentContext } from "../../agent/context/AgentContext.js";
 import { BoundedFileDiffCollector } from "./BoundedFileDiffCollector.js";
 import { decodeUtf8File } from "./decodeUtf8File.js";
 import { iterateDiffContentLines } from "./iterateDiffContentLines.js";
-import { resolveFileSystemPath } from "./resolveFileSystemPath.js";
+import { resolveFileSystemPath } from "../../agent/context/resolveFileSystemPath.js";
 import { seekPatchSequence } from "./seekPatchSequence.js";
 
 export interface ApplyPatchResult {

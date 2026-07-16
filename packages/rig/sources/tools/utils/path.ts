@@ -1,13 +1,5 @@
 import { tmpdir } from "node:os";
-import { isAbsolute, join, resolve } from "node:path";
-
-export function resolveToolPath(path: string, cwd: string): string {
-    if (path.startsWith("~/")) {
-        return resolve(process.env.HOME ?? cwd, path.slice(2));
-    }
-
-    return isAbsolute(path) ? path : resolve(cwd, path);
-}
+import { join } from "node:path";
 
 export function splitLines(content: string): string[] {
     if (content.length === 0) {

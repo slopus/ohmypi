@@ -1,6 +1,7 @@
 import { Type } from "@sinclair/typebox";
 
 import { defineTool } from "../../agent/types.js";
+import { resolveFileSystemPath } from "../../agent/context/resolveFileSystemPath.js";
 import { shouldReviewPathInAutoMode } from "../../permissions/shouldReviewPathInAutoMode.js";
 import {
     IMAGE_PROCESSING_ERROR_PLACEHOLDER,
@@ -34,7 +35,8 @@ export const codexViewImageTool = defineTool({
     shouldRunInFullAccessInAutoMode: ({ path }, context) =>
         shouldReviewPathInAutoMode(path, context, { write: false }),
     execute: async ({ path, detail }, context) => {
-        const stat = await context.fs.stat(path);
+        const resolvedPath = resolveFileSystemPath(path, context.fs.cwd, context.fs.home);
+        const stat = await context.fs.stat(resolvedPath);
         if (!stat.isFile) {
             throw new Error(`Image path '${path}' is not a file.`);
         }
@@ -44,7 +46,7 @@ export const codexViewImageTool = defineTool({
                 detail: detail ?? "high",
             };
         }
-        const bytes = await context.fs.readFileBuffer(path);
+        const bytes = await context.fs.readFileBuffer(resolvedPath);
         const resolvedDetail = detail ?? "high";
         try {
             const image = await prepareImageForPrompt(bytes, resolvedDetail);
