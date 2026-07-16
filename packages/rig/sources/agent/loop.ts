@@ -881,7 +881,7 @@ async function executeToolCall(
     ) {
         return errorToolResultBlock(
             toolCall,
-            "MCP actions require Auto or Full access so Rig can disclose the unsandboxed boundary.",
+            "This action requires Auto or Full access because it can operate outside Rig's local sandbox.",
         );
     }
 

@@ -20,6 +20,56 @@ import { grokRunTerminalCommandTool } from "../tools/grok/run_terminal_command.j
 import { piBashTool } from "../tools/pi/bash.js";
 
 describe("Auto permissions", () => {
+    it.each(["read_only", "workspace_write"] as const)(
+        "describes the generic external boundary in %s mode",
+        async (mode) => {
+            const harness = createJustBashToolHarness();
+            harness.context.permissions = createPermissionContext(mode);
+            const execute = vi.fn(() => ({ ok: true }));
+            const tool = defineTool({
+                name: "hosted_lookup",
+                label: "Hosted lookup",
+                description: "Looks up information through an external service.",
+                arguments: Type.Object({ query: Type.String() }),
+                returnType: Type.Object({ ok: Type.Boolean() }),
+                requiresAutoOrFullAccess: true,
+                shouldReviewInAutoMode: () => false,
+                execute,
+                toLLM: () => [{ type: "text", text: "Lookup completed." }],
+                toUI: () => "Completed hosted lookup",
+                locks: [],
+            });
+            const provider = autoReviewProvider("allow", {
+                arguments: { query: "release status" },
+                name: tool.name,
+            });
+            const agent = new Agent({
+                context: harness.context,
+                modelId: provider.models[0]?.id ?? "",
+                printToConsole: false,
+                provider,
+                tools: [tool],
+            });
+
+            await agent.send("Look up the release status.");
+
+            expect(execute).not.toHaveBeenCalled();
+            const resultBlock = agent.messages
+                .flatMap((message) => (message.role === "agent" ? message.blocks : []))
+                .find((block) => block.type === "tool_result");
+            expect(resultBlock).toMatchObject({
+                isError: true,
+                rendered: [
+                    {
+                        text: "This action requires Auto or Full access because it can operate outside Rig's local sandbox.",
+                        type: "text",
+                    },
+                ],
+            });
+            expect(JSON.stringify(resultBlock)).not.toContain("MCP");
+        },
+    );
+
     it("runs a reviewer-approved action with host access and no extra prompt", async () => {
         const harness = createJustBashToolHarness();
         harness.context.permissions = createPermissionContext("auto");
