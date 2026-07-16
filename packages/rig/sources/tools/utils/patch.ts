@@ -5,6 +5,7 @@ import type { AgentContext } from "../../agent/context/AgentContext.js";
 import { BoundedFileDiffCollector } from "./BoundedFileDiffCollector.js";
 import { decodeUtf8File } from "./decodeUtf8File.js";
 import { iterateDiffContentLines } from "./iterateDiffContentLines.js";
+import { parsePatchPathDirective } from "../../patch/parsePatchPathDirective.js";
 import { resolveFileSystemPath } from "../../agent/context/resolveFileSystemPath.js";
 import { seekPatchSequence } from "./seekPatchSequence.js";
 
@@ -71,9 +72,10 @@ export async function applyPatchText(
         if (line === "*** End Patch") {
             break;
         }
+        const directive = line === undefined ? undefined : parsePatchPathDirective(line);
 
-        if (line?.startsWith("*** Add File: ")) {
-            const filename = line.slice("*** Add File: ".length);
+        if (directive?.kind === "add") {
+            const filename = directive.path;
             const body: string[] = [];
             index++;
             while (index < lines.length && !lines[index]?.startsWith("*** ")) {
@@ -98,8 +100,8 @@ export async function applyPatchText(
             continue;
         }
 
-        if (line?.startsWith("*** Delete File: ")) {
-            const filename = line.slice("*** Delete File: ".length);
+        if (directive?.kind === "delete") {
+            const filename = directive.path;
             const source = resolveFileSystemPath(filename, cwd, context.fs.home);
             incrementPathTouch(pathTouchCounts, source);
             const simulated = await getExistingSimulatedFile(source, simulatedFiles, context);
@@ -112,8 +114,8 @@ export async function applyPatchText(
             continue;
         }
 
-        if (line?.startsWith("*** Update File: ")) {
-            const filename = line.slice("*** Update File: ".length);
+        if (directive?.kind === "update") {
+            const filename = directive.path;
             const source = resolveFileSystemPath(filename, cwd, context.fs.home);
             incrementPathTouch(pathTouchCounts, source);
             const simulated = await getExistingSimulatedFile(source, simulatedFiles, context);
@@ -121,8 +123,9 @@ export async function applyPatchText(
             index++;
 
             let moveTo: string | undefined;
-            if (lines[index]?.startsWith("*** Move to: ")) {
-                moveTo = lines[index]?.slice("*** Move to: ".length) ?? "";
+            const moveDirective = parsePatchPathDirective(lines[index] ?? "");
+            if (moveDirective?.kind === "move") {
+                moveTo = moveDirective.path;
                 index++;
             }
 

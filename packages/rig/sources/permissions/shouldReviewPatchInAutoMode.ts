@@ -1,5 +1,6 @@
 import type { AgentContext } from "../agent/context/AgentContext.js";
 import { resolveFileSystemPath } from "../agent/context/resolveFileSystemPath.js";
+import { parsePatchPathDirective } from "../patch/parsePatchPathDirective.js";
 import { shouldReviewPathInAutoMode } from "./shouldReviewPathInAutoMode.js";
 
 export async function shouldReviewPatchInAutoMode(
@@ -18,21 +19,23 @@ export async function shouldReviewPatchInAutoMode(
     }
     if (await shouldReviewPathInAutoMode(workdir, context, { write: false })) return true;
 
-    const filePattern = /^\*\*\* (?:Add File|Delete File|Update File|Move to): (.+)$/gmu;
-    const paths = [...args.patch.matchAll(filePattern)].flatMap((match) =>
-        match[1] === undefined ? [] : [match[1]],
-    );
+    const paths = args.patch
+        .replace(/\r\n/g, "\n")
+        .split("\n")
+        .flatMap((line) => {
+            const directive = parsePatchPathDirective(line);
+            return directive === undefined ? [] : [directive.path];
+        });
     if (paths.length === 0) return true;
-    const checks = await Promise.all(
-        paths.map((path) =>
-            shouldReviewPathInAutoMode(
-                resolveFileSystemPath(path, workdir, context.fs.home),
-                context,
-                {
-                    write: true,
-                },
-            ),
-        ),
-    );
-    return checks.some(Boolean);
+    try {
+        for (const path of paths) {
+            const resolvedPath = resolveFileSystemPath(path, workdir, context.fs.home);
+            if (await shouldReviewPathInAutoMode(resolvedPath, context, { write: true })) {
+                return true;
+            }
+        }
+        return false;
+    } catch {
+        return true;
+    }
 }
