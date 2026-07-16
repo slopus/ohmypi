@@ -240,6 +240,19 @@ export function createDockerBashContext(
         }
     };
 
+    const interrupt = async (session: DockerBashSession): Promise<boolean> => {
+        if (session.finished) return false;
+        const container = await environment.container();
+        const result = await runDockerExec(container, [
+            "/bin/sh",
+            "-c",
+            'pid=$(cat "$1" 2>/dev/null) || exit 1; kill -INT -- "-$pid" 2>/dev/null || kill -INT "$pid" 2>/dev/null',
+            "rig",
+            session.pidFile,
+        ]);
+        return result.exitCode === 0;
+    };
+
     const requestKill = (session: DockerBashSession): void => {
         void kill(session).catch((error: unknown) => {
             session.stream.destroy(
@@ -285,6 +298,11 @@ export function createDockerBashContext(
                     status: "running" as const,
                 })),
         cwd,
+        async interruptSession(sessionId) {
+            const session = sessions.get(sessionId);
+            if (session === undefined) return undefined;
+            return interrupt(session);
+        },
         async killAllSessions() {
             const active = [...sessions.values()].filter((session) => !session.finished);
             await Promise.all(active.map(kill));

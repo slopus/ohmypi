@@ -214,6 +214,19 @@ export class ManagedProcess {
         this.#child.stdin.end(data);
     }
 
+    interrupt(): boolean {
+        if (
+            process.platform === "win32" ||
+            this.#settled ||
+            this.#status !== "running" ||
+            this.pid === null
+        ) {
+            return false;
+        }
+        killProcessTree(this.pid, "SIGINT");
+        return true;
+    }
+
     async kill(
         signal: NodeJS.Signals = "SIGTERM",
         options: ProcessKillOptions = {},

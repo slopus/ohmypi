@@ -97,6 +97,11 @@ export function createNodeBashContext(options: CreateNodeBashContextOptions): Ba
         activeSessionCount,
         activeSessions,
         cwd: options.cwd,
+        async interruptSession(sessionId) {
+            const session = sessions.get(sessionId);
+            if (session === undefined) return undefined;
+            return session.process.interrupt();
+        },
         async killAllSessions() {
             const active = [...sessions.values()].filter((session) => session.result === undefined);
             await Promise.all(

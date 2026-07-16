@@ -9,6 +9,7 @@ import {
 } from "./unifiedExecOutput.js";
 import { readSessionWithProgress } from "../utils/readSessionWithProgress.js";
 import { summarizeTextOutput } from "../utils/index.js";
+import { sendShellSessionInput } from "./sendShellSessionInput.js";
 
 export const codexWriteStdinTool = defineTool({
     name: "write_stdin",
@@ -19,7 +20,7 @@ export const codexWriteStdinTool = defineTool({
         chars: Type.Optional(
             Type.String({
                 description:
-                    "Bytes to write to stdin. Defaults to empty, which polls without writing.",
+                    "Bytes to write to stdin. Ctrl-C requests an interrupt without terminating the shell session. Defaults to empty, which polls without writing.",
             }),
         ),
         yield_time_ms: Type.Optional(
@@ -45,28 +46,16 @@ export const codexWriteStdinTool = defineTool({
         execution,
     ) => {
         const startedAt = Date.now();
-        let interrupted: Awaited<ReturnType<typeof context.bash.killSession>> = undefined;
-        if (chars.includes("\u0003")) {
-            interrupted = await context.bash.killSession(session_id);
-            if (interrupted === undefined) throw new Error("The shell session was not found.");
-        } else if (chars.length > 0) {
-            if (!context.bash.supportsSessionInput) {
-                throw new Error("This shell session does not support interactive input.");
-            }
-            const written = await context.bash.writeSession(session_id, chars);
-            if (!written) throw new Error("The shell session is no longer accepting input.");
-        }
+        if (chars.length > 0) await sendShellSessionInput(context.bash, session_id, chars);
         const defaultWaitMs = chars.length > 0 ? 250 : 5_000;
         const maximumWaitMs = chars.length > 0 ? 30_000 : 300_000;
-        const snapshot =
-            interrupted ??
-            (await readSessionWithProgress({
-                bash: context.bash,
-                ...(execution.onProgress === undefined ? {} : { onProgress: execution.onProgress }),
-                sessionId: session_id,
-                ...(execution.signal === undefined ? {} : { signal: execution.signal }),
-                waitMs: Math.max(0, Math.min(maximumWaitMs, yield_time_ms ?? defaultWaitMs)),
-            }));
+        const snapshot = await readSessionWithProgress({
+            bash: context.bash,
+            ...(execution.onProgress === undefined ? {} : { onProgress: execution.onProgress }),
+            sessionId: session_id,
+            ...(execution.signal === undefined ? {} : { signal: execution.signal }),
+            waitMs: Math.max(0, Math.min(maximumWaitMs, yield_time_ms ?? defaultWaitMs)),
+        });
         if (snapshot === undefined) throw new Error("The shell session was not found.");
         return createUnifiedExecOutput(
             snapshot,

@@ -76,6 +76,24 @@ describe("createDockerBashContext", () => {
         await context.readSession(1, { waitMs: 1_000 });
     });
 
+    it("sends SIGINT without completing the running session", async () => {
+        const fake = createFakeDockerEnvironment();
+        const context = createDockerBashContext(
+            fake.environment,
+            createPermissionContext("full_access"),
+        );
+        await context.startSession({ command: "interactive command" });
+
+        await expect(context.interruptSession?.(1)).resolves.toBe(true);
+
+        expect(fake.controlCommands).toHaveLength(1);
+        expect(fake.controlCommands[0]?.join(" ")).toContain("kill -INT");
+        await expect(context.readSession(1)).resolves.toMatchObject({ status: "running" });
+
+        fake.foregroundStreams[0]?.end();
+        await context.readSession(1, { waitMs: 1_000 });
+    });
+
     it("handles container lookup failures while aborting a foreground run", async () => {
         const fake = createFakeDockerEnvironment();
         let containerRequests = 0;
@@ -168,11 +186,13 @@ describe("createDockerBashContext", () => {
 
 function createFakeDockerEnvironment(environmentVariables: readonly string[] = []): {
     container: Dockerode.Container;
+    controlCommands: string[][];
     environment: DockerEnvironment;
     foregroundCommands: string[][];
     foregroundEnvironments: string[][];
     foregroundStreams: PassThrough[];
 } {
+    const controlCommands: string[][] = [];
     const foregroundCommands: string[][] = [];
     const foregroundEnvironments: string[][] = [];
     const foregroundStreams: PassThrough[] = [];
@@ -187,6 +207,7 @@ function createFakeDockerEnvironment(environmentVariables: readonly string[] = [
                 foregroundEnvironments.push(options.Env ?? []);
                 foregroundStreams.push(stream);
             } else {
+                controlCommands.push(options.Cmd ?? []);
                 queueMicrotask(() => stream.end());
             }
             return {
@@ -206,6 +227,7 @@ function createFakeDockerEnvironment(environmentVariables: readonly string[] = [
     } as unknown as Dockerode.Container;
     return {
         container,
+        controlCommands,
         environment: {
             config: { workingDirectory: "/workspace" },
             container: async () => container,

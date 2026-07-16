@@ -46,6 +46,7 @@ export interface BashContext {
     activeSessionCount?(): number;
     activeSessions?(): readonly BashSessionActivity[];
     cwd: string;
+    interruptSession?(sessionId: number): Promise<boolean | undefined>;
     killAllSessions?(): Promise<number>;
     killSession(sessionId: number): Promise<BashSessionSnapshot | undefined>;
     readSession(

@@ -115,6 +115,43 @@ describe("createNodeBashContext", () => {
             await context.killAllSessions?.();
         }
     });
+
+    it("interrupts a running process without ending its shell session", async () => {
+        const cwd = await makeTempDir();
+        const processManager = new NativeProxessManager();
+        const context = createNodeBashContext({
+            cwd,
+            permissions: createPermissionContext("full_access"),
+            processManager,
+        });
+        const script = [
+            'process.stdin.setEncoding("utf8");',
+            'process.on("SIGINT", () => process.stdout.write("INTERRUPTED\\n"));',
+            'process.stdin.on("data", (data) => {',
+            "    process.stdout.write(`RECEIVED:${data.trim()}\\n`);",
+            "    process.exit(0);",
+            "});",
+            'process.stdout.write("READY\\n");',
+            "setInterval(() => {}, 1_000);",
+        ].join(" ");
+        const sessionId = await context.startSession({
+            command: `${nodeBinary()} -e ${shellQuote(script)}`,
+        });
+
+        try {
+            await waitForSessionOutput(context, sessionId, "READY");
+            await expect(context.interruptSession?.(sessionId)).resolves.toBe(true);
+            const interrupted = await waitForSessionOutput(context, sessionId, "INTERRUPTED");
+            expect(interrupted.status).toBe("running");
+
+            await expect(context.writeSession(sessionId, "continue\n")).resolves.toBe(true);
+            const completed = await waitForSessionOutput(context, sessionId, "RECEIVED:continue");
+            expect(completed.status).toBe("completed");
+            expect(completed.exitCode).toBe(0);
+        } finally {
+            await context.killAllSessions?.();
+        }
+    });
 });
 
 async function waitForSessionOutput(
