@@ -11,7 +11,7 @@ afterEach(async () => {
     running.clear();
 });
 
-describe("duplicate model tool call identifiers reject the entire batch", () => {
+describe("duplicate model tool call identifier handling", () => {
     it("runs neither a benign nor hostile action and makes the rejection unmistakable", async () => {
         const benignCommand = "printf 'benign ran\\n' > benign-action-ran.txt";
         const hostileCommand = "printf 'hostile ran\\n' > hostile-action-ran.txt";
@@ -101,7 +101,7 @@ describe("duplicate model tool call identifiers reject the entire batch", () => 
         expect(agentRequests(gym)).toHaveLength(2);
     }, 120_000);
 
-    it("rejects identifier reuse on a later turn without erasing earlier audit history", async () => {
+    it("allows identifier reuse on a later turn without erasing earlier audit history", async () => {
         const firstCommand = "printf 'first audited action\\n' > first-audited-action.txt";
         const reusedCommand = "printf 'reused id ran\\n' > reused-id-action-ran.txt";
         const providerId = "provider-id-from-earlier-turn";
@@ -141,6 +141,11 @@ describe("duplicate model tool call identifiers reject the entire batch", () => 
                     };
                 }
                 expect(callIndex).toBe(3);
+                expect(request.context.messages.at(-1)).toMatchObject({
+                    isError: false,
+                    role: "toolResult",
+                    toolCallId: providerId,
+                });
                 return { content: [{ text: "CROSS_TURN_ID_RECOVERY_OK", type: "text" }] };
             },
             rows: ROWS,
@@ -163,29 +168,21 @@ describe("duplicate model tool call identifiers reject the entire batch", () => 
         );
         assertHealthyTerminal(first, baseline);
 
-        submit(gym, "Do not let a later action impersonate the first one.");
-        const rejected = await gym.terminal.waitUntil(
+        submit(gym, "Run a later action even if its provider identifier repeats.");
+        const reused = await gym.terminal.waitUntil(
             (snapshot) =>
-                normalizeWhitespace(snapshot.text).includes(
-                    "Rig rejected this entire batch of 1 requested actions",
-                ) &&
+                snapshot.text.includes("CROSS_TURN_ID_RECOVERY_OK") &&
                 snapshot.text.includes("Ask Rig to do anything") &&
                 snapshot.scroll.atBottom,
-            "cross-turn identifier reuse being rejected",
+            "cross-turn identifier reuse completing normally",
             30_000,
         );
-        expect(rejected.text).toContain("Ran printf 'first audited action");
-        expect(rejected.text).toContain("Failed printf 'reused id ran");
-        expect(rejected.text).not.toContain(providerId);
-        await expect(gym.readFile("reused-id-action-ran.txt")).rejects.toMatchObject({
-            code: "ENOENT",
-        });
-        assertHealthyTerminal(rejected, baseline);
-
-        submit(gym, "Confirm the audit history and session are still healthy.");
-        const recovered = await gym.terminal.waitForText("CROSS_TURN_ID_RECOVERY_OK", 30_000);
-        expect(recovered.text).not.toContain(providerId);
-        assertHealthyTerminal(recovered, baseline);
+        expect(reused.text).toContain("Ran printf 'first audited action");
+        expect(reused.text).toContain("Ran printf 'reused id ran");
+        expect(reused.text).not.toContain(providerId);
+        await expect(gym.readFile("reused-id-action-ran.txt")).resolves.toBe("reused id ran\n");
+        assertHealthyTerminal(reused, baseline);
+        expect(agentRequests(gym)).toHaveLength(4);
     }, 120_000);
 });
 

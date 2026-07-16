@@ -357,7 +357,6 @@ export async function runAgentLoop(options: RunAgentLoopOptions): Promise<AgentL
             assistantMessage,
             idFactory,
             { providerId: options.provider.id, requestedModelId: model.id },
-            collectToolCallIds(transcript),
         );
         if (ambiguousToolCallRejection !== undefined) {
             await options.onEvent?.({
@@ -599,17 +598,6 @@ async function compactLoopContext(
         }),
     );
     return true;
-}
-
-function collectToolCallIds(messages: readonly Message[]): ReadonlySet<string> {
-    const ids = new Set<string>();
-    for (const message of messages) {
-        if (message.role !== "agent") continue;
-        for (const block of message.blocks) {
-            if (block.type === "tool_call") ids.add(block.id);
-        }
-    }
-    return ids;
 }
 
 async function appendSteering(
