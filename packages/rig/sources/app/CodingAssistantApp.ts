@@ -36,6 +36,7 @@ import type {
     McpServerSummary,
     SessionEvent,
     SessionTask,
+    SteerMessageResponse,
     SubagentSummary,
     WorkflowRun,
 } from "../protocol/index.js";
@@ -242,6 +243,23 @@ interface PromptSubmission {
     transcriptAppended?: boolean;
 }
 
+interface LocalSteeringSubmission {
+    accepted: boolean;
+    applied: boolean;
+    id: number;
+    invalidated: boolean;
+    messageId: string;
+    runEnded: boolean;
+    runId: string;
+    submission: PromptSubmission;
+}
+
+interface SteeringInterruptIntent {
+    accepted: boolean;
+    applied: boolean;
+    runId: string;
+}
+
 interface ActiveUserInput {
     answers: Record<string, readonly string[]>;
     questionIndex: number;
@@ -306,6 +324,11 @@ export class CodingAssistantApp implements Component, Focusable {
     #freeformUserInput: FreeformUserInput | undefined;
     #pendingPrompts: PendingPrompt[] = [];
     #pendingSteeringMessages: PendingSteeringMessage[] = [];
+    #inFlightSteeringSubmissions = new Map<number, LocalSteeringSubmission>();
+    #acceptedSteeringSubmissions: LocalSteeringSubmission[] = [];
+    #rejectedSteeringSubmissions = new Map<number, LocalSteeringSubmission>();
+    #nextSteeringSubmissionId = 1;
+    #steeringInterruptIntent: SteeringInterruptIntent | undefined;
     #activeSessionRunId: string | undefined;
     #interruptRequestInFlight = false;
     #interruptSettlementRunId: string | undefined;
@@ -318,7 +341,7 @@ export class CodingAssistantApp implements Component, Focusable {
     #sessionMutationBoundaryApplied = false;
     #ignoredBoundaryRunIds = new Set<string>();
     #dismissedSlashCommandText: string | undefined;
-    #activeSubmission: Promise<void> | undefined;
+    #activeSubmissions = new Set<Promise<void>>();
     #bracketedPasteBuffer: string | undefined;
     #backgroundProcesses: readonly BashSessionActivity[] = [];
     #observedShellProcesses: readonly BashSessionActivity[] = [];
@@ -524,6 +547,7 @@ export class CodingAssistantApp implements Component, Focusable {
         this.#toolStatusByCallId.clear();
         this.#fileMentionAutocomplete?.clear();
         this.#editor.setText("");
+        this.#discardLocalSteeringSubmissionsForBoundary();
         this.#pastedImagesById.clear();
         this.#requestRender();
         await this.#waitForShutdownRender();
@@ -560,6 +584,15 @@ export class CodingAssistantApp implements Component, Focusable {
             if (event.data.source === "notification") {
                 if (this.#consumeRenderedCompletionNotice(event.data.displayText)) return;
             } else if (event.data.delivery === "steer") {
+                const localSteering = this.#localSteeringSubmission(event.data.message.id);
+                if (localSteering !== undefined) {
+                    localSteering.accepted = true;
+                    localSteering.runId = event.data.runId;
+                }
+                if (this.#steeringInterruptIntent?.runId === event.data.runId) {
+                    this.#steeringInterruptIntent.accepted = true;
+                    this.#tryRequestSteeringInterrupt(event.data.runId);
+                }
                 this.#recordUserInput(event.createdAt);
                 if (
                     !this.#pendingSteeringMessages.some(
@@ -594,7 +627,21 @@ export class CodingAssistantApp implements Component, Focusable {
         }
 
         if (event.type === "steering_applied") {
+            for (const messageId of event.data.messageIds) {
+                const localSteering = this.#localSteeringSubmission(messageId);
+                if (localSteering !== undefined) localSteering.applied = true;
+            }
+            this.#acceptedSteeringSubmissions = this.#acceptedSteeringSubmissions.filter(
+                (submission) => !submission.applied,
+            );
             this.#promotePendingSteeringMessages(event.data.messageIds);
+            if (this.#steeringInterruptIntent?.runId === event.data.runId) {
+                this.#steeringInterruptIntent.applied = true;
+                this.#steeringInterruptIntent.accepted = this.#hasAcceptedSteering(
+                    event.data.runId,
+                );
+                this.#tryRequestSteeringInterrupt(event.data.runId);
+            }
             return;
         }
 
@@ -718,6 +765,7 @@ export class CodingAssistantApp implements Component, Focusable {
         }
 
         if (event.type === "run_finished") {
+            this.#finishLocalSteeringRun(event.data.runId);
             const turnElapsedMs =
                 event.data.stopReason === "stop"
                     ? this.#elapsedSinceLastUserInput(event.createdAt)
@@ -757,6 +805,7 @@ export class CodingAssistantApp implements Component, Focusable {
         }
 
         if (event.type === "run_error") {
+            this.#finishLocalSteeringRun(event.data.runId);
             this.#deferredTurnSeparator = false;
             this.#workSegmentStartedAtMs = undefined;
             this.#discardPendingToolCallEntries();
@@ -910,9 +959,9 @@ export class CodingAssistantApp implements Component, Focusable {
 
     async waitForIdle(): Promise<void> {
         for (;;) {
-            const activeSubmission = this.#activeSubmission;
-            if (activeSubmission !== undefined) {
-                await activeSubmission;
+            const activeSubmissions = [...this.#activeSubmissions];
+            if (activeSubmissions.length > 0) {
+                await Promise.all(activeSubmissions);
                 continue;
             }
 
@@ -1285,12 +1334,10 @@ export class CodingAssistantApp implements Component, Focusable {
             this.#appendEntry({ role: "error", text: this.#formatError(error) });
         });
         const trackedSubmission = submission.finally(() => {
-            if (this.#activeSubmission === trackedSubmission) {
-                this.#activeSubmission = undefined;
-            }
+            this.#activeSubmissions.delete(trackedSubmission);
             this.#requestRender();
         });
-        this.#activeSubmission = trackedSubmission;
+        this.#activeSubmissions.add(trackedSubmission);
     }
 
     async #submitAsync(value: string): Promise<void> {
@@ -1335,6 +1382,11 @@ export class CodingAssistantApp implements Component, Focusable {
         if (!this.#sessionBacked) this.#recordUserInput(this.#now());
         this.#modelLocked = true;
         if (this.#running) {
+            if (this.#sessionBacked && this.#activeSessionRunId === undefined) {
+                this.#pendingPrompts.push(submission);
+                this.#requestRender();
+                return;
+            }
             if (
                 this.#interruptSettlementRunId !== undefined &&
                 this.#interruptSettlementRunId === this.#activeSessionRunId
@@ -1343,7 +1395,25 @@ export class CodingAssistantApp implements Component, Focusable {
                 this.#requestRender();
                 return;
             }
-            await this.#agent.steer(submission.content, { displayText: submission.displayText });
+            const localSteering = this.#trackLocalSteeringSubmission(submission);
+            try {
+                const response = await this.#agent.steer(submission.content, {
+                    ...(localSteering === undefined
+                        ? {}
+                        : { clientSubmissionId: localSteering.messageId }),
+                    displayText: submission.displayText,
+                    ...(localSteering === undefined ? {} : { expectedRunId: localSteering.runId }),
+                });
+                this.#settleLocalSteeringSubmission(localSteering, true, response);
+            } catch (error) {
+                if (localSteering?.invalidated === true) return;
+                if (localSteering?.accepted === true) {
+                    this.#settleLocalSteeringSubmission(localSteering, true);
+                    return;
+                }
+                this.#settleLocalSteeringSubmission(localSteering, false);
+                throw error;
+            }
             if (!this.#sessionBacked) this.#appendEntry({ role: "user", text: prompt });
             this.#requestRender();
             return;
@@ -1453,7 +1523,33 @@ export class CodingAssistantApp implements Component, Focusable {
         if (!this.#sessionBacked) this.#recordUserInput(this.#now());
         this.#modelLocked = true;
         if (this.#running) {
-            await this.#agent.steer(expandedPrompt, { displayText: prompt });
+            if (this.#sessionBacked && this.#activeSessionRunId === undefined) {
+                this.#pendingPrompts.push({ content: expandedPrompt, displayText: prompt });
+                this.#requestRender();
+                return;
+            }
+            const localSteering = this.#trackLocalSteeringSubmission({
+                content: expandedPrompt,
+                displayText: prompt,
+            });
+            try {
+                const response = await this.#agent.steer(expandedPrompt, {
+                    ...(localSteering === undefined
+                        ? {}
+                        : { clientSubmissionId: localSteering.messageId }),
+                    displayText: prompt,
+                    ...(localSteering === undefined ? {} : { expectedRunId: localSteering.runId }),
+                });
+                this.#settleLocalSteeringSubmission(localSteering, true, response);
+            } catch (error) {
+                if (localSteering?.invalidated === true) return;
+                if (localSteering?.accepted === true) {
+                    this.#settleLocalSteeringSubmission(localSteering, true);
+                    return;
+                }
+                this.#settleLocalSteeringSubmission(localSteering, false);
+                throw error;
+            }
             if (!this.#sessionBacked) this.#appendEntry({ role: "user", text: prompt });
             return;
         }
@@ -2120,13 +2216,12 @@ export class CodingAssistantApp implements Component, Focusable {
             this.#lastEscapeAtMs = undefined;
             if (this.#interruptRequestInFlight) return;
             if (
-                this.#pendingSteeringMessages.some(
-                    (pending) => pending.runId === this.#activeSessionRunId,
-                ) &&
                 this.#sessionBacked &&
-                this.#agent.abort !== undefined
+                this.#agent.abort !== undefined &&
+                this.#activeSessionRunId !== undefined &&
+                this.#hasLocalOrPendingSteering(this.#activeSessionRunId)
             ) {
-                this.#sendPendingSteeringNow();
+                this.#requestSteeringInterrupt(this.#activeSessionRunId);
                 return;
             }
 
@@ -2165,8 +2260,96 @@ export class CodingAssistantApp implements Component, Focusable {
         this.#dismissedSlashCommandText = undefined;
     }
 
-    #sendPendingSteeringNow(): void {
+    #hasLocalOrPendingSteering(runId: string): boolean {
+        return (
+            this.#steeringInterruptIntent?.runId === runId ||
+            [...this.#inFlightSteeringSubmissions.values()].some(
+                (submission) => submission.runId === runId,
+            ) ||
+            this.#acceptedSteeringSubmissions.some((submission) => submission.runId === runId) ||
+            this.#pendingSteeringMessages.some((pending) => pending.runId === runId)
+        );
+    }
+
+    #requestSteeringInterrupt(runId: string): void {
+        const accepted = this.#hasAcceptedSteering(runId);
+        const applied = this.#hasAppliedLocalSteering(runId);
+        if (this.#steeringInterruptIntent?.runId === runId) {
+            if (accepted) this.#steeringInterruptIntent.accepted = true;
+            if (applied) this.#steeringInterruptIntent.applied = true;
+        } else {
+            this.#steeringInterruptIntent = { accepted, applied, runId };
+        }
+        this.#interruptSettlementRunId = runId;
+        this.#statusText = "Sending pending messages";
+        this.#requestRender();
+        this.#tryRequestSteeringInterrupt(runId);
+    }
+
+    #hasAcceptedSteering(runId: string): boolean {
+        return (
+            [...this.#inFlightSteeringSubmissions.values()].some(
+                (submission) =>
+                    submission.runId === runId && submission.accepted && !submission.applied,
+            ) ||
+            this.#acceptedSteeringSubmissions.some(
+                (submission) => submission.runId === runId && !submission.applied,
+            ) ||
+            this.#pendingSteeringMessages.some((pending) => pending.runId === runId)
+        );
+    }
+
+    #hasAppliedLocalSteering(runId: string): boolean {
+        return (
+            [...this.#inFlightSteeringSubmissions.values()].some(
+                (submission) => submission.runId === runId && submission.applied,
+            ) ||
+            this.#acceptedSteeringSubmissions.some(
+                (submission) => submission.runId === runId && submission.applied,
+            )
+        );
+    }
+
+    #tryRequestSteeringInterrupt(runId: string): void {
+        const intent = this.#steeringInterruptIntent;
+        if (intent?.runId !== runId) return;
+        if (
+            [...this.#inFlightSteeringSubmissions.values()].some(
+                (submission) => submission.runId === runId,
+            )
+        ) {
+            return;
+        }
+        if (!this.#running || this.#activeSessionRunId !== runId) {
+            this.#clearSteeringInterrupt(runId);
+            return;
+        }
+        if (!intent.accepted) {
+            if (intent.applied) {
+                this.#steeringInterruptIntent = undefined;
+                this.#requestSessionInterrupt(false);
+                return;
+            }
+            this.#clearSteeringInterrupt(runId);
+            return;
+        }
+
+        this.#steeringInterruptIntent = undefined;
         this.#requestSessionInterrupt(true);
+    }
+
+    #clearSteeringInterrupt(runId: string): void {
+        if (this.#steeringInterruptIntent?.runId === runId) {
+            this.#steeringInterruptIntent = undefined;
+        }
+        if (!this.#interruptRequestInFlight && this.#interruptSettlementRunId === runId) {
+            this.#interruptSettlementRunId = undefined;
+        }
+        if (this.#running && this.#activeSessionRunId === runId) {
+            this.#statusText = "Running";
+        }
+        this.#startDrainQueue();
+        this.#requestRender();
     }
 
     #requestSessionInterrupt(continuePendingSteering: boolean): void {
@@ -2176,8 +2359,17 @@ export class CodingAssistantApp implements Component, Focusable {
         this.#statusText = continuePendingSteering ? "Sending pending messages" : "Stopping";
         this.#requestRender();
         const request = continuePendingSteering
-            ? this.#agent.abort({ continuePendingSteering: true })
-            : this.#agent.abort();
+            ? this.#agent.abort({
+                  continuePendingSteering: true,
+                  ...(this.#activeSessionRunId === undefined
+                      ? {}
+                      : { expectedRunId: this.#activeSessionRunId }),
+              })
+            : this.#agent.abort(
+                  this.#activeSessionRunId === undefined
+                      ? undefined
+                      : { expectedRunId: this.#activeSessionRunId },
+              );
         void request
             .then(() => {
                 if (this.#running) this.#statusText = "Running";
@@ -2270,7 +2462,134 @@ export class CodingAssistantApp implements Component, Focusable {
         this.#syncAutocompleteState();
     }
 
+    #trackLocalSteeringSubmission(
+        submission: PromptSubmission,
+    ): LocalSteeringSubmission | undefined {
+        if (!this.#sessionBacked || this.#activeSessionRunId === undefined) return undefined;
+        const local: LocalSteeringSubmission = {
+            accepted: false,
+            applied: false,
+            id: this.#nextSteeringSubmissionId++,
+            invalidated: false,
+            messageId: this.#idFactory(),
+            runEnded: false,
+            runId: this.#activeSessionRunId,
+            submission,
+        };
+        this.#inFlightSteeringSubmissions.set(local.id, local);
+        return local;
+    }
+
+    #settleLocalSteeringSubmission(
+        local: LocalSteeringSubmission | undefined,
+        accepted: boolean,
+        response?: void | SteerMessageResponse,
+    ): void {
+        if (local === undefined) return;
+        this.#inFlightSteeringSubmissions.delete(local.id);
+        if (local.invalidated) return;
+
+        if (response !== undefined) local.runId = response.runId;
+        local.accepted ||= accepted;
+
+        if (local.accepted) {
+            if (local.runEnded && !local.applied) {
+                this.#rejectedSteeringSubmissions.set(local.id, local);
+                this.#removePendingSteeringMessage(local.messageId);
+            } else if (!local.runEnded && !local.applied) {
+                this.#acceptedSteeringSubmissions.push(local);
+            }
+            if (
+                this.#steeringInterruptIntent?.runId === local.runId &&
+                !local.runEnded &&
+                !local.applied
+            ) {
+                this.#steeringInterruptIntent.accepted = true;
+            }
+        } else {
+            this.#rejectedSteeringSubmissions.set(local.id, local);
+        }
+
+        const runHasInFlight = [...this.#inFlightSteeringSubmissions.values()].some(
+            (submission) => submission.runId === local.runId,
+        );
+        if (!runHasInFlight) this.#restoreRejectedSteeringSubmissions(local.runId);
+        this.#tryRequestSteeringInterrupt(local.runId);
+        this.#requestRender();
+    }
+
+    #localSteeringSubmission(messageId: string): LocalSteeringSubmission | undefined {
+        return (
+            [...this.#inFlightSteeringSubmissions.values()].find(
+                (submission) => submission.messageId === messageId,
+            ) ??
+            this.#acceptedSteeringSubmissions.find(
+                (submission) => submission.messageId === messageId,
+            ) ??
+            [...this.#rejectedSteeringSubmissions.values()].find(
+                (submission) => submission.messageId === messageId,
+            )
+        );
+    }
+
+    #removePendingSteeringMessage(messageId: string): void {
+        this.#pendingSteeringMessages = this.#pendingSteeringMessages.filter(
+            (submission) => submission.id !== messageId,
+        );
+    }
+
+    #restoreRejectedSteeringSubmissions(runId: string): void {
+        const rejected = [...this.#rejectedSteeringSubmissions.values()]
+            .filter((submission) => submission.runId === runId && !submission.invalidated)
+            .sort((left, right) => left.id - right.id);
+        if (rejected.length === 0) return;
+        for (const submission of rejected) {
+            this.#rejectedSteeringSubmissions.delete(submission.id);
+        }
+
+        const restored = rejected.map((submission) => submission.submission.displayText);
+        const draft = this.#editor.getText().trim();
+        if (draft.length > 0) restored.push(draft);
+        this.#editor.setText(restored.join("\n"));
+        this.#syncAutocompleteState();
+    }
+
+    #finishLocalSteeringRun(runId: string): void {
+        for (const submission of this.#inFlightSteeringSubmissions.values()) {
+            if (submission.runId === runId) submission.runEnded = true;
+        }
+        for (const submission of this.#acceptedSteeringSubmissions) {
+            if (submission.runId === runId && !submission.applied) {
+                this.#rejectedSteeringSubmissions.set(submission.id, submission);
+                this.#removePendingSteeringMessage(submission.messageId);
+            }
+        }
+        this.#acceptedSteeringSubmissions = this.#acceptedSteeringSubmissions.filter(
+            (submission) => submission.runId !== runId,
+        );
+        if (
+            ![...this.#inFlightSteeringSubmissions.values()].some(
+                (submission) => submission.runId === runId,
+            )
+        ) {
+            this.#restoreRejectedSteeringSubmissions(runId);
+        }
+        this.#clearSteeringInterrupt(runId);
+    }
+
+    #discardLocalSteeringSubmissionsForBoundary(): void {
+        for (const submission of this.#inFlightSteeringSubmissions.values()) {
+            submission.invalidated = true;
+        }
+        this.#inFlightSteeringSubmissions.clear();
+        this.#acceptedSteeringSubmissions = [];
+        this.#rejectedSteeringSubmissions.clear();
+        this.#steeringInterruptIntent = undefined;
+        if (!this.#interruptRequestInFlight) this.#interruptSettlementRunId = undefined;
+    }
+
     #discardLocalPromptsForBoundary(): number {
+        this.#discardLocalSteeringSubmissionsForBoundary();
         const discarded = this.#pendingPrompts;
         for (const prompt of discarded) this.#editor.addToHistory(prompt.displayText);
         this.#pendingPrompts = [];

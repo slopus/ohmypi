@@ -342,7 +342,10 @@ export interface RecordSessionActivityResponse {
     recorded: true;
 }
 
-export type SteerMessageRequest = SubmitMessageRequest;
+export interface SteerMessageRequest extends SubmitMessageRequest {
+    clientSubmissionId?: string;
+    expectedRunId?: string;
+}
 export type SteerMessageResponse = SubmitMessageResponse;
 
 export interface ChangeModelRequest {
@@ -368,6 +371,7 @@ export interface AbortRunResponse {
 
 export interface AbortRunOptions {
     continuePendingSteering?: boolean;
+    expectedRunId?: string;
 }
 
 export type SessionEvent =

@@ -44,6 +44,7 @@ import type {
     SessionTitleStatus,
     SubmitMessageRequest,
     SubmitMessageResponse,
+    SteerMessageRequest,
     SteerMessageResponse,
 } from "../protocol/index.js";
 import type { Model, Provider, ServiceTier, StopReason } from "../providers/types.js";
@@ -457,8 +458,18 @@ export class InMemorySession {
     }
 
     abort(
-        options: { continuePendingSteering?: boolean; pauseDescendants?: boolean } = {},
+        options: {
+            continuePendingSteering?: boolean;
+            expectedRunId?: string;
+            pauseDescendants?: boolean;
+        } = {},
     ): Promise<AbortRunResponse> {
+        if (
+            options.expectedRunId !== undefined &&
+            this.#activeRun?.runId !== options.expectedRunId
+        ) {
+            return Promise.resolve({ aborted: false });
+        }
         if (this.#abortInFlight !== undefined) return this.#abortInFlight;
         const operation = this.#performAbort(options);
         const tracked = operation.finally(() => {
@@ -470,9 +481,13 @@ export class InMemorySession {
 
     async #performAbort(options: {
         continuePendingSteering?: boolean;
+        expectedRunId?: string;
         pauseDescendants?: boolean;
     }): Promise<AbortRunResponse> {
         const runId = this.#activeRun?.runId;
+        if (options.expectedRunId !== undefined && runId !== options.expectedRunId) {
+            return { aborted: false };
+        }
         const shouldContinuePendingSteering =
             options.continuePendingSteering === true &&
             runId !== undefined &&
@@ -1728,12 +1743,15 @@ export class InMemorySession {
         };
     }
 
-    steer(request: SubmitMessageRequest): SteerMessageResponse {
+    steer(request: SteerMessageRequest): SteerMessageResponse {
         this.#assertAcceptingWork();
         this.#restartMetadataSettlement();
         const activeRun = this.#activeRun;
         if (activeRun === undefined) {
             throw new Error("There is no active run to steer.");
+        }
+        if (request.expectedRunId !== undefined && activeRun.runId !== request.expectedRunId) {
+            throw new Error("The intended run is no longer active.");
         }
         const displayText = request.displayText ?? request.text;
         const blocks: readonly ContentBlock[] = request.content ?? [
@@ -1741,7 +1759,7 @@ export class InMemorySession {
         ];
         const userMessage: UserMessage = {
             role: "user",
-            id: createId(),
+            id: request.clientSubmissionId ?? createId(),
             blocks,
         };
 

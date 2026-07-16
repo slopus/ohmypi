@@ -79,7 +79,14 @@ export class ProtocolHttpClient {
     }
 
     abort(sessionId: string, options: AbortRunOptions = {}): Promise<AbortRunResponse> {
-        const query = options.continuePendingSteering === true ? "?continuePendingSteering=1" : "";
+        const parameters = new URLSearchParams();
+        if (options.continuePendingSteering === true) {
+            parameters.set("continuePendingSteering", "1");
+        }
+        if (options.expectedRunId !== undefined) {
+            parameters.set("expectedRunId", options.expectedRunId);
+        }
+        const query = parameters.size > 0 ? `?${parameters.toString()}` : "";
         return this.#requestJson(
             "POST",
             `/sessions/${encodeURIComponent(sessionId)}/abort${query}`,

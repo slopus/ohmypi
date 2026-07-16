@@ -14,11 +14,17 @@ import type {
     AbortRunOptions,
     AbortRunResponse,
     GetSessionUsageResponse,
+    SteerMessageResponse,
 } from "../protocol/index.js";
 
 export interface CodingAssistantModelChoice {
     model: Model;
     providerId: string;
+}
+
+export interface SteeringRunOptions extends AgentRunOptions {
+    clientSubmissionId?: string;
+    expectedRunId?: string;
 }
 
 export interface CodingAssistantAgentBackend {
@@ -43,7 +49,10 @@ export interface CodingAssistantAgentBackend {
         content: string | readonly ContentBlock[],
         options?: AgentRunOptions,
     ): Promise<AgentRunResult>;
-    steer(content: string | readonly ContentBlock[], options?: AgentRunOptions): Promise<void>;
+    steer(
+        content: string | readonly ContentBlock[],
+        options?: SteeringRunOptions,
+    ): Promise<void | SteerMessageResponse>;
     setEffort(effort: string | undefined): void;
     setModel(
         modelId: string,

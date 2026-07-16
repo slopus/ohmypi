@@ -31,6 +31,7 @@ import type {
     SessionEvent,
     SetGoalRequest,
     ShutdownServerResponse,
+    SteerMessageRequest,
     SteerMessageResponse,
     StopWorkflowResponse,
     SubmitMessageRequest,
@@ -466,7 +467,7 @@ async function handleRequest(
     }
 
     if (request.method === "POST" && route.name === "steer") {
-        const body = await readJson<SubmitMessageRequest>(request);
+        const body = await readJson<SteerMessageRequest>(request);
         try {
             sendJson<SteerMessageResponse>(response, 202, session.steer(body));
         } catch (error) {
@@ -479,12 +480,14 @@ async function handleRequest(
 
     if (request.method === "POST" && route.name === "abort") {
         try {
+            const expectedRunId = url.searchParams.get("expectedRunId") ?? undefined;
             sendJson<AbortRunResponse>(
                 response,
                 200,
                 await session.abort({
                     continuePendingSteering:
                         url.searchParams.get("continuePendingSteering") === "1",
+                    ...(expectedRunId === undefined ? {} : { expectedRunId }),
                 }),
             );
         } catch (error) {

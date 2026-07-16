@@ -10,12 +10,14 @@ import type {
 import type {
     CodingAssistantAgentBackend,
     CodingAssistantModelChoice,
+    SteeringRunOptions,
 } from "../app/CodingAssistantAgentBackend.js";
 import type {
     AbortRunOptions,
     ModelCatalog,
     ProtocolSession,
     SessionEvent,
+    SteerMessageResponse,
 } from "../protocol/index.js";
 import {
     defineProvider,
@@ -76,14 +78,44 @@ export class RemoteAgent implements CodingAssistantAgentBackend {
 
     async steer(
         content: string | readonly ContentBlock[],
-        options: AgentRunOptions = {},
-    ): Promise<void> {
+        options: SteeringRunOptions = {},
+    ): Promise<SteerMessageResponse> {
         const displayText = options.displayText ?? contentToDisplayText(content);
-        await this.#client.steerMessage(this.#session.id, {
-            ...(typeof content === "string" ? {} : { content }),
-            ...(options.displayText !== undefined ? { displayText: options.displayText } : {}),
-            text: displayText,
-        });
+        try {
+            return await this.#client.steerMessage(this.#session.id, {
+                ...(options.clientSubmissionId === undefined
+                    ? {}
+                    : { clientSubmissionId: options.clientSubmissionId }),
+                ...(options.expectedRunId === undefined
+                    ? {}
+                    : { expectedRunId: options.expectedRunId }),
+                ...(typeof content === "string" ? {} : { content }),
+                ...(options.displayText !== undefined ? { displayText: options.displayText } : {}),
+                text: displayText,
+            });
+        } catch (error) {
+            if (options.clientSubmissionId !== undefined) {
+                try {
+                    const { events } = await this.#client.getEvents(this.#session.id);
+                    const submitted = events.find(
+                        (event) =>
+                            event.type === "message_submitted" &&
+                            event.data.delivery === "steer" &&
+                            event.data.message.id === options.clientSubmissionId,
+                    );
+                    if (submitted?.type === "message_submitted") {
+                        return {
+                            eventId: submitted.id,
+                            runId: submitted.data.runId,
+                            sessionId: submitted.sessionId,
+                        };
+                    }
+                } catch {
+                    // Preserve the original steering error when acceptance cannot be reconciled.
+                }
+            }
+            throw error;
+        }
     }
 
     get canChangeModel(): boolean {
@@ -205,10 +237,12 @@ export class RemoteAgent implements CodingAssistantAgentBackend {
         let aborted = false;
 
         const abort = () => {
+            if (aborted) return;
             aborted = true;
-            void this.#client.abort(this.#session.id);
+            void this.#client.abort(this.#session.id, { expectedRunId: submitted.runId });
         };
         options.signal?.addEventListener("abort", abort, { once: true });
+        if (options.signal?.aborted === true) abort();
 
         await this.#client.watchSessionEvents({
             after: submitted.eventId,
