@@ -1875,10 +1875,18 @@ describe("CodingAssistantApp", () => {
             context: harness.context,
             printToConsole: false,
         });
+        const defaultModelChanges: Array<{
+            effort: string;
+            modelId: string;
+            providerId: string;
+            serviceTier: "fast" | null;
+        }> = [];
         const app = new CodingAssistantApp({
             agent,
             cwd: harness.context.fs.cwd,
-            modelLocked: true,
+            onDefaultModelChange: (preference) => {
+                defaultModelChanges.push(preference);
+            },
             processManager: new NativeProxessManager(),
             tui: fakeTui(),
         });
@@ -1895,6 +1903,14 @@ describe("CodingAssistantApp", () => {
         const rendered = stripAnsi(app.render(100).join("\n"));
         expect(agent.model.id).toBe(model.id);
         expect(agent.snapshot().effort).toBe("high");
+        expect(defaultModelChanges).toEqual([
+            {
+                effort: "high",
+                modelId: model.id,
+                providerId: "codex",
+                serviceTier: null,
+            },
+        ]);
         expect(rendered).toContain("Reasoning changed to High.");
     });
 

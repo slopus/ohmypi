@@ -4095,6 +4095,14 @@ export class CodingAssistantApp implements Component, Focusable {
             onSelect: (item) => {
                 if (this.#modelLocked || isCurrent) {
                     this.#agent.setEffort(item.value);
+                    if (!this.#modelLocked) {
+                        this.#persistDefaultModel(
+                            model.id,
+                            item.value,
+                            providerId,
+                            this.#agent.confirmedServiceTier ?? null,
+                        );
+                    }
                     if (!this.#sessionBacked) {
                         this.#appendEntry({
                             role: "event",
