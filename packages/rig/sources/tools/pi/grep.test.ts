@@ -19,6 +19,9 @@ describe("pi grep tool", () => {
         });
 
         expect(result.text).toContain("/workspace/a.txt:2:beta");
+        expect(piGrepTool.toUI(result, { pattern: "beta", path: "/workspace", limit: 1 })).toBe(
+            'Searched "beta" (1 output line)',
+        );
     });
 
     it("truncates long lines and bounds combined output at 50KB", async () => {

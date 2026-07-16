@@ -4,7 +4,7 @@ import { defineTool } from "../../agent/types.js";
 import { describeFileAutoPermissionAction } from "../../permissions/describeFileAutoPermissionAction.js";
 import { shouldReviewPathInAutoMode } from "../../permissions/shouldReviewPathInAutoMode.js";
 import {
-    countTextLines,
+    formatOutputLineCount,
     runRipgrep,
     textOutputSchema,
     toTextBlocks,
@@ -107,6 +107,6 @@ export const piGrepTool = defineTool({
     toUI: (result, args) =>
         result.text === "No matches found"
             ? `Searched "${args.pattern}" (no matches)`
-            : `Searched "${args.pattern}" (${countTextLines(result.text)} matches)`,
+            : `Searched "${args.pattern}" (${formatOutputLineCount(result.text)})`,
     locks: [],
 });

@@ -1,6 +1,7 @@
 export * from "./content.js";
 export * from "./countTextLines.js";
 export * from "./file.js";
+export * from "./formatOutputLineCount.js";
 export * from "./getImageProcessor.js";
 export * from "./ImageProcessingError.js";
 export * from "./image.js";

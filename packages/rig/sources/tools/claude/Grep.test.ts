@@ -17,6 +17,9 @@ describe("Claude Code Grep tool", () => {
         });
 
         expect(result.text).toBe("/workspace/a.txt");
+        expect(claudeGrepTool.toUI(result, { pattern: "needle" })).toBe(
+            'Searched "needle" (1 output line)',
+        );
     });
 
     it("treats a dash-prefixed pattern as search text", async () => {
