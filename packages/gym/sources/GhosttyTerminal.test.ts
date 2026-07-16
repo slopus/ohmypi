@@ -122,6 +122,34 @@ describe("GhosttyTerminal cell styles", () => {
         expect((await terminal.snapshot()).synchronizedOutputActive).toBe(false);
     });
 
+    it("tracks color-scheme notification mode split across PTY chunks", async () => {
+        const terminal = await GhosttyTerminal.create(20, 4);
+        running.add(terminal);
+        const replies: string[] = [];
+        terminal.onPtyWrite((data) => replies.push(data));
+
+        terminal.write("\x1b[?20");
+        await terminal.snapshot();
+        terminal.write("31h");
+        await terminal.snapshot();
+        terminal.setColorScheme("light");
+        terminal.write("");
+        await terminal.snapshot();
+
+        expect(replies).toContain("\x1b[?997;2n");
+
+        replies.length = 0;
+        terminal.write("\x1b[?20");
+        await terminal.snapshot();
+        terminal.write("31l");
+        await terminal.snapshot();
+        terminal.setColorScheme("dark");
+        terminal.write("");
+        await terminal.snapshot();
+
+        expect(replies).not.toContain("\x1b[?997;1n");
+    });
+
     it("reports updated effective terminal defaults", async () => {
         const terminal = await GhosttyTerminal.create(20, 4, "light");
         running.add(terminal);

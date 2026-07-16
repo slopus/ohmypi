@@ -98,6 +98,11 @@ struct OscColorQueryTracker {
     suffix: Vec<u8>,
 }
 
+struct ColorSchemeNotificationTracker {
+    enabled: bool,
+    suffix: Vec<u8>,
+}
+
 struct SynchronizedOutputTracker {
     active: bool,
     suffix: Vec<u8>,
@@ -107,7 +112,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let stdin = io::stdin();
     let mut stdout = io::BufWriter::new(io::stdout().lock());
     let pty_writes = RefCell::new(Vec::<Vec<u8>>::new());
-    let mut color_scheme_notifications_enabled = false;
     let mut default_fg = RgbColor {
         r: 0xee,
         g: 0xee,
@@ -131,6 +135,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             move |_terminal, data| pty_writes.borrow_mut().push(data.to_vec())
         })?;
     let mut scroll_tracker = ScrollTracker::new(&terminal)?;
+    let mut color_scheme_notification_tracker = ColorSchemeNotificationTracker::new();
     let mut osc_color_query_tracker = OscColorQueryTracker::new();
     let mut synchronized_output_tracker = SynchronizedOutputTracker::new();
 
@@ -157,7 +162,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 terminal
                     .set_default_fg_color(Some(default_fg))?
                     .set_default_bg_color(Some(default_bg))?;
-                if color_scheme_notifications_enabled {
+                if color_scheme_notification_tracker.enabled {
                     let report = match color_scheme {
                         ColorScheme::Dark => b"\x1b[?997;1n".to_vec(),
                         ColorScheme::Light => b"\x1b[?997;2n".to_vec(),
@@ -167,14 +172,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             Command::Write { data } => {
                 let decoded = STANDARD.decode(data)?;
+                color_scheme_notification_tracker.observe(&decoded);
                 synchronized_output_tracker.observe(&decoded);
                 terminal.vt_write(&decoded);
-                if contains(&decoded, b"\x1b[?2031h") {
-                    color_scheme_notifications_enabled = true;
-                }
-                if contains(&decoded, b"\x1b[?2031l") {
-                    color_scheme_notifications_enabled = false;
-                }
                 for slot in osc_color_query_tracker.observe(&decoded) {
                     let color = if slot == 10 { default_fg } else { default_bg };
                     pty_writes
@@ -212,6 +212,32 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
     Ok(())
+}
+
+impl ColorSchemeNotificationTracker {
+    fn new() -> Self {
+        Self {
+            enabled: false,
+            suffix: Vec::new(),
+        }
+    }
+
+    fn observe(&mut self, data: &[u8]) {
+        const ENABLE: &[u8] = b"\x1b[?2031h";
+        const DISABLE: &[u8] = b"\x1b[?2031l";
+        for byte in data {
+            self.suffix.push(*byte);
+            if self.suffix.ends_with(ENABLE) {
+                self.enabled = true;
+                self.suffix.clear();
+            } else if self.suffix.ends_with(DISABLE) {
+                self.enabled = false;
+                self.suffix.clear();
+            } else if self.suffix.len() >= ENABLE.len() {
+                self.suffix.remove(0);
+            }
+        }
+    }
 }
 
 impl OscColorQueryTracker {
@@ -265,10 +291,6 @@ impl SynchronizedOutputTracker {
             }
         }
     }
-}
-
-fn contains(data: &[u8], needle: &[u8]) -> bool {
-    data.windows(needle.len()).any(|window| window == needle)
 }
 
 fn default_colors(color_scheme: ColorScheme) -> (RgbColor, RgbColor) {
