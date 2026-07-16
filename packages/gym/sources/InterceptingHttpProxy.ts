@@ -165,6 +165,12 @@ export class InterceptingHttpProxy {
         clientSocket: Duplex,
         head: Buffer,
     ): Promise<void> {
+        let upstreamSocket: Socket | undefined;
+        const closeUpstream = (): void => {
+            upstreamSocket?.destroy();
+        };
+        clientSocket.on("error", closeUpstream);
+        clientSocket.once("close", closeUpstream);
         const requestIndex = this.exchanges.length;
         const exchange: InterceptedHttpExchange = {
             request: {
@@ -178,6 +184,7 @@ export class InterceptingHttpProxy {
 
         try {
             const action = await this.#handler?.(exchange.request, requestIndex);
+            if (clientSocket.destroyed) return;
             if (action?.response !== undefined) {
                 const interceptedResponse = normalizeResponse(action.response);
                 exchange.response = interceptedResponse;
@@ -189,19 +196,20 @@ export class InterceptingHttpProxy {
             const forwardedRequest = applyRequestReplacement(exchange.request, action?.request);
             exchange.forwardedRequest = forwardedRequest;
             const target = connectTarget(forwardedRequest.url);
-            const upstreamSocket = connect(target.port, target.hostname);
-            this.#sockets.add(upstreamSocket);
-            upstreamSocket.once("connect", () => {
+            const connectedSocket = connect(target.port, target.hostname);
+            upstreamSocket = connectedSocket;
+            this.#sockets.add(connectedSocket);
+            connectedSocket.once("connect", () => {
                 clientSocket.write("HTTP/1.1 200 Connection Established\r\n\r\n");
-                if (head.length > 0) upstreamSocket.write(head);
-                upstreamSocket.pipe(clientSocket);
-                clientSocket.pipe(upstreamSocket);
+                if (head.length > 0) connectedSocket.write(head);
+                connectedSocket.pipe(clientSocket);
+                clientSocket.pipe(connectedSocket);
                 exchange.response = normalizeResponse({ status: 200 });
                 exchange.responseSource = "upstream";
             });
-            upstreamSocket.once("close", () => this.#sockets.delete(upstreamSocket));
-            upstreamSocket.once("error", (error) => {
-                this.#sockets.delete(upstreamSocket);
+            connectedSocket.once("close", () => this.#sockets.delete(connectedSocket));
+            connectedSocket.once("error", (error) => {
+                this.#sockets.delete(connectedSocket);
                 if (!clientSocket.destroyed && exchange.response === undefined) {
                     const proxyResponse = normalizeResponse({
                         status: 502,

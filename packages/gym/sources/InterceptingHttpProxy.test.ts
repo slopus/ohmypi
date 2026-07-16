@@ -1,4 +1,5 @@
 import { createServer, request } from "node:http";
+import { connect } from "node:net";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { InterceptingHttpProxy } from "./InterceptingHttpProxy.js";
@@ -82,6 +83,43 @@ describe("InterceptingHttpProxy", () => {
                 upstream.close((error) => (error === undefined ? resolve() : reject(error)));
             });
         }
+    });
+
+    it("handles a CONNECT client reset while the interceptor is pending", async () => {
+        let observeConnect: (() => void) | undefined;
+        let releaseHandler: (() => void) | undefined;
+        const connectObserved = new Promise<void>((resolve) => {
+            observeConnect = resolve;
+        });
+        const handlerReleased = new Promise<void>((resolve) => {
+            releaseHandler = resolve;
+        });
+        const proxy = new InterceptingHttpProxy(async (intercepted) => {
+            if (intercepted.method !== "CONNECT") return;
+            observeConnect?.();
+            await handlerReleased;
+            return { response: { status: 200 } };
+        });
+        running.add(proxy);
+        await proxy.start();
+
+        const proxyUrl = new URL(proxy.url.replace("host.docker.internal", "127.0.0.1"));
+        const client = connect(Number(proxyUrl.port), proxyUrl.hostname);
+        client.on("error", () => undefined);
+        await new Promise<void>((resolve) => client.once("connect", resolve));
+        client.write("CONNECT example.invalid:443 HTTP/1.1\r\nHost: example.invalid:443\r\n\r\n");
+        await connectObserved;
+
+        client.resetAndDestroy();
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        releaseHandler?.();
+        await new Promise<void>((resolve) => setImmediate(resolve));
+
+        expect(proxy.exchanges[0]).toMatchObject({
+            request: { method: "CONNECT", url: "example.invalid:443" },
+            response: { status: 200 },
+            responseSource: "interceptor",
+        });
     });
 });
 
