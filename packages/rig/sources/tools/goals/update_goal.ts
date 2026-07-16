@@ -19,6 +19,7 @@ Pausing, resuming, and clearing a goal are controlled by the user.`,
         { additionalProperties: false },
     ),
     returnType: Type.Object({ goal: sessionGoalSchema }),
+    shouldReviewInAutoMode: () => false,
     execute({ status }, context) {
         if (context.goals === undefined) {
             throw new Error("Goal tracking is unavailable in this session.");

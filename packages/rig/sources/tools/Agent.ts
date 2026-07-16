@@ -39,6 +39,7 @@ export const agentTool = defineTool({
         ),
     }),
     returnType: Type.Union([completedAgentResultSchema, backgroundAgentResultSchema]),
+    shouldReviewInAutoMode: () => false,
     execute: async ({ description, prompt, run_in_background }, context, execution) => {
         if (context.subagents === undefined || !context.subagents.canSpawn) {
             throw new Error("This agent has reached the maximum subagent depth.");

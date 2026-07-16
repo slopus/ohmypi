@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { Agent } from "./Agent.js";
 import type { UserInputContext } from "./context/UserInputContext.js";
-import { defineTool } from "./types.js";
+import { defineTool, type AnyDefinedTool } from "./types.js";
 import { createPermissionContext } from "../permissions/index.js";
 import {
     defineModel,
@@ -13,6 +13,10 @@ import {
     type Usage,
 } from "../providers/types.js";
 import { createJustBashToolHarness } from "../tools/testing/createJustBashToolHarness.js";
+import { claudeBashTool } from "../tools/claude/Bash.js";
+import { codexExecCommandTool } from "../tools/codex/exec_command.js";
+import { grokRunTerminalCommandTool } from "../tools/grok/run_terminal_command.js";
+import { piBashTool } from "../tools/pi/bash.js";
 
 describe("Auto permissions", () => {
     it("runs a reviewer-approved action with host access and no extra prompt", async () => {
@@ -131,6 +135,82 @@ describe("Auto permissions", () => {
             ]),
         );
     });
+
+    it.each([
+        {
+            args: {
+                cmd: "printf codex",
+                justification: "The sandbox blocked necessary work.",
+                sandbox_permissions: "require_escalated",
+            },
+            tool: codexExecCommandTool,
+        },
+        {
+            args: { command: "printf claude", dangerouslyDisableSandbox: true },
+            tool: claudeBashTool,
+        },
+        {
+            args: {
+                command: "printf pi",
+                justification: "The sandbox blocked necessary work.",
+                sandbox_permissions: "require_escalated",
+            },
+            tool: piBashTool,
+        },
+        {
+            args: {
+                background: false,
+                command: "printf grok",
+                description: "Run a command that the sandbox blocked.",
+                sandbox_permissions: "require_escalated",
+            },
+            tool: grokRunTerminalCommandTool,
+        },
+    ] as const)(
+        "runs reviewer-approved $tool.name through the shared full-access override",
+        async ({ args, tool }) => {
+            const harness = createJustBashToolHarness();
+            harness.context.permissions = createPermissionContext("auto");
+            const observedModes: string[] = [];
+            const originalRun = harness.context.bash.run.bind(harness.context.bash);
+            const originalStartSession = harness.context.bash.startSession.bind(
+                harness.context.bash,
+            );
+            harness.context.bash.run = async (options) => {
+                observedModes.push(harness.context.permissions?.mode ?? "missing");
+                return originalRun(options);
+            };
+            harness.context.bash.startSession = async (options) => {
+                observedModes.push(harness.context.permissions?.mode ?? "missing");
+                return originalStartSession(options);
+            };
+            const provider = autoReviewProvider("allow", {
+                arguments: args,
+                name: tool.name,
+            });
+            const agent = new Agent({
+                context: harness.context,
+                modelId: provider.models[0]?.id ?? "",
+                printToConsole: false,
+                provider,
+                tools: [tool as AnyDefinedTool],
+            });
+            const actions: string[] = [];
+
+            await agent.send("Run the command even if the workspace sandbox blocks it.", {
+                onEvent: (event) => {
+                    if (event.type === "permission_review") actions.push(event.action);
+                },
+            });
+
+            expect(observedModes.length).toBeGreaterThan(0);
+            expect(new Set(observedModes)).toEqual(new Set(["full_access"]));
+            expect(actions).toEqual([
+                expect.stringContaining("Access: unrestricted filesystem and network access"),
+            ]);
+            expect(harness.context.permissions.mode).toBe("auto");
+        },
+    );
 });
 
 function permissionProbeTool(observedModes: string[]) {
@@ -143,6 +223,8 @@ function permissionProbeTool(observedModes: string[]) {
             sandbox_permissions: Type.Literal("require_escalated"),
         }),
         returnType: Type.Object({ ok: Type.Boolean() }),
+        shouldReviewInAutoMode: () => true,
+        shouldRunInFullAccessInAutoMode: () => true,
         execute: (_args, context) => {
             observedModes.push(context.permissions?.mode ?? "missing");
             return { ok: true };
@@ -163,6 +245,7 @@ function sessionInputProbeTool(observedInputs: string[]) {
             session_id: Type.Number(),
         }),
         returnType: Type.Object({ ok: Type.Boolean() }),
+        shouldReviewInAutoMode: () => true,
         execute: ({ chars }) => {
             observedInputs.push(chars);
             return { ok: true };
@@ -173,7 +256,16 @@ function sessionInputProbeTool(observedInputs: string[]) {
     });
 }
 
-function autoReviewProvider(decision: "allow" | "ask") {
+function autoReviewProvider(
+    decision: "allow" | "ask",
+    toolCall: { arguments: Record<string, unknown>; name: string } = {
+        arguments: {
+            target: "production",
+            sandbox_permissions: "require_escalated",
+        },
+        name: "exec_command",
+    },
+) {
     const model = defineModel({
         id: "openai/gpt-test",
         name: "GPT Test",
@@ -214,11 +306,8 @@ function autoReviewProvider(decision: "allow" | "ask") {
                               {
                                   type: "toolCall",
                                   id: "tool-call-1",
-                                  name: "exec_command",
-                                  arguments: {
-                                      target: "production",
-                                      sandbox_permissions: "require_escalated",
-                                  },
+                                  name: toolCall.name,
+                                  arguments: toolCall.arguments,
                               },
                           ],
                           stopReason: "toolUse",

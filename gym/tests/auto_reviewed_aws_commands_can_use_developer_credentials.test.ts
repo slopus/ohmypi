@@ -48,6 +48,9 @@ describe("Auto-reviewed AWS commands can use developer credentials", () => {
                             {
                                 arguments: {
                                     cmd: "/home/rig/bin/aws sts get-caller-identity --profile developer",
+                                    justification:
+                                        "Use the developer credentials the user requested for this identity check.",
+                                    sandbox_permissions: "require_escalated",
                                     workdir: "/workspace",
                                 },
                                 id: "aws-developer-identity",

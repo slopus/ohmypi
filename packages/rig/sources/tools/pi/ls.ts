@@ -1,6 +1,7 @@
 import { Type } from "@sinclair/typebox";
 
 import { defineTool } from "../../agent/types.js";
+import { shouldReviewPathInAutoMode } from "../../permissions/shouldReviewPathInAutoMode.js";
 import { countTextLines, resolveToolPath, textOutputSchema, toTextBlocks } from "../utils/index.js";
 
 const DEFAULT_LIMIT = 500;
@@ -19,6 +20,10 @@ export const piLsTool = defineTool({
         ),
     }),
     returnType: textOutputSchema,
+    shouldReviewInAutoMode: ({ path }, context) =>
+        shouldReviewPathInAutoMode(path ?? ".", context, { write: false }),
+    shouldRunInFullAccessInAutoMode: ({ path }, context) =>
+        shouldReviewPathInAutoMode(path ?? ".", context, { write: false }),
     execute: async ({ path, limit }, context) => {
         const dirPath = resolveToolPath(path || ".", context.fs.cwd);
         const entries = [...(await context.fs.readdir(dirPath))];

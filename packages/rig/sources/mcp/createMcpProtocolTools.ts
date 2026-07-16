@@ -45,6 +45,8 @@ export function createMcpProtocolTools(
                 cursor: Type.Optional(Type.String()),
             }),
             returnType: Type.Unknown(),
+            requiresAutoOrFullAccess: true,
+            shouldReviewInAutoMode: () => false,
             async execute({ server, cursor }, context) {
                 const selected = connection(server);
                 const result = await runMcpClientCall(selected.client, context, () =>
@@ -72,6 +74,8 @@ export function createMcpProtocolTools(
                 arguments: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
             }),
             returnType: Type.Unknown(),
+            requiresAutoOrFullAccess: true,
+            shouldReviewInAutoMode: () => true,
             async execute({ server, name, arguments: toolArguments }, context, execution) {
                 const selected = connection(server);
                 if (!toolAllowed(selected, name)) {
@@ -102,6 +106,8 @@ export function createMcpProtocolTools(
                 cursor: Type.Optional(Type.String()),
             }),
             returnType: Type.Unknown(),
+            requiresAutoOrFullAccess: true,
+            shouldReviewInAutoMode: () => false,
             async execute({ server, cursor }, context) {
                 const selected = connection(server);
                 return runMcpClientCall(selected.client, context, () =>
@@ -124,6 +130,8 @@ export function createMcpProtocolTools(
                 cursor: Type.Optional(Type.String()),
             }),
             returnType: Type.Unknown(),
+            requiresAutoOrFullAccess: true,
+            shouldReviewInAutoMode: () => false,
             async execute({ server, cursor }, context) {
                 const selected = connection(server);
                 return runMcpClientCall(selected.client, context, () =>
@@ -143,6 +151,8 @@ export function createMcpProtocolTools(
             description: `Reads a resource from an MCP server. Available servers: ${serverNames}. Use a URI returned by list_mcp_resources or constructed from a listed resource template.`,
             arguments: Type.Object({ server: Type.String(), uri: Type.String() }),
             returnType: Type.Unknown(),
+            requiresAutoOrFullAccess: true,
+            shouldReviewInAutoMode: () => false,
             async execute({ server, uri }, context) {
                 const selected = connection(server);
                 return runMcpClientCall(selected.client, context, () =>
@@ -190,6 +200,8 @@ export function createMcpProtocolTools(
                 cursor: Type.Optional(Type.String()),
             }),
             returnType: Type.Unknown(),
+            requiresAutoOrFullAccess: true,
+            shouldReviewInAutoMode: () => false,
             async execute({ server, cursor }, context) {
                 const selected = connection(server);
                 return runMcpClientCall(selected.client, context, () =>
@@ -213,6 +225,8 @@ export function createMcpProtocolTools(
                 arguments: Type.Optional(Type.Record(Type.String(), Type.String())),
             }),
             returnType: Type.Unknown(),
+            requiresAutoOrFullAccess: true,
+            shouldReviewInAutoMode: () => false,
             async execute({ server, name, arguments: promptArguments }, context) {
                 const selected = connection(server);
                 return runMcpClientCall(selected.client, context, () =>

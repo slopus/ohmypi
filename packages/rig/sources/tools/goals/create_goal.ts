@@ -17,6 +17,7 @@ Do not infer a goal from an ordinary task. A new goal cannot replace an unfinish
         { additionalProperties: false },
     ),
     returnType: Type.Object({ goal: sessionGoalSchema }),
+    shouldReviewInAutoMode: () => false,
     execute({ objective }, context) {
         if (context.goals === undefined) {
             throw new Error("Goal tracking is unavailable in this session.");

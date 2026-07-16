@@ -98,6 +98,13 @@ export interface ToolExecutionOptions {
     toolCallId?: string;
 }
 
+export type AutoPermissionPredicate<TArgs> = (
+    args: TArgs,
+    context: AgentContext,
+) => boolean | Promise<boolean>;
+
+export type AutoPermissionActionDescriber<TArgs> = (args: TArgs, context: AgentContext) => string;
+
 export interface DefinedTool<
     TArgsSchema extends TSchema = TSchema,
     TReturnSchema extends TSchema = TSchema,
@@ -119,6 +126,13 @@ export interface DefinedTool<
         args: Static<TArgsSchema>,
     ) => ToolResultPresentation | undefined;
     toUI: (result: Static<TReturnSchema>, args: Static<TArgsSchema>) => string;
+    /** Provider-specific Auto-mode guidance included only while this tool is active. */
+    autoPermissionInstructions?: string;
+    /** Describes the exact reviewed boundary in permission events and approval prompts. */
+    describeAutoPermissionAction?: AutoPermissionActionDescriber<Static<TArgsSchema>>;
+    requiresAutoOrFullAccess: boolean;
+    shouldReviewInAutoMode: AutoPermissionPredicate<Static<TArgsSchema>>;
+    shouldRunInFullAccessInAutoMode: AutoPermissionPredicate<Static<TArgsSchema>>;
     /** Locks acquired for each invocation; constants or argument-derived keys. */
     locks: readonly Lock<Static<TArgsSchema>>[];
 }
@@ -138,6 +152,11 @@ export interface AnyDefinedTool {
     toLLM: (result: never) => readonly ContentBlock[];
     toPresentation?: (result: never, args: never) => ToolResultPresentation | undefined;
     toUI: (result: never, args: never) => string;
+    autoPermissionInstructions?: string;
+    describeAutoPermissionAction?: AutoPermissionActionDescriber<never>;
+    requiresAutoOrFullAccess: boolean;
+    shouldReviewInAutoMode: AutoPermissionPredicate<never>;
+    shouldRunInFullAccessInAutoMode: AutoPermissionPredicate<never>;
     locks: readonly Lock<never>[];
 }
 
@@ -171,7 +190,16 @@ export function defineTool<
         args: Static<TArgsSchema>,
     ) => ToolResultPresentation | undefined;
     toUI: (result: Static<TReturnSchema>, args: Static<TArgsSchema>) => string;
+    autoPermissionInstructions?: string;
+    describeAutoPermissionAction?: AutoPermissionActionDescriber<Static<TArgsSchema>>;
+    requiresAutoOrFullAccess?: boolean;
+    shouldReviewInAutoMode: AutoPermissionPredicate<Static<TArgsSchema>>;
+    shouldRunInFullAccessInAutoMode?: AutoPermissionPredicate<Static<TArgsSchema>>;
     locks: readonly Lock<Static<TArgsSchema>>[];
 }): DefinedTool<TArgsSchema, TReturnSchema> {
-    return tool;
+    return {
+        ...tool,
+        requiresAutoOrFullAccess: tool.requiresAutoOrFullAccess ?? false,
+        shouldRunInFullAccessInAutoMode: tool.shouldRunInFullAccessInAutoMode ?? (() => false),
+    };
 }

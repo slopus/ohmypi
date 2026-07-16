@@ -1,6 +1,7 @@
 import { Type } from "@sinclair/typebox";
 
 import { defineTool } from "../../agent/types.js";
+import { shouldReviewPathInAutoMode } from "../../permissions/shouldReviewPathInAutoMode.js";
 import { editFileReturnSchema, editTextFile } from "../utils/index.js";
 
 const CLAUDE_EDIT_DESCRIPTION = `Performs exact string replacements in files.
@@ -28,6 +29,10 @@ export const claudeEditTool = defineTool({
         ),
     }),
     returnType: editFileReturnSchema,
+    shouldReviewInAutoMode: ({ file_path }, context) =>
+        shouldReviewPathInAutoMode(file_path, context, { write: true }),
+    shouldRunInFullAccessInAutoMode: ({ file_path }, context) =>
+        shouldReviewPathInAutoMode(file_path, context, { write: true }),
     execute: async ({ file_path, old_string, new_string, replace_all }, context) => {
         const result = await editTextFile(
             {

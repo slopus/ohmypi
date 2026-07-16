@@ -2,6 +2,7 @@
 import { Type } from "@sinclair/typebox";
 
 import { defineTool } from "../../agent/types.js";
+import { shouldReviewPathInAutoMode } from "../../permissions/shouldReviewPathInAutoMode.js";
 import { readFileReturnSchema, readTextFile } from "../utils/index.js";
 
 export const grokReadFileTool = defineTool({
@@ -33,6 +34,10 @@ Usage:
         ),
     }),
     returnType: readFileReturnSchema,
+    shouldReviewInAutoMode: ({ target_file }, context) =>
+        shouldReviewPathInAutoMode(target_file, context, { write: false }),
+    shouldRunInFullAccessInAutoMode: ({ target_file }, context) =>
+        shouldReviewPathInAutoMode(target_file, context, { write: false }),
     execute: async ({ limit, offset, target_file }, context) =>
         readTextFile(
             {

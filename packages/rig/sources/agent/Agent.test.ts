@@ -144,6 +144,7 @@ describe("Agent", () => {
             description: "Does nothing.",
             arguments: Type.Object({}),
             returnType: Type.Object({ ok: Type.Boolean() }),
+            shouldReviewInAutoMode: () => false,
             execute: () => ({ ok: true }),
             toLLM: () => [{ type: "text", text: "ok" }],
             toUI: () => "ok",
@@ -358,6 +359,7 @@ describe("Agent", () => {
                 description: "Returns the supplied value.",
                 arguments: Type.Object({ value: Type.String() }),
                 returnType: Type.Object({ value: Type.String() }),
+                shouldReviewInAutoMode: () => false,
                 execute: (args: { value: string }) => args,
                 toLLM: (result: { value: string }) => [{ type: "text", text: result.value }],
                 toUI: (result: { value: string }) => result.value,
@@ -894,6 +896,7 @@ describe("Agent", () => {
             description: "Waits until aborted.",
             arguments: Type.Object({ value: Type.String() }),
             returnType: Type.Object({ value: Type.String() }),
+            shouldReviewInAutoMode: () => false,
             async execute(args: { value: string }, _context, execution) {
                 started.resolve();
                 await new Promise<void>((resolve) => {

@@ -12,6 +12,7 @@ export const codexResumeAgentTool = defineTool({
         target: Type.String({ description: "Agent id, task name, or full task path." }),
     }),
     returnType: managedSubagentSchema,
+    shouldReviewInAutoMode: () => false,
     execute: ({ target }, context) => requireSubagentContext(context).resume(target),
     toLLM: (result) => [{ type: "text", text: JSON.stringify(result) }],
     toUI: (result) => `Resumed ${result.description}.`,

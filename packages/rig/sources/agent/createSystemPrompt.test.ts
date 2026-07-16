@@ -15,6 +15,10 @@ import { KIMI_SYSTEM_PROMPT } from "./prompts/kimiSystemPrompt.js";
 import type { Message } from "./types.js";
 import { createPermissionContext } from "../permissions/index.js";
 import { defineModel, defineProvider, type Model, type Provider } from "../providers/types.js";
+import { claudeBashTool } from "../tools/claude/Bash.js";
+import { codexExecCommandTool } from "../tools/codex/exec_command.js";
+import { grokRunTerminalCommandTool } from "../tools/grok/run_terminal_command.js";
+import { piBashTool } from "../tools/pi/bash.js";
 
 const tempDirs: string[] = [];
 
@@ -176,6 +180,51 @@ describe("createSystemPrompt", () => {
         ).resolves.toContain(
             "You are in Read only mode. You may inspect files and run non-mutating shell commands.",
         );
+    });
+
+    it("adds the active shell tool's provider-specific Auto escalation instructions", async () => {
+        const cwd = await makeTempDir();
+        const model = defineModel({
+            id: "mock/model",
+            name: "Mock Model",
+            thinkingLevels: ["off"],
+            defaultThinkingLevel: "off",
+        });
+        const context = contextFor(cwd);
+        context.permissions = createPermissionContext("auto");
+        const cases = [
+            [
+                codexExecCommandTool,
+                'exec_command, request full-access execution with sandbox_permissions: "require_escalated"',
+            ],
+            [
+                claudeBashTool,
+                "Bash, request full-access execution with dangerouslyDisableSandbox: true",
+            ],
+            [
+                piBashTool,
+                'bash, request full-access execution with sandbox_permissions: "require_escalated"',
+            ],
+            [
+                grokRunTerminalCommandTool,
+                'run_terminal_command, request full-access execution with sandbox_permissions: "require_escalated"',
+            ],
+        ] as const;
+
+        for (const [tool, expected] of cases) {
+            const prompt = await createSystemPrompt({
+                provider: providerFor("mock", model),
+                model,
+                messages: [],
+                context,
+                tools: [tool],
+            });
+
+            expect(prompt).toContain(
+                "Every shell tool uses the same workspace sandbox by default.",
+            );
+            expect(prompt).toContain(expected);
+        }
     });
 
     it("uses the Claude Code prompt for modern Anthropic models", async () => {

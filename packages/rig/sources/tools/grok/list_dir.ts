@@ -2,6 +2,7 @@
 import { Type } from "@sinclair/typebox";
 
 import { defineTool } from "../../agent/types.js";
+import { shouldReviewPathInAutoMode } from "../../permissions/shouldReviewPathInAutoMode.js";
 import { countTextLines, resolveToolPath, textOutputSchema, toTextBlocks } from "../utils/index.js";
 
 const MAX_ENTRIES = 500;
@@ -21,6 +22,10 @@ Other details:
         }),
     }),
     returnType: textOutputSchema,
+    shouldReviewInAutoMode: ({ target_directory }, context) =>
+        shouldReviewPathInAutoMode(target_directory, context, { write: false }),
+    shouldRunInFullAccessInAutoMode: ({ target_directory }, context) =>
+        shouldReviewPathInAutoMode(target_directory, context, { write: false }),
     execute: async ({ target_directory }, context) => {
         const path = resolveToolPath(target_directory, context.fs.cwd);
         const entries = (await context.fs.readdir(path))

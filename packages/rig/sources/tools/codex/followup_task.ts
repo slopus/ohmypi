@@ -14,6 +14,7 @@ export const codexFollowupTaskTool = defineTool({
         message: Type.String({ description: "The follow-up instructions." }),
     }),
     returnType: managedSubagentSchema,
+    shouldReviewInAutoMode: () => false,
     execute: ({ message, target }, context) =>
         requireSubagentContext(context).followUp(target, message),
     toLLM: (result) => [{ type: "text", text: JSON.stringify(result) }],

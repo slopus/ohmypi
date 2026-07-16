@@ -2,6 +2,7 @@
 import { Type } from "@sinclair/typebox";
 
 import { defineTool } from "../../agent/types.js";
+import { summarizeEscalatedShellAction } from "../../permissions/summarizeEscalatedShellAction.js";
 import { summarizeTextOutput, toTextBlocks } from "../utils/index.js";
 
 export const grokRunTerminalCommandTool = defineTool({
@@ -31,11 +32,25 @@ Usage notes:
             description:
                 "Set true for a long-running command. Returns a task_id while the command continues in the background.",
         }),
+        sandbox_permissions: Type.Optional(
+            Type.Union([Type.Literal("use_default"), Type.Literal("require_escalated")], {
+                description:
+                    "Request reviewed execution outside the workspace sandbox in Auto mode. Defaults to use_default.",
+            }),
+        ),
     }),
     returnType: Type.Object({
         text: Type.String(),
         task_id: Type.Optional(Type.String()),
     }),
+    autoPermissionInstructions:
+        'For run_terminal_command, request full-access execution with sandbox_permissions: "require_escalated". Explain why in the description. Keep sandbox_permissions at "use_default" or omit it for ordinary commands.',
+    describeAutoPermissionAction: ({ command }, context) =>
+        summarizeEscalatedShellAction({ command, cwd: context.fs.cwd }),
+    shouldReviewInAutoMode: ({ sandbox_permissions }) =>
+        sandbox_permissions === "require_escalated",
+    shouldRunInFullAccessInAutoMode: ({ sandbox_permissions }) =>
+        sandbox_permissions === "require_escalated",
     execute: async ({ background, command, timeout }, context, execution) => {
         if (background) {
             const taskId = await context.bash.startSession({

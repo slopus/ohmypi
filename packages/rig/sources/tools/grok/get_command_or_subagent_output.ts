@@ -31,6 +31,7 @@ export const grokGetCommandOrSubagentOutputTool = defineTool({
         ),
     }),
     returnType: Type.Object({ results: Type.Array(taskResultSchema) }),
+    shouldReviewInAutoMode: () => false,
     execute: async ({ task_ids, timeout_ms }, context) => ({
         results: await Promise.all(
             [...new Set(task_ids.map((taskId) => taskId.trim()).filter(Boolean))].map((taskId) =>

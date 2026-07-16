@@ -102,6 +102,7 @@ describeLive("Grok Build provider live", () => {
                 value: Type.String({ description: "The value to acknowledge." }),
             }),
             returnType: Type.Object({ acknowledgement: Type.String() }),
+            shouldReviewInAutoMode: () => false,
             execute: ({ value }) => {
                 executionCount += 1;
                 return { acknowledgement: `Acknowledged: ${value}` };

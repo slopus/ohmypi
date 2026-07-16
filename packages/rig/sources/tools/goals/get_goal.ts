@@ -9,6 +9,7 @@ export const getGoalTool = defineTool({
     description: "Get the persistent goal for this session, including its objective and status.",
     arguments: Type.Object({}, { additionalProperties: false }),
     returnType: Type.Object({ goal: Type.Union([sessionGoalSchema, Type.Null()]) }),
+    shouldReviewInAutoMode: () => false,
     execute(_args, context) {
         if (context.goals === undefined) {
             throw new Error("Goal tracking is unavailable in this session.");

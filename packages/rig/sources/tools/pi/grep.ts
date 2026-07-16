@@ -1,6 +1,7 @@
 import { Type } from "@sinclair/typebox";
 
 import { defineTool } from "../../agent/types.js";
+import { shouldReviewPathInAutoMode } from "../../permissions/shouldReviewPathInAutoMode.js";
 import { countTextLines, runRipgrep, textOutputSchema, toTextBlocks } from "../utils/index.js";
 
 const DEFAULT_LIMIT = 100;
@@ -41,6 +42,10 @@ export const piGrepTool = defineTool({
         ),
     }),
     returnType: textOutputSchema,
+    shouldReviewInAutoMode: ({ path }, context) =>
+        shouldReviewPathInAutoMode(path ?? ".", context, { write: false }),
+    shouldRunInFullAccessInAutoMode: ({ path }, context) =>
+        shouldReviewPathInAutoMode(path ?? ".", context, { write: false }),
     execute: async (args, context, execution) => {
         const grepOptions: Parameters<typeof runRipgrep>[0] = {
             pattern: args.pattern,

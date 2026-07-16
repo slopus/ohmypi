@@ -13,6 +13,7 @@ export const codexInterruptAgentTool = defineTool({
         target: Type.String({ description: "Agent id, task name, or full task path." }),
     }),
     returnType: managedSubagentSchema,
+    shouldReviewInAutoMode: () => false,
     execute: ({ target }, context) => requireSubagentContext(context).interrupt(target),
     toLLM: (result) => [{ type: "text", text: JSON.stringify(result) }],
     toUI: (result) => `Stopped the current turn for ${result.description}.`,

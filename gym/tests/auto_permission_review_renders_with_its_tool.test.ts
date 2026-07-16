@@ -35,6 +35,9 @@ describe("Auto permission review placement", () => {
                             {
                                 arguments: {
                                     cmd: "printf 'INLINE_APPROVAL_MARKER\\n' > /home/rig/inline-approval.txt",
+                                    justification:
+                                        "Create the home-directory marker the user requested.",
+                                    sandbox_permissions: "require_escalated",
                                 },
                                 id: "inline-auto-approval",
                                 name: "exec_command",

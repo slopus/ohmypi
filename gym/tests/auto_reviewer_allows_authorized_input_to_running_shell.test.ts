@@ -10,7 +10,7 @@ afterEach(async () => {
 });
 
 describe("Auto reviewer allows authorized input to a running shell", () => {
-    it("reviews both actions without adding redundant user prompts", async () => {
+    it("keeps shell startup sandboxed and reviews input without a redundant prompt", async () => {
         let sessionId: number | undefined;
         const gym = await createGym({
             cols: 104,
@@ -46,7 +46,7 @@ describe("Auto reviewer allows authorized input to a running shell", () => {
                         ],
                     };
                 }
-                if (callIndex === 2) {
+                if (callIndex === 1) {
                     const text = messageText(request.context.messages.at(-1));
                     const match = text.match(/Process running with session ID (\d+)/u);
                     sessionId = Number(match?.[1]);
@@ -62,7 +62,7 @@ describe("Auto reviewer allows authorized input to a running shell", () => {
                         ],
                     };
                 }
-                expect(callIndex).toBe(4);
+                expect(callIndex).toBe(3);
                 return { content: [{ text: "AUTO_INTERACTIVE_INPUT_COMPLETE", type: "text" }] };
             },
             permissionMode: "auto",
@@ -81,9 +81,15 @@ describe("Auto reviewer allows authorized input to a running shell", () => {
         );
 
         await expect(gym.readFile("interactive-result.txt")).resolves.toBe("approved input\n");
-        expect(completed.text).toContain("Approved automatically");
         expect(completed.text).not.toContain("Allow once");
         expect(completed.text).not.toContain("Waiting for approval");
+        const reviewRequests = gym.inference.requests.filter((request) =>
+            request.context.systemPrompt?.includes("independent permission reviewer"),
+        );
+        expect(reviewRequests).toHaveLength(1);
+        expect(messageText(reviewRequests[0]?.context.messages.at(-1))).toContain(
+            '"tool":"write_stdin"',
+        );
     }, 120_000);
 });
 

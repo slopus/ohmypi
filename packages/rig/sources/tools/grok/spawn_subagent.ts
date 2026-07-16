@@ -31,6 +31,7 @@ export const grokSpawnSubagentTool = defineTool({
         status: Type.String(),
         output: Type.Optional(Type.String()),
     }),
+    shouldReviewInAutoMode: () => false,
     execute: async ({ background = true, description, prompt }, context, execution) => {
         const result = await requireSubagentContext(context).spawn(
             {

@@ -14,6 +14,7 @@ export const codexStopWorkflowTool = defineTool({
         run_id: Type.String(),
         status: Type.Literal("stopped"),
     }),
+    shouldReviewInAutoMode: () => false,
     execute: ({ run_id }, context) => {
         if (context.workflows === undefined) {
             throw new Error("Workflows are unavailable in this session.");

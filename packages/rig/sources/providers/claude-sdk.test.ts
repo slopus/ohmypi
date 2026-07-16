@@ -29,6 +29,7 @@ describe("Claude SDK provider", () => {
                     returnType: Type.Object({
                         text: Type.String(),
                     }),
+                    shouldReviewInAutoMode: () => false,
                     execute: async ({ path }) => ({ text: `read ${path}` }),
                     toLLM: (result) => [{ type: "text", text: result.text }],
                     toUI: (result) => result.text,
@@ -242,6 +243,7 @@ describe("Claude SDK provider", () => {
             description: "Read a file through the project tool.",
             arguments: Type.Object({ path: Type.String() }),
             returnType: Type.Object({ text: Type.String() }),
+            shouldReviewInAutoMode: () => false,
             execute: ({ path }) => {
                 executionCount += 1;
                 return { text: `contents of ${path}` };

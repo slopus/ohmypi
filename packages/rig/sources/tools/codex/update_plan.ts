@@ -30,6 +30,7 @@ At most one step can be in_progress at a time.`,
         { additionalProperties: false },
     ),
     returnType: textOutputSchema,
+    shouldReviewInAutoMode: () => false,
     execute: async ({ plan }) => {
         const activeSteps = plan.filter((item) => item.status === "in_progress").length;
         if (activeSteps > 1) {

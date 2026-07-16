@@ -26,6 +26,7 @@ export const codexWorkflowStatusTool = defineTool({
         run_id: Type.String({ description: "Workflow run identifier returned by workflow." }),
     }),
     returnType: workflowStatusReturnSchema,
+    shouldReviewInAutoMode: () => false,
     execute: ({ run_id }, context): Static<typeof workflowStatusReturnSchema> => {
         if (context.workflows === undefined) {
             throw new Error("Workflows are unavailable in this session.");

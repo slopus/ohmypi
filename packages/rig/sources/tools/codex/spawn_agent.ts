@@ -20,6 +20,7 @@ export const codexSpawnAgentTool = defineTool({
         path: Type.String(),
         task_name: Type.String(),
     }),
+    shouldReviewInAutoMode: () => false,
     execute: async ({ message, task_name }, context, execution) => {
         const result = await requireSubagentContext(context).spawn({
             background: true,

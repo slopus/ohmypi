@@ -1,6 +1,7 @@
 import { Type } from "@sinclair/typebox";
 
 import { defineTool } from "../../agent/types.js";
+import { shouldReviewPathInAutoMode } from "../../permissions/shouldReviewPathInAutoMode.js";
 import { countTextLines, globFiles, textOutputSchema, toTextBlocks } from "../utils/index.js";
 
 const CLAUDE_GLOB_DESCRIPTION = `- Fast file pattern matching tool that works with any codebase size
@@ -23,6 +24,10 @@ export const claudeGlobTool = defineTool({
         ),
     }),
     returnType: textOutputSchema,
+    shouldReviewInAutoMode: ({ path }, context) =>
+        shouldReviewPathInAutoMode(path ?? ".", context, { write: false }),
+    shouldRunInFullAccessInAutoMode: ({ path }, context) =>
+        shouldReviewPathInAutoMode(path ?? ".", context, { write: false }),
     execute: async ({ pattern, path }, context, execution) => {
         const options: Parameters<typeof globFiles>[0] = { pattern, limit: 100 };
         if (path !== undefined) options.path = path;

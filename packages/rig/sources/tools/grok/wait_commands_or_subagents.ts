@@ -32,6 +32,7 @@ export const grokWaitCommandsOrSubagentsTool = defineTool({
             }),
         ),
     }),
+    shouldReviewInAutoMode: () => false,
     execute: async ({ mode, task_ids, timeout_ms = 30_000 }, context) => {
         const ids = [...new Set(task_ids.map((taskId) => taskId.trim()).filter(Boolean))];
         const perTaskTimeout = mode === "wait_all" ? timeout_ms : 0;

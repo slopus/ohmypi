@@ -26,6 +26,9 @@ export function createMcpTool(options: {
         // kind that Value.Check cannot execute in the normal agent tool path.
         arguments: Type.Unknown(options.tool.inputSchema),
         returnType: Type.Unknown(),
+        requiresAutoOrFullAccess: true,
+        // MCP annotations are server-supplied metadata, not trusted authorization evidence.
+        shouldReviewInAutoMode: () => true,
         async execute(args, context, execution) {
             const result = await runMcpClientCall(options.client, context, () =>
                 options.client.callTool(
@@ -45,7 +48,7 @@ export function createMcpTool(options: {
         isError: isMcpErrorResult,
         toLLM: (result) => mcpResultToContentBlocks(result),
         toUI: () => `${humanizeName(options.serverName)} · ${humanizeName(options.tool.name)}`,
-        locks: options.tool.annotations?.readOnlyHint === true ? [] : [`mcp:${options.serverName}`],
+        locks: [`mcp:${options.serverName}`],
     });
     return tool as AnyDefinedTool;
 }

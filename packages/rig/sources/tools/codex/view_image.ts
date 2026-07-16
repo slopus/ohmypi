@@ -1,6 +1,7 @@
 import { Type } from "@sinclair/typebox";
 
 import { defineTool } from "../../agent/types.js";
+import { shouldReviewPathInAutoMode } from "../../permissions/shouldReviewPathInAutoMode.js";
 import {
     IMAGE_PROCESSING_ERROR_PLACEHOLDER,
     ImageProcessingError,
@@ -28,6 +29,10 @@ export const codexViewImageTool = defineTool({
         ),
     }),
     returnType: viewImageReturnSchema,
+    shouldReviewInAutoMode: ({ path }, context) =>
+        shouldReviewPathInAutoMode(path, context, { write: false }),
+    shouldRunInFullAccessInAutoMode: ({ path }, context) =>
+        shouldReviewPathInAutoMode(path, context, { write: false }),
     execute: async ({ path, detail }, context) => {
         const stat = await context.fs.stat(path);
         if (!stat.isFile) {

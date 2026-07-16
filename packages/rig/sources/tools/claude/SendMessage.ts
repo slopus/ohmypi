@@ -19,6 +19,7 @@ export const claudeSendMessageTool = defineTool({
         success: Type.Boolean(),
         target: Type.String(),
     }),
+    shouldReviewInAutoMode: () => false,
     execute: ({ message, summary, to }, context) => {
         if (context.subagents === undefined) {
             throw new Error("Subagent management is unavailable in this session.");

@@ -21,6 +21,7 @@ export function createStubTool(name: string, description: string) {
         description,
         arguments: Type.Object({}),
         returnType: textOutputSchema,
+        shouldReviewInAutoMode: () => false,
         execute() {
             return { text: `${name} is declared but requires host application state.` };
         },

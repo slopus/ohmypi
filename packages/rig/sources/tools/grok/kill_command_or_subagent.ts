@@ -15,6 +15,7 @@ export const grokKillCommandOrSubagentTool = defineTool({
         outcome: Type.String(),
         message: Type.String(),
     }),
+    shouldReviewInAutoMode: () => false,
     execute: async ({ task_id }, context) => {
         const terminalId = Number(task_id);
         if (Number.isInteger(terminalId) && terminalId >= 0) {

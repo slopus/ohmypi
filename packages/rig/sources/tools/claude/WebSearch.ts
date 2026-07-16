@@ -49,6 +49,7 @@ export function createClaudeWebSearchTool(dependencies: ClaudeWebSearchDependenc
             ),
         }),
         returnType: claudeWebSearchReturnSchema,
+        shouldReviewInAutoMode: () => true,
         execute: async ({ query, allowed_domains, blocked_domains }, _context, execution) => {
             if (query.trim().length < 2) {
                 throw new Error("Error: Web search query must contain at least two characters");

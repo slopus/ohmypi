@@ -47,6 +47,7 @@ describe("InMemorySession MCP permissions", () => {
             description: "A test MCP tool.",
             arguments: Type.Object({}),
             returnType: Type.Unknown(),
+            shouldReviewInAutoMode: () => true,
             execute: () => undefined,
             toLLM: () => [],
             toUI: () => "changed",

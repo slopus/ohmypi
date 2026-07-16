@@ -4,7 +4,7 @@ import { loadAgentsMdInstructions } from "./loadAgentsMdInstructions.js";
 import { selectSystemPromptForModel } from "./selectSystemPromptForModel.js";
 import { loadSkillInstructions } from "./skills/loadSkillInstructions.js";
 import { systemMessageToText } from "./systemMessageToText.js";
-import type { Message } from "./types.js";
+import type { AnyDefinedTool, Message } from "./types.js";
 import type { Model, Provider } from "../providers/types.js";
 
 export interface CreateSystemPromptOptions {
@@ -13,6 +13,7 @@ export interface CreateSystemPromptOptions {
     instructions?: string;
     messages: readonly Message[];
     context: AgentContext;
+    tools?: readonly AnyDefinedTool[];
 }
 
 export async function createSystemPrompt(
@@ -45,7 +46,9 @@ export async function createSystemPrompt(
     }
 
     if (options.context.permissions !== undefined) {
-        parts.push(createPermissionInstructions(options.context.permissions.mode));
+        parts.push(
+            createPermissionInstructions(options.context.permissions.mode, options.tools ?? []),
+        );
     }
 
     return parts.length > 0 ? parts.join("\n\n") : undefined;

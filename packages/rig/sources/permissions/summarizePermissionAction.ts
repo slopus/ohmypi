@@ -1,4 +1,4 @@
-export function summarizePermissionAction(toolName: string, args: unknown, cwd?: string): string {
+export function summarizePermissionAction(toolName: string, args: unknown): string {
     if (args !== null && typeof args === "object") {
         const record = args as Record<string, unknown>;
         const mcpAction = summarizeMcpAction(toolName, record);
@@ -12,16 +12,7 @@ export function summarizePermissionAction(toolName: string, args: unknown, cwd?:
         }
         const command = readString(record, "cmd") ?? readString(record, "command");
         if (command !== undefined) {
-            const action = `running ${quoteVisibleExact(command)}`;
-            if (
-                toolName !== "exec_command" ||
-                readString(record, "sandbox_permissions") !== "require_escalated"
-            ) {
-                return action;
-            }
-            const workdir = readString(record, "workdir") ?? cwd ?? "the current directory";
-            const shell = readString(record, "shell") ?? "the default shell";
-            return `${action}. Working directory: ${quoteVisibleExact(workdir)}. Shell: ${quoteVisibleExact(shell)}. Access: unrestricted filesystem and network access`;
+            return `running ${quoteVisibleExact(command)}`;
         }
         const url = readString(record, "url");
         if (url !== undefined) return `accessing ${singleLine(url)}`;
@@ -80,7 +71,7 @@ function singleLine(value: string): string {
     return value.replace(/\s+/gu, " ").trim();
 }
 
-function quoteVisibleExact(value: string): string {
+export function quoteVisibleExact(value: string): string {
     let visible = "";
     for (const character of value) {
         const codePoint = character.codePointAt(0) ?? 0;

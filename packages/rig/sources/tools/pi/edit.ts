@@ -1,6 +1,7 @@
 import { Type } from "@sinclair/typebox";
 
 import { defineTool } from "../../agent/types.js";
+import { shouldReviewPathInAutoMode } from "../../permissions/shouldReviewPathInAutoMode.js";
 import { editTextFileBatch } from "../utils/index.js";
 
 const editItemSchema = Type.Object(
@@ -40,6 +41,10 @@ export const piEditTool = defineTool({
         {},
     ),
     returnType: piEditReturnSchema,
+    shouldReviewInAutoMode: ({ path }, context) =>
+        shouldReviewPathInAutoMode(path, context, { write: true }),
+    shouldRunInFullAccessInAutoMode: ({ path }, context) =>
+        shouldReviewPathInAutoMode(path, context, { write: true }),
     execute: async (args, context) => {
         const edits = normalizePiEdits(args);
         return editTextFileBatch(

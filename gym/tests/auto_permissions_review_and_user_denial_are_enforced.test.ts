@@ -58,6 +58,9 @@ describe("Auto permissions review and user denial are enforced", () => {
                             {
                                 arguments: {
                                     cmd: allowedCommand,
+                                    justification:
+                                        "Run the explicitly requested command outside the sandbox.",
+                                    sandbox_permissions: "require_escalated",
                                     workdir: "/workspace",
                                 },
                                 id: "auto-approved-command",

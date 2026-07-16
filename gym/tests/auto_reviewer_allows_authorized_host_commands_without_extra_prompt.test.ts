@@ -36,6 +36,9 @@ describe("Auto reviewer allows authorized host commands without extra prompts", 
                             {
                                 arguments: {
                                     cmd: "printf 'auto host access works\\n' > /home/rig/auto-host.txt && cp /home/rig/auto-host.txt /workspace/auto-host-observed.txt",
+                                    justification:
+                                        "Write the home-directory marker the user requested.",
+                                    sandbox_permissions: "require_escalated",
                                     workdir: "/workspace",
                                 },
                                 id: "authorized-auto-host-command",
