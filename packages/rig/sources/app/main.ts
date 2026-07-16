@@ -10,7 +10,7 @@ import { resolveSessionCommand } from "./resolveSessionCommand.js";
 import { parseSessionEnvironmentOptions } from "./parseSessionEnvironmentOptions.js";
 
 export async function main(argv: readonly string[] = process.argv.slice(2)): Promise<void> {
-    if (argv.includes("--server")) {
+    if (argv.length === 1 && argv[0] === "--server") {
         await runLocalProtocolServer({
             ...(process.env.RIG_SERVER_SOCKET_PATH !== undefined
                 ? { socketPath: process.env.RIG_SERVER_SOCKET_PATH }
