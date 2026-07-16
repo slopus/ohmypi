@@ -110,7 +110,10 @@ cursors beyond the session's last issued event remain invalid and return 409.
 
 | `event.type`                   | Meaning                                                                | Additional fields                                                                        |
 | ------------------------------ | ---------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| `context_compacted`            | Older model context was summarized automatically.                      | `compactedMessageCount`, `estimatedTokensBefore`, `estimatedTokensAfter`, `reason`       |
 | `inference_iteration_start`    | A new model inference iteration started within the run.                | `iteration`                                                                              |
+| `inference_retry`              | An incomplete provider response is being retried.                      | `attempt`, `maxAttempts`, `reason`                                                       |
+| `steering_applied`             | Queued steering messages were incorporated into the model context.     | `messageIds`                                                                             |
 | `tool_execution_start`         | Execution of a model-requested tool began.                             | `toolCall`                                                                               |
 | `tool_execution_end`           | Tool execution finished.                                               | `result`, containing `type`, `toolCallId`, `toolName`, `display`, and optional `isError` |
 | `tool_execution_progress`      | A running tool reported new human-readable progress.                   | `toolCallId`, `display`                                                                  |
