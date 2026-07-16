@@ -70,7 +70,7 @@ describe("createWorkflowMonitor", () => {
         monitor.handleInput?.("\r");
         expect(render(monitor)).toContain("View workflow code");
         expect(render(monitor)).toContain("Agent 1  Completed · Inspect imports");
-        expect(render(monitor)).toContain("Agent 2  Running · Check tests");
+        expect(render(monitor)).toContain("Agent 2  Queued · Check tests");
 
         monitor.handleInput?.("\r");
         expect(render(monitor)).toContain("Workflow code");
@@ -154,7 +154,7 @@ function workflowAgents(): SubagentSummary[] {
             modelId: "openai/gym",
             parentSessionId: "parent",
             prompt: "Check the tests carefully.",
-            status: "running",
+            status: "queued",
             taskName: "workflow_run-1_2",
             updatedAt: 3_000,
         },

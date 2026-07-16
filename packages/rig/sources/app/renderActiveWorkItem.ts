@@ -2,6 +2,7 @@ import { truncateToWidth } from "@earendil-works/pi-tui";
 
 import { humanizeWorkflowName } from "../workflows/index.js";
 import type { ActiveWorkItem } from "./ActiveWorkItem.js";
+import { humanizeSubagentStatus } from "./humanizeSubagentStatus.js";
 import { sanitizeTerminalText } from "./sanitizeTerminalText.js";
 import { DEFAULT_TERMINAL_THEME } from "./defaultTerminalTheme.js";
 import type { TerminalTheme } from "./TerminalTheme.js";
@@ -30,9 +31,7 @@ export function renderActiveWorkItem(
               : item.process.command;
     const detail =
         item.kind === "subagent"
-            ? item.subagent.status === "queued"
-                ? "Queued"
-                : "Running"
+            ? humanizeSubagentStatus(item.subagent.status)
             : item.kind === "workflow"
               ? (item.workflow.phase ??
                 `${item.workflow.agentCount} agent${item.workflow.agentCount === 1 ? "" : "s"}`)

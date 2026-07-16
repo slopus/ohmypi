@@ -16,7 +16,7 @@ describe("formatSubagentRows", () => {
 
         expect(formatSubagentRows([completed, running, waiting, nested, failed], 10_000)).toEqual([
             "Running · Running second · 3s · 2.0k tokens",
-            "Waiting · Waiting third · 0s · 0 tokens",
+            "Queued · Waiting third · 0s · 0 tokens",
             "  Suspended · Nested suspended · 1m 5s · 999 tokens",
             "Completed · Completed first · 4s · 12k tokens",
             "Failed · Failed last · 7s · 40 tokens",

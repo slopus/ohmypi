@@ -10,6 +10,7 @@ import type { SubagentSummary } from "../protocol/index.js";
 import type { WorkflowRun } from "../workflows/index.js";
 import { humanizeWorkflowName, serializeWorkflowValue } from "../workflows/index.js";
 import { formatActivityElapsedTime } from "./formatActivityElapsedTime.js";
+import { humanizeSubagentStatus } from "./humanizeSubagentStatus.js";
 import { humanizeWorkflowStatus } from "./humanizeWorkflowStatus.js";
 import { sanitizeTerminalText } from "./sanitizeTerminalText.js";
 import { DEFAULT_TERMINAL_THEME } from "./defaultTerminalTheme.js";
@@ -406,16 +407,6 @@ class WorkflowMonitor implements Component {
         const padding = " ".repeat(Math.max(0, width - visibleWidth(fitted)));
         return `${this.#theme.inputBackground}${this.#theme.primary}${fitted}${padding}${RESET}`;
     }
-}
-
-function humanizeSubagentStatus(status: SubagentSummary["status"]): string {
-    if (status === "aborted") return "Stopped";
-    if (status === "suspended") return "Suspended";
-    if (status === "completed") return "Completed";
-    if (status === "error") return "Failed";
-    if (status === "idle") return "Idle";
-    if (status === "queued") return "Queued";
-    return "Running";
 }
 
 function workflowAgentIndex(taskName: string | undefined): number {
