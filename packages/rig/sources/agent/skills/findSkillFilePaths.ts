@@ -1,7 +1,7 @@
 import { join } from "node:path";
 
 import type { FileSystemContext } from "../context/FileSystemContext.js";
-import { isFileAtPath } from "./isFileAtPath.js";
+import { isFileAtPath } from "../isFileAtPath.js";
 
 const SKILL_FILENAME = "SKILL.md";
 
