@@ -7,6 +7,7 @@ import type { ProviderQuotaWindow } from "../providers/providerQuota.js";
 import type { CodingAssistantModelChoice } from "./CodingAssistantAgentBackend.js";
 import { formatCompactTokens } from "./formatCompactTokens.js";
 import { formatResetDuration } from "./formatResetDuration.js";
+import { humanizeProviderId } from "./humanizeProviderId.js";
 
 export function formatSessionUsageSummary(
     summary: GetSessionUsageResponse,
@@ -24,7 +25,7 @@ export function formatSessionUsageSummary(
     let hasObservedRemaining = false;
     for (const [providerIndex, providerId] of providerIds.entries()) {
         if (providerIndex > 0) lines.push("");
-        lines.push(providerName(providerId));
+        lines.push(humanizeProviderId(providerId));
         const providerGroups = summary.groups.filter(
             (candidate) => candidate.providerId === providerId,
         );
@@ -186,14 +187,6 @@ function formatUsd(value: number): string {
 
 function formatTokens(value: number): string {
     return formatCompactTokens(Math.max(0, Math.round(value))).replace(/\.0([km])$/u, "$1");
-}
-
-function providerName(providerId: string): string {
-    if (providerId === "codex") return "Codex";
-    if (providerId === "claude") return "Claude";
-    if (providerId === "gym") return "Gym";
-    if (providerId === "bedrock") return "Amazon Bedrock";
-    return humanizeIdentifier(providerId);
 }
 
 function humanizeIdentifier(value: string): string {

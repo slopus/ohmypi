@@ -86,7 +86,7 @@ describe("formatSessionUsageSummary", () => {
         ];
 
         const text = formatSessionUsageSummary(value, [{ model: codex, providerId: "codex" }]);
-        expect(text).toContain("Claude\n  Sonnet 4 6\n    120 total · 100 input · 20 output");
+        expect(text).toContain("Claude Code\n  Sonnet 4 6\n    120 total · 100 input · 20 output");
         expect(text).toContain("· $0.12");
         expect(text).toContain("Observed remaining: week -2% (approx.)");
         expect(text).toContain("Observed remaining may include other account activity.");
@@ -142,6 +142,20 @@ describe("formatSessionUsageSummary", () => {
 
         expect(text).toContain("Codex\n  GPT-5.6\n    Context: ~600 / 200k · 99.7% left");
         expect(text).toContain("Session total: 0");
+    });
+
+    it.each([
+        ["claude", "Claude Code"],
+        ["grok", "Grok Build"],
+    ])("uses the shared product name for the %s provider", (providerId, productName) => {
+        const value = summary();
+        delete value.context;
+        value.currentProviderId = providerId;
+        value.groups = [];
+        value.observedQuota = [];
+        value.quotas = [];
+
+        expect(formatSessionUsageSummary(value, []).split("\n")[0]).toBe(productName);
     });
 });
 
