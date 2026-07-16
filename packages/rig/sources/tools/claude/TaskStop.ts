@@ -27,6 +27,7 @@ export const claudeTaskStopTool = defineTool({
             task_type: Type.Literal("workflow"),
         }),
     ]),
+    shouldReviewInAutoMode: () => false,
     execute: async ({ shell_id, task_id }, context) => {
         const id = task_id ?? shell_id;
         if (id === undefined) throw new Error("A background task identifier is required.");

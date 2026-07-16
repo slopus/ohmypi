@@ -72,6 +72,7 @@ describe("duplicate tool call identifiers", () => {
             description: "Changes the machine.",
             arguments: Type.Object({ value: Type.String() }),
             returnType: Type.Object({ value: Type.String() }),
+            shouldReviewInAutoMode: () => false,
             execute,
             toLLM(result: { value: string }) {
                 return [{ type: "text", text: result.value }];

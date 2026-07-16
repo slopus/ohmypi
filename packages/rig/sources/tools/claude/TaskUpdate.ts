@@ -34,6 +34,7 @@ export const claudeTaskUpdateTool = defineTool({
             }),
         ),
     }),
+    shouldReviewInAutoMode: () => false,
     execute({ taskId, ...request }, context) {
         if (context.tasks === undefined) {
             throw new Error("Task tracking is unavailable in this session.");

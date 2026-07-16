@@ -127,7 +127,7 @@ describe("waiting for a long workflow", () => {
         );
         expect(completed.text).toContain("Workflow Long wait completed.");
         expect(sawCompletionNotification).toBe(true);
-        expect(permissionReviews).toBe(1);
+        expect(permissionReviews).toBe(0);
     }, 120_000);
 });
 

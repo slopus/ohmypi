@@ -1,6 +1,7 @@
 import { Type } from "@sinclair/typebox";
 
 import { defineTool } from "../../agent/types.js";
+import { shouldReviewPatchInAutoMode } from "../../permissions/shouldReviewPatchInAutoMode.js";
 import { applyPatchText } from "../utils/index.js";
 import { resolveFileSystemPath } from "../utils/resolveFileSystemPath.js";
 
@@ -45,6 +46,8 @@ export const codexApplyPatchTool = defineTool({
         ),
     }),
     returnType: applyPatchOutputSchema,
+    shouldReviewInAutoMode: shouldReviewPatchInAutoMode,
+    shouldRunInFullAccessInAutoMode: shouldReviewPatchInAutoMode,
     execute: async ({ patch, workdir }, context) => {
         const cwd = resolveFileSystemPath(
             workdir ?? context.fs.cwd,

@@ -11,6 +11,8 @@ import { removeStaleSocket } from "./removeStaleSocket.js";
 import { McpClientManager } from "../mcp/index.js";
 import { loadConfig, writeDaemonSettings } from "../config/index.js";
 import { createProviderQuotaService } from "../providers/createProviderQuotaService.js";
+import { createCodingAssistantAgent } from "../app/createCodingAssistantAgent.js";
+import { discoverConfiguredGrokModels } from "./discoverConfiguredGrokModels.js";
 
 export interface RunLocalProtocolServerOptions {
     socketPath?: string;
@@ -28,11 +30,24 @@ export async function runLocalProtocolServer(
     await removeStaleSocket(socketPath);
 
     const loadedConfig = await loadConfig({ cwd: process.cwd() });
-    const modelCatalog = createModelCatalog({ cwd: process.cwd() });
     const providerQuotaService = createProviderQuotaService({ cwd: process.cwd() });
+    const grokModelsByProviderId = await discoverConfiguredGrokModels({
+        providers: loadedConfig.config.providers,
+    });
+    const modelCatalog = createModelCatalog({
+        cwd: process.cwd(),
+        grokModelsByProviderId,
+        providers: loadedConfig.config.providers,
+    });
     const mcpToolProvider = new McpClientManager();
     const taskDrain = new TrackedTaskDrain();
     const store = new PersistentSessionStore({
+        createRuntime: (options) =>
+            createCodingAssistantAgent({
+                ...options,
+                grokModelsByProviderId,
+                providers: loadedConfig.config.providers,
+            }),
         databasePath: paths.databasePath,
         durableGlobalEventQueue: loadedConfig.config.settings.durableGlobalEventQueue,
         mcpToolProvider,

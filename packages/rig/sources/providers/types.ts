@@ -9,7 +9,7 @@ import type { TSchema } from "@sinclair/typebox";
 import type { ProviderQuota } from "./providerQuota.js";
 
 export type StopReason = "stop" | "length" | "toolUse" | "error" | "aborted";
-export type ProviderErrorCode = "invalid_image_request";
+export type ProviderErrorCode = "incomplete_response" | "invalid_image_request";
 export type ServiceTier = "fast";
 
 /** Plain text content block. */
@@ -61,6 +61,7 @@ export interface AssistantMessage {
     model: string;
     responseModel?: string;
     responseId?: string;
+    endTurn?: boolean;
     usage: Usage;
     stopReason: StopReason;
     errorCode?: ProviderErrorCode;

@@ -77,6 +77,7 @@ export function createWorkflowTool(name: "Workflow" | "workflow") {
             status: Type.Literal("async_launched"),
             taskId: Type.String(),
         }),
+        shouldReviewInAutoMode: () => false,
         execute: async (
             { args, description, name: requestedName, resumeFromRunId, script, scriptPath },
             context,

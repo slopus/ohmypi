@@ -15,9 +15,15 @@ export { writeRuntimeConfigDefaults } from "./writeRuntimeConfigDefaults.js";
 export { writeDaemonSettings } from "./writeDaemonSettings.js";
 export type {
     ConfigDefaults,
+    ConfigBedrockProvider,
+    ConfigClaudeProvider,
+    ConfigCodexProvider,
+    ConfigGrokProvider,
+    ConfigProvider,
     DaemonSettings,
     ConfigFeatures,
     ConfigPaths,
+    ConfigProviders,
     ConfigSettings,
     ConfigSource,
     ConfigTheme,
@@ -26,6 +32,7 @@ export type {
     RigConfig,
     PartialConfigDefaults,
     PartialConfigFeatures,
+    PartialConfigProviders,
     PartialConfigSettings,
     PartialConfigTheme,
     PartialRigConfig,

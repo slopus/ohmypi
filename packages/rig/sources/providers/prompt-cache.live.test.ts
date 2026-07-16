@@ -119,6 +119,7 @@ describeLive("provider prompt caching", () => {
                 description: "Acknowledge a prompt-cache continuation test value.",
                 arguments: Type.Object({ value: Type.String() }),
                 returnType: Type.Object({ acknowledgement: Type.String() }),
+                shouldReviewInAutoMode: () => false,
                 execute: ({ value }) => {
                     executionCount += 1;
                     return { acknowledgement: `Acknowledged: ${value}` };

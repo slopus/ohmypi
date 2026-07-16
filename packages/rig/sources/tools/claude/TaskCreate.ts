@@ -22,6 +22,7 @@ export const claudeTaskCreateTool = defineTool({
     returnType: Type.Object({
         task: Type.Object({ id: Type.String(), subject: Type.String() }),
     }),
+    shouldReviewInAutoMode: () => false,
     execute({ subject, description, activeForm, metadata }, context) {
         if (context.tasks === undefined) {
             throw new Error("Task tracking is unavailable in this session.");

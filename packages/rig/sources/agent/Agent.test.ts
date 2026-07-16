@@ -15,6 +15,7 @@ import {
     type StreamOptions,
     type Usage,
 } from "../providers/types.js";
+import type { DebugLog } from "../debug/index.js";
 
 describe("Agent", () => {
     it("queues steering and user messages, runs the loop, and prints messages", async () => {
@@ -75,9 +76,14 @@ describe("Agent", () => {
         expect(user.id).toBe("id-4");
         expect(queuedIds).toEqual(["id-3", "id-5"]);
 
-        const result = await agent.run();
+        const debug = {
+            directory: "/tmp/rig-agent-debug",
+            record: async () => undefined,
+        } as unknown as DebugLog;
+        const result = await agent.run({ debug });
 
         expect(result.runId).toBe("id-6");
+        expect(result.debugDirectory).toBe("/tmp/rig-agent-debug");
         expect(result.stopReason).toBe("stop");
         expect(agent.status).toBe("idle");
         expect(agent.queue).toEqual([]);
@@ -138,6 +144,7 @@ describe("Agent", () => {
             description: "Does nothing.",
             arguments: Type.Object({}),
             returnType: Type.Object({ ok: Type.Boolean() }),
+            shouldReviewInAutoMode: () => false,
             execute: () => ({ ok: true }),
             toLLM: () => [{ type: "text", text: "ok" }],
             toUI: () => "ok",
@@ -352,6 +359,7 @@ describe("Agent", () => {
                 description: "Returns the supplied value.",
                 arguments: Type.Object({ value: Type.String() }),
                 returnType: Type.Object({ value: Type.String() }),
+                shouldReviewInAutoMode: () => false,
                 execute: (args: { value: string }) => args,
                 toLLM: (result: { value: string }) => [{ type: "text", text: result.value }],
                 toUI: (result: { value: string }) => result.value,
@@ -888,6 +896,7 @@ describe("Agent", () => {
             description: "Waits until aborted.",
             arguments: Type.Object({ value: Type.String() }),
             returnType: Type.Object({ value: Type.String() }),
+            shouldReviewInAutoMode: () => false,
             async execute(args: { value: string }, _context, execution) {
                 started.resolve();
                 await new Promise<void>((resolve) => {

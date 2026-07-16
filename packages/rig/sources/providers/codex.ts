@@ -43,6 +43,7 @@ export interface CodexProviderOptions {
     resolveApiKey?: () => string | undefined;
     useLocalCodexAuth?: boolean;
     codexAuthPath?: string;
+    id?: string;
     transport?: SimpleStreamOptions["transport"];
 }
 
@@ -85,7 +86,7 @@ export function createCodexProvider(options: CodexProviderOptions = {}): Provide
     );
 
     return defineProvider({
-        id: "codex",
+        id: options.id ?? "codex",
         models: codexModels,
         serviceTiers: ["fast"],
         quota: (quotaOptions) => quota.get(quotaOptions),

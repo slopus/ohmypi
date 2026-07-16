@@ -94,6 +94,7 @@ describe("agent loop live", () => {
             returnType: Type.Object({
                 total: Type.Number(),
             }),
+            shouldReviewInAutoMode: () => false,
             execute: addExecute,
             toLLM: addToLLM,
             toUI: addToUI,
@@ -120,6 +121,7 @@ describe("agent loop live", () => {
             returnType: Type.Object({
                 shouted: Type.String(),
             }),
+            shouldReviewInAutoMode: () => false,
             execute: shoutExecute,
             toLLM: shoutToLLM,
             toUI: shoutToUI,
@@ -291,6 +293,7 @@ describe("agent loop live", () => {
             description: "Returns slowly.",
             arguments: Type.Object({ value: Type.String() }),
             returnType: Type.Object({ value: Type.String() }),
+            shouldReviewInAutoMode: () => false,
             async execute(args: { value: string }) {
                 events.push("slow-start");
                 await delay(40);
@@ -311,6 +314,7 @@ describe("agent loop live", () => {
             description: "Returns quickly.",
             arguments: Type.Object({ value: Type.String() }),
             returnType: Type.Object({ value: Type.String() }),
+            shouldReviewInAutoMode: () => false,
             async execute(args: { value: string }) {
                 events.push("fast-start");
                 await delay(1);
@@ -430,6 +434,7 @@ describe("agent loop live", () => {
             description: "Returns a result whose status is determined after execution.",
             arguments: Type.Object({}),
             returnType: Type.Object({ failed: Type.Boolean() }),
+            shouldReviewInAutoMode: () => false,
             execute: () => ({ failed: true }),
             isError: (result) => result.failed,
             toLLM: (result) => [{ type: "text", text: `failed=${String(result.failed)}` }],
@@ -513,6 +518,7 @@ describe("agent loop live", () => {
             description: "Waits until the run is aborted.",
             arguments: Type.Object({ value: Type.String() }),
             returnType: Type.Object({ value: Type.String() }),
+            shouldReviewInAutoMode: () => false,
             async execute(args: { value: string }, _context, execution) {
                 observedSignals.push(execution.signal === controller.signal);
                 started.resolve();

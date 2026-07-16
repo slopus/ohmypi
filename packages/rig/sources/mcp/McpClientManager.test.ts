@@ -320,7 +320,7 @@ describe("McpClientManager", () => {
             const harness = createJustBashToolHarness();
             const result = await tool?.execute({ value: "hello" } as never, harness.context, {});
             expect(tool?.toLLM(result as never)).toEqual([{ type: "text", text: "Echo: hello" }]);
-            expect(tool?.locks).toEqual([]);
+            expect(tool?.locks).toEqual(["mcp:test server"]);
 
             harness.context.userInput = {
                 request: async () => ({ answers: { environment: ["staging"] } }),

@@ -22,6 +22,7 @@ export const codexWaitAgentTool = defineTool({
         agents: Type.Array(managedSubagentSchema),
         timed_out: Type.Boolean(),
     }),
+    shouldReviewInAutoMode: () => false,
     execute: async ({ timeout_ms }, context, execution) => {
         const result = await requireSubagentContext(context).wait(timeout_ms, execution.signal);
         return {

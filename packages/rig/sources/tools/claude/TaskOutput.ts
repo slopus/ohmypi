@@ -63,6 +63,7 @@ export const claudeTaskOutputTool = defineTool({
         ),
     }),
     returnType: taskOutputReturnSchema,
+    shouldReviewInAutoMode: () => false,
     execute: async (
         { block = true, task_id, timeout = 30_000 },
         context,

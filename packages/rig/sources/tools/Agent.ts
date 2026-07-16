@@ -49,6 +49,7 @@ export const agentTool = defineTool({
         ),
     }),
     returnType: Type.Union([completedAgentResultSchema, backgroundAgentResultSchema]),
+    shouldReviewInAutoMode: () => false,
     execute: async (
         { context: contextMode, description, model, prompt, provider, run_in_background },
         context,

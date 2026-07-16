@@ -35,6 +35,7 @@ export const codexWriteStdinTool = defineTool({
         ),
     }),
     returnType: unifiedExecOutputSchema,
+    shouldReviewInAutoMode: ({ chars }) => chars !== undefined && chars.length > 0,
     execute: async (
         { session_id, chars = "", yield_time_ms, max_output_tokens },
         context,

@@ -2,7 +2,7 @@
 
 <p><img src="./logo.png" alt="Rig" width="400" /></p>
 
-<h3>The best of Pi, Codex, and Claude Code — unified in one coding-agent harness.</h3>
+<h3>The best of Pi, Codex, Claude Code, and Grok Build — unified in one coding-agent harness.</h3>
 
 <p>
   Use model-native prompts and tools with provider access already configured on
@@ -28,8 +28,9 @@ https://github.com/user-attachments/assets/99a7dee6-36ef-4110-95b2-e236633640a4
 
 Rig is an open-source coding-agent harness built on top of
 [Pi](https://github.com/earendil-works/pi)'s foundations. It recreates the best
-parts of [Codex](https://github.com/openai/codex) and
-[Claude Code](https://code.claude.com/docs/en/overview) in one consistent local
+parts of [Codex](https://github.com/openai/codex),
+[Claude Code](https://code.claude.com/docs/en/overview), and
+[Grok Build](https://github.com/xai-org/grok-build) in one consistent local
 runtime: the right prompts and tools for each model, useful defaults, safe
 execution, durable sessions, subagents, MCP, and a friendly terminal interface.
 
@@ -47,15 +48,18 @@ npm install -g @slopus/rig
 
 ### Step 2: Sign in to the agents you want to use
 
-Rig does not have another account to create. Run Codex or Claude Code once and
-complete its normal sign-in:
+Rig does not have another account to create. Run the coding agents you want and
+complete their normal sign-in:
 
 ```sh
 codex
 claude
+grok login
 ```
 
-Rig then uses the credentials already managed by those installations.
+Rig then uses the credentials already managed by those installations. Grok
+Build credentials are hot-reloaded from `~/.grok/auth.json`, so a later
+`grok login` is picked up without copying tokens into Rig.
 
 ### Step 3: Start building
 
@@ -70,13 +74,14 @@ time to choose an available model.
 
 ## Why Rig?
 
-Pi is a wonderfully small, flexible foundation. Codex and Claude Code each add
-excellent model-specific behavior, but they expose different tools, permissions,
-session models, and integration protocols. Rig brings those ideas together
+Pi is a wonderfully small, flexible foundation. Codex, Claude Code, and Grok
+Build each add excellent model-specific behavior, but they expose different
+tools, permissions, session models, and integration protocols. Rig brings those ideas together
 without making you rebuild the setup for every model, machine, or repository.
 
 - **Feels native to the model.** GPT receives Codex-style prompts and tools;
-  Claude receives Claude Code-style prompts and tools.
+  Claude receives Claude Code-style prompts and tools; Grok receives the
+  open-source Grok Build prompt and tool contracts.
 - **One dependable workflow.** Sessions, permissions, MCP, Docker, background
   commands, reviews, goals, and headless execution work through one interface.
 - **Thoughtful defaults.** A fresh install is useful immediately, while global
@@ -99,6 +104,7 @@ runtime without flattening the important differences between models.
 | Pi foundation     | Pi's inference adapters and terminal UI library                                                                  | The shared terminal, permissions, sessions, processes, persistence, and client protocol                                 |
 | Codex             | Pi's Codex transport, with [OpenAI's source](https://github.com/openai/codex) as the behavioral reference        | Reimplemented Codex prompts, tool contracts, reasoning controls, collaboration, approvals, review, and transcript rules |
 | Claude Code       | Anthropic's official [Claude Agent SDK](https://code.claude.com/docs/en/agent-sdk/overview) for direct inference | Reimplemented Claude-facing prompts, tools, tasks, subagents, permissions, and session behavior                         |
+| Grok Build        | xAI's OpenAI-compatible Responses API and the credentials managed by the Grok CLI                                | Adapted [Grok Build](https://github.com/xai-org/grok-build) prompt, tools, token refresh, and request metadata          |
 | Other model paths | Pi inference adapters and selected generic Pi tool definitions                                                   | A useful fallback experience without pretending those models are Codex or Claude Code                                   |
 | External clients  | Rig's local daemon, durable event stream, and protocol                                                           | One stable API for terminal, headless, mobile, web, or other interfaces                                                 |
 
@@ -112,6 +118,17 @@ for inference, but disables its built-in tools, skills, slash commands, and
 filesystem settings. Rig then supplies its own implementations of those surfaces.
 This keeps Claude's native inference path while giving Rig one place to control
 tools, permissions, persistence, subagents, and client events.
+
+Grok Build uses xAI's Responses API at the same first-party proxy as the
+open-source CLI. Rig reads Grok's scoped auth store on every request, prefers an
+active interactive session over `XAI_API_KEY`, proactively refreshes expiring
+OIDC credentials, persists rotated refresh tokens, and sends Grok's native
+request identity headers. At daemon startup it fetches the authenticated
+account's model catalog, falling back to Grok's local model cache and the
+built-in `grok-build` route when discovery is unavailable. Selectable reasoning
+efforts are exposed only when the catalog advertises them; `grok-build` keeps
+its always-on reasoning behavior, while models without effort support receive
+no effort override. A failed inference request is not replayed.
 
 That separation is what makes Rig flexible: transports can stay provider-native
 while the surrounding harness remains consistent and independently evolvable.
@@ -129,9 +146,9 @@ Codex, or Claude Code. This table focuses on the local coding-agent experience.
 |                        | Rig                                                                   | [Pi](https://github.com/earendil-works/pi)                   | [Codex](https://github.com/openai/codex)  | [Claude Code](https://code.claude.com/docs/en/overview) |
 | ---------------------- | --------------------------------------------------------------------- | ------------------------------------------------------------ | ----------------------------------------- | ------------------------------------------------------- |
 | Primary role           | Opinionated multi-model harness                                       | Minimal, highly extensible agent toolkit                     | OpenAI's native coding agent              | Anthropic's native coding agent                         |
-| Model access           | Codex, Claude SDK, and optional Bedrock models                        | Broad multi-provider catalog                                 | OpenAI models                             | Claude models, including supported cloud platforms      |
-| Authentication         | Reuses Codex and Claude Code credentials                              | Pi logins or provider API keys                               | ChatGPT sign-in or API key                | Claude sign-in, API, or supported cloud provider        |
-| Tool behavior          | Switches between model-native Codex and Claude toolsets               | Small generic core, replaceable with extensions              | Codex-native                              | Claude Code-native                                      |
+| Model access           | Codex, Claude Code, Grok Build, and optional Bedrock models           | Broad multi-provider catalog                                 | OpenAI models                             | Claude models, including supported cloud platforms      |
+| Authentication         | Reuses Codex, Claude Code, and Grok credentials                       | Pi logins or provider API keys                               | ChatGPT sign-in or API key                | Claude sign-in, API, or supported cloud provider        |
+| Tool behavior          | Switches between model-native Codex, Claude, and Grok toolsets        | Small generic core, replaceable with extensions              | Codex-native                              | Claude Code-native                                      |
 | Subagents              | Built in, with provider-aligned controls and saved transcripts        | Intentionally extension-driven                               | Built-in multi-agent tools                | Built-in subagents and agent teams                      |
 | Permissions            | Unified Auto, Workspace write, Read only, and Full access modes       | Intentionally extension- or container-driven                 | Native approvals and sandboxing           | Native permission modes                                 |
 | MCP                    | Built-in stdio, streamable HTTP, and legacy SSE support               | Available through extensions                                 | Built in                                  | Built in                                                |
@@ -184,6 +201,21 @@ delimited session events followed by the final result:
 rig exec --json "Summarize this repository"
 rig exec --stream-json "Run the test suite"
 ```
+
+Add `--debug` to an interactive or headless invocation to capture every request
+as ordered JSON files under `.rig/debug` in the project. Each request gets a
+time-sortable directory containing normalized inference inputs, every streamed
+provider event and final response, agent events and messages, tool arguments and
+results, and run completion or failure details:
+
+```sh
+rig --debug
+rig exec --debug "Diagnose the failing test"
+```
+
+The debug directory contains its own Git ignore rule. Its files use private
+permissions, but can still contain complete prompts, source excerpts, command
+output, and model reasoning; treat them as sensitive when sharing.
 
 Headless runs are normal persisted sessions. Continue or branch from them later:
 
@@ -264,6 +296,76 @@ workflows = true
 brand = "ansi:202"
 accent = "cyan"
 ```
+
+Provider availability is machine-wide because the local daemon owns the model
+catalog and authentication paths. Configure it in `~/.config/rig/config.toml`:
+
+```toml
+[providers.codex]
+enabled = true
+
+[providers.claude]
+enabled = true
+
+[providers.grok]
+enabled = true
+
+[providers.bedrock]
+enabled = true
+```
+
+These four built-in instances use the normal Codex, Claude Code, Grok, and Bedrock
+credential locations, so their `type` is inferred. Disabling Codex or Claude
+Code removes that provider and its native authentication path from the model
+picker.
+
+Add any number of named instances when you need separate accounts. For custom
+instances, the section suffix is the provider ID shown in the model picker and
+accepted by `defaults.provider` and `RIG_PROVIDER`. Custom instances must set
+`type`; all parameters stay flat in the same section. The built-in Claude Code
+instance retains `claude-sdk` as its provider ID for compatibility:
+
+```toml
+[providers.work_codex]
+type = "codex"
+auth_file = "/Users/me/.codex-work/auth.json"
+transport = "auto"
+include_models = ["openai/gpt-5.6-sol", "openai/gpt-5.6-terra"]
+
+[providers.personal_claude]
+type = "claude"
+config_dir = "/Users/me/.claude-personal"
+exclude_models = ["anthropic/haiku-4-5"]
+
+[providers.work_grok]
+type = "grok"
+auth_file = "/Users/me/.grok-work/auth.json"
+include_models = ["xai/grok-build"]
+
+[providers.west_bedrock]
+type = "bedrock"
+region = "us-west-2"
+bearer_token_env_var = "WEST_BEDROCK_TOKEN"
+
+[providers.west_bedrock.model_overrides]
+"openai/gpt-5.6-sol" = { region = "us-east-1", endpoint = "https://bedrock-mantle.example/openai/v1" }
+"anthropic/opus-4-8" = { endpoint = "https://bedrock-runtime.example" }
+```
+
+Every provider accepts `enabled`, `include_models`, and `exclude_models`.
+Filters use exact Rig model IDs; exclusions win when a model appears in both
+lists. Codex instances also accept `auth_file`, `base_url`, and `transport`.
+Claude Code instances accept `config_dir` and `executable`. Grok instances
+accept `auth_file` and `base_url`; `RIG_GROK_BASE_URL` is also available for
+local proxy testing. Bedrock instances
+accept `region`, `model_overrides`, and `bearer_token_env_var`. `region` is the
+provider default. Each exact Rig model ID under `model_overrides` may set
+`region`, `endpoint`, or both. A full `endpoint` URL overrides the Mantle or
+Bedrock Runtime endpoint selected for that model and bypasses Rig's regional
+availability list. The resolved region is still used for regional
+inference-profile IDs and request metadata. Restart the local daemon after
+changing providers. Repository `rig.toml` files cannot change these
+machine-level choices or credential paths.
 
 Use `/configure` for common settings. Environment variables such as `RIG_MODEL`,
 `RIG_PROVIDER`, `RIG_EFFORT`, and `RIG_PERMISSION_MODE` override the corresponding
@@ -349,6 +451,34 @@ sandbox.
 </details>
 
 <details>
+<summary><strong>Grok Build</strong></summary>
+
+Install and sign in through the first-party Grok CLI, then choose Grok Build:
+
+```sh
+grok login
+export RIG_PROVIDER="grok"
+export RIG_MODEL="xai/grok-build"
+rig
+```
+
+By default Rig reads `$GROK_HOME/auth.json`, or `~/.grok/auth.json` when
+`GROK_HOME` is unset. It follows Grok's scoped auth format, skips deprecated
+web-login tokens, refreshes OIDC sessions five minutes before expiry, and
+atomically writes refreshed access and refresh tokens back to the same file.
+An explicit API key or `XAI_API_KEY` can also authenticate the provider, subject
+to xAI's model availability for that credential.
+
+The built-in endpoint is `https://cli-chat-proxy.grok.com/v1`. Grok Build uses
+the OpenAI-compatible `/responses` API with its upstream 500,000-token context,
+sampling defaults, encrypted reasoning continuation, and `x-grok-*` request
+headers. Rig adapts Grok's open-source prompt and primary tool definitions to
+its shared execution and permission layer; it does not reproduce Grok's TUI,
+schedulers, or dedicated Plan mode.
+
+</details>
+
+<details>
 <summary><strong>Amazon Bedrock</strong></summary>
 
 Bedrock becomes available when the daemon starts with an
@@ -361,9 +491,35 @@ export RIG_PROVIDER="bedrock"
 rig
 ```
 
+To use Bedrock exclusively, disable the native authentication paths in the
+machine-wide config and select a Bedrock default:
+
+```toml
+[defaults]
+provider = "bedrock"
+model = "openai/gpt-5.6-sol"
+
+[providers.codex]
+enabled = false
+
+[providers.claude]
+enabled = false
+
+[providers.grok]
+enabled = false
+
+[providers.bedrock]
+enabled = true
+```
+
 Rig uses `AWS_REGION`, then `AWS_DEFAULT_REGION`, and otherwise defaults to
 `us-east-1`. Restart an already-running daemon after changing these variables.
-The available model list follows AWS regional availability.
+The available model list follows AWS regional availability. GPT-5.6 Sol, Terra,
+and Luna use Amazon Bedrock's Responses API and its 272,000-token context limit.
+Sol is available in `us-east-1` and `us-east-2`; Terra and Luna are also
+available in `us-west-2`. See the current
+[OpenAI Bedrock guide](https://developers.openai.com/api/docs/guides/amazon-bedrock)
+and [AWS launch announcement](https://aws.amazon.com/about-aws/whats-new/2026/07/openai-gpt-sol-terra/).
 
 </details>
 
@@ -421,7 +577,7 @@ queue behavior.
 Rig aims for the best common coding-agent workflows, not exhaustive parity with
 every upstream option. It intentionally keeps planning in the normal agent flow,
 uses standard terminal editing instead of modal editing, follows Codex skill
-semantics, and relies on the existing Codex and Claude Code login flows.
+semantics, and relies on the existing Codex, Claude Code, and Grok login flows.
 
 Rig also draws a clear boundary around the terminal UI. The terminal is for a
 focused, linear agent workflow. Features that need a richer interaction model—
@@ -440,4 +596,5 @@ setup, tests, architecture notes, and the release process.
 
 ## License
 
-Rig is available under the [MIT License](LICENSE).
+Rig is available under the [MIT License](LICENSE). Adapted Grok Build portions
+remain under Apache-2.0; see the [third-party notices](THIRD-PARTY-NOTICES.md).

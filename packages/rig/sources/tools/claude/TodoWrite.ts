@@ -22,6 +22,7 @@ export const claudeTodoWriteTool = defineTool({
         todos: Type.Array(todoSchema, { description: "The updated todo list" }),
     }),
     returnType: textOutputSchema,
+    shouldReviewInAutoMode: () => false,
     execute: async ({ todos }) => ({
         text: `Todos have been modified successfully. ${todos.length} item(s) provided.`,
     }),

@@ -1,6 +1,7 @@
 import { Type } from "@sinclair/typebox";
 
 import { defineTool } from "../../agent/types.js";
+import { summarizeEscalatedShellAction } from "../../permissions/summarizeEscalatedShellAction.js";
 import {
     runShellCommand,
     shellOutputToText,
@@ -35,6 +36,13 @@ export const claudeBashTool = defineTool({
         ),
     }),
     returnType: shellToolOutputSchema,
+    autoPermissionInstructions:
+        "For Bash, request full-access execution with dangerouslyDisableSandbox: true only when the workspace sandbox blocks necessary work. The command remains sandboxed when this field is false or omitted.",
+    describeAutoPermissionAction: ({ command }, context) =>
+        summarizeEscalatedShellAction({ command, cwd: context.fs.cwd }),
+    shouldReviewInAutoMode: ({ dangerouslyDisableSandbox }) => dangerouslyDisableSandbox === true,
+    shouldRunInFullAccessInAutoMode: ({ dangerouslyDisableSandbox }) =>
+        dangerouslyDisableSandbox === true,
     execute: async ({ command, run_in_background, timeout }, context, execution) => {
         if (run_in_background === true) {
             const sessionId = await context.bash.startSession({

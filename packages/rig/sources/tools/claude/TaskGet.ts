@@ -12,6 +12,7 @@ export const claudeTaskGetTool = defineTool({
         { additionalProperties: false },
     ),
     returnType: Type.Object({ task: Type.Union([sessionTaskSchema, Type.Null()]) }),
+    shouldReviewInAutoMode: () => false,
     execute({ taskId }, context) {
         if (context.tasks === undefined) {
             throw new Error("Task tracking is unavailable in this session.");

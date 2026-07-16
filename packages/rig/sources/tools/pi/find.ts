@@ -1,6 +1,7 @@
 import { Type } from "@sinclair/typebox";
 
 import { defineTool } from "../../agent/types.js";
+import { shouldReviewPathInAutoMode } from "../../permissions/shouldReviewPathInAutoMode.js";
 import { countTextLines, globFiles, textOutputSchema, toTextBlocks } from "../utils/index.js";
 
 const DEFAULT_LIMIT = 1000;
@@ -23,6 +24,10 @@ export const piFindTool = defineTool({
         ),
     }),
     returnType: textOutputSchema,
+    shouldReviewInAutoMode: ({ path }, context) =>
+        shouldReviewPathInAutoMode(path ?? ".", context, { write: false }),
+    shouldRunInFullAccessInAutoMode: ({ path }, context) =>
+        shouldReviewPathInAutoMode(path ?? ".", context, { write: false }),
     execute: async ({ pattern, path, limit }, context, execution) => {
         const options: Parameters<typeof globFiles>[0] = { pattern, limit: limit ?? DEFAULT_LIMIT };
         if (path !== undefined) options.path = path;

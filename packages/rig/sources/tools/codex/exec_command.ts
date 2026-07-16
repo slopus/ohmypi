@@ -1,6 +1,7 @@
 import { Type } from "@sinclair/typebox";
 
 import { defineTool } from "../../agent/types.js";
+import { summarizeEscalatedShellAction } from "../../permissions/summarizeEscalatedShellAction.js";
 import { summarizeTextOutput } from "../utils/index.js";
 import {
     createUnifiedExecOutput,
@@ -51,6 +52,18 @@ export const codexExecCommandTool = defineTool({
         ),
     }),
     returnType: unifiedExecOutputSchema,
+    autoPermissionInstructions:
+        'For exec_command, request full-access execution with sandbox_permissions: "require_escalated" and include a concise justification. Keep sandbox_permissions at "use_default" or omit it for ordinary commands.',
+    describeAutoPermissionAction: ({ cmd, shell, workdir }, context) =>
+        summarizeEscalatedShellAction({
+            command: cmd,
+            cwd: workdir ?? context.fs.cwd,
+            ...(shell === undefined ? {} : { shell }),
+        }),
+    shouldReviewInAutoMode: ({ sandbox_permissions }) =>
+        sandbox_permissions === "require_escalated",
+    shouldRunInFullAccessInAutoMode: ({ sandbox_permissions }) =>
+        sandbox_permissions === "require_escalated",
     execute: async (
         { cmd, max_output_tokens, shell, workdir, yield_time_ms },
         context,

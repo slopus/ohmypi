@@ -42,14 +42,14 @@ import type {
     UserContent as ProviderUserContent,
 } from "../providers/types.js";
 import {
-    isPotentiallyMutatingMcpTool,
     requestAutoPermissionApproval,
     reviewAutoPermission,
-    shouldReviewToolInAutoMode,
     summarizePermissionAction,
 } from "../permissions/index.js";
+import type { DebugLog } from "../debug/index.js";
 
 export interface RunAgentLoopOptions {
+    debug?: DebugLog;
     provider: Provider;
     modelId: string;
     effort?: string;
@@ -95,6 +95,12 @@ export type AgentLoopEvent =
     | {
           type: "steering_applied";
           messageIds: readonly string[];
+      }
+    | {
+          type: "inference_retry";
+          attempt: number;
+          maxAttempts: number;
+          reason: "incomplete_response";
       }
     | {
           type: "tool_execution_start";
@@ -163,6 +169,7 @@ export async function runAgentLoop(options: RunAgentLoopOptions): Promise<AgentL
         ...(options.instructions !== undefined ? { instructions: options.instructions } : {}),
         messages: contextTranscript,
         context: options.context,
+        tools: options.tools,
     });
     const providerTools = options.tools.map(toProviderTool);
     const toolsByName = new Map(options.tools.map((tool) => [tool.name, tool]));
@@ -238,12 +245,20 @@ export async function runAgentLoop(options: RunAgentLoopOptions): Promise<AgentL
                 }
 
                 if (
-                    !emittedContent &&
                     assistantMessage.stopReason === "error" &&
                     inferenceRetryCount < INFERENCE_MAX_RETRIES &&
-                    isRetryableInferenceError(assistantMessage)
+                    (assistantMessage.errorCode === "incomplete_response" ||
+                        (!emittedContent && isRetryableInferenceError(assistantMessage)))
                 ) {
                     inferenceRetryCount += 1;
+                    if (assistantMessage.errorCode === "incomplete_response") {
+                        await options.onEvent?.({
+                            type: "inference_retry",
+                            attempt: inferenceRetryCount,
+                            maxAttempts: INFERENCE_MAX_RETRIES,
+                            reason: "incomplete_response",
+                        });
+                    }
                     await delayBeforeInferenceRetry(inferenceRetryCount, options.signal);
                     continue;
                 }
@@ -395,6 +410,14 @@ export async function runAgentLoop(options: RunAgentLoopOptions): Promise<AgentL
         }
 
         if (assistantMessage.stopReason !== "toolUse") {
+            if (assistantMessage.endTurn === false) {
+                await compactLoopContext(options, contextTranscript, providerMessages, model, now, {
+                    force: false,
+                    reportedTokens: assistantMessage.usage.totalTokens,
+                });
+                await appendSteering(options, transcript, contextTranscript, providerMessages, now);
+                continue;
+            }
             if (
                 (await appendSteering(
                     options,
@@ -438,9 +461,13 @@ export async function runAgentLoop(options: RunAgentLoopOptions): Promise<AgentL
 
         const toolResultBlocks = await Promise.all(
             toolCalls.map(async (toolCall) => {
+                await options.debug?.record("tool-call", {
+                    iteration,
+                    toolCall,
+                });
                 await options.onEvent?.({ type: "tool_execution_start", toolCall });
                 const result = await executeToolCall(toolCall, toolsByName, toolContext, {
-                    messages: contextTranscript,
+                    messages: transcript,
                     model,
                     now,
                     onProgress: (display) => {
@@ -463,8 +490,25 @@ export async function runAgentLoop(options: RunAgentLoopOptions): Promise<AgentL
                             toolCallId: toolCall.id,
                             ...review,
                         }),
+                    onRawResult: (rawResult) =>
+                        options.debug?.record("tool-raw-result", {
+                            iteration,
+                            rawResult,
+                            toolCall,
+                        }),
+                    onError: (error) =>
+                        options.debug?.record("tool-error", {
+                            error,
+                            iteration,
+                            toolCall,
+                        }),
                     provider: options.provider,
                     ...(options.signal === undefined ? {} : { signal: options.signal }),
+                });
+                await options.debug?.record("tool-result", {
+                    iteration,
+                    result,
+                    toolCall,
                 });
                 await options.onEvent?.({
                     type: "tool_execution_end",
@@ -802,6 +846,8 @@ async function executeToolCall(
             risk: "low" | "medium" | "high";
             userAuthorization: "low" | "medium" | "high";
         }) => void | Promise<void>;
+        onError?: (error: unknown) => void | Promise<void>;
+        onRawResult?: (result: unknown) => void | Promise<void>;
         provider: Provider;
         signal?: AbortSignal;
     },
@@ -816,7 +862,7 @@ async function executeToolCall(
     }
 
     if (
-        isPotentiallyMutatingMcpTool(tool.name) &&
+        tool.requiresAutoOrFullAccess &&
         context.permissions?.mode !== undefined &&
         context.permissions.mode !== "auto" &&
         context.permissions.mode !== "full_access"
@@ -831,7 +877,7 @@ async function executeToolCall(
         let runWithFullAccess = false;
         if (
             context.permissions?.mode === "auto" &&
-            (await shouldReviewToolInAutoMode(tool.name, toolCall.arguments, context.fs.cwd))
+            (await tool.shouldReviewInAutoMode(toolCall.arguments as never, context))
         ) {
             const review = await reviewAutoPermission({
                 args: toolCall.arguments,
@@ -842,7 +888,9 @@ async function executeToolCall(
                 ...(options.signal === undefined ? {} : { signal: options.signal }),
                 toolName: tool.name,
             });
-            const action = summarizePermissionAction(tool.name, toolCall.arguments, context.fs.cwd);
+            const action =
+                tool.describeAutoPermissionAction?.(toolCall.arguments as never, context) ??
+                summarizePermissionAction(tool.name, toolCall.arguments);
             await options.onPermissionReview?.({
                 action,
                 decision: review.decision,
@@ -865,7 +913,10 @@ async function executeToolCall(
                     );
                 }
             }
-            runWithFullAccess = true;
+            runWithFullAccess = await tool.shouldRunInFullAccessInAutoMode(
+                toolCall.arguments as never,
+                context,
+            );
         }
 
         const execute = tool.execute as (
@@ -903,6 +954,7 @@ async function executeToolCall(
             runWithFullAccess && context.permissions !== undefined
                 ? await context.permissions.runWithMode("full_access", run)
                 : await run();
+        await options.onRawResult?.(result);
         const resultIsError = isError?.(result);
         const presentation =
             resultIsError === true ? undefined : toPresentation?.(result, toolCall.arguments);
@@ -917,6 +969,7 @@ async function executeToolCall(
             ...(presentation === undefined ? {} : { presentation }),
         };
     } catch (error) {
+        await options.onError?.(error);
         return errorToolResultBlock(
             toolCall,
             `Tool '${tool.name}' failed: ${errorToMessage(error)}`,

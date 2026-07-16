@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { summarizePermissionAction } from "./summarizePermissionAction.js";
+import { summarizeEscalatedShellAction } from "./summarizeEscalatedShellAction.js";
 
 describe("summarizePermissionAction", () => {
     it("keeps the complete command visible while escaping control characters", () => {
@@ -17,16 +18,11 @@ printf VISIBLE_COMMAND_SUFFIX`;
     });
 
     it("discloses the execution boundary for an escalated command", () => {
-        const action = summarizePermissionAction(
-            "exec_command",
-            {
-                cmd: "printf safe",
-                sandbox_permissions: "require_escalated",
-                shell: "/bin/sh",
-                workdir: "/home/rig",
-            },
-            "/workspace",
-        );
+        const action = summarizeEscalatedShellAction({
+            command: "printf safe",
+            cwd: "/home/rig",
+            shell: "/bin/sh",
+        });
 
         expect(action).toBe(
             'running "printf safe". Working directory: "/home/rig". Shell: "/bin/sh". Access: unrestricted filesystem and network access',
@@ -36,11 +32,10 @@ printf VISIBLE_COMMAND_SUFFIX`;
     });
 
     it("names the effective directory and default shell when escalation omits overrides", () => {
-        const action = summarizePermissionAction(
-            "exec_command",
-            { cmd: "printf safe", sandbox_permissions: "require_escalated" },
-            "/workspace/project",
-        );
+        const action = summarizeEscalatedShellAction({
+            command: "printf safe",
+            cwd: "/workspace/project",
+        });
 
         expect(action).toContain('Working directory: "/workspace/project"');
         expect(action).toContain('Shell: "the default shell"');

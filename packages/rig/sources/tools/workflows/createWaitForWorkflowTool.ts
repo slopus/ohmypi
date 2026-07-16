@@ -26,6 +26,7 @@ export function createWaitForWorkflowTool(name: "WaitForWorkflow" | "wait_for_wo
             run_id: Type.String({ description: "Workflow run identifier returned by workflow." }),
         }),
         returnType: waitForWorkflowReturnSchema,
+        shouldReviewInAutoMode: () => false,
         execute: async ({ run_id }, context, execution) => {
             if (context.workflows === undefined) {
                 throw new Error("Workflows are unavailable in this session.");

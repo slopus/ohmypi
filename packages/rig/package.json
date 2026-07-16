@@ -1,6 +1,6 @@
 {
     "name": "@slopus/rig",
-    "version": "0.0.12",
+    "version": "0.0.15",
     "description": "Opinionated pi fork with strong defaults for coding-agent workflows.",
     "keywords": [
         "agent-harness",
@@ -16,7 +16,9 @@
         "rig": "./dist/main.js"
     },
     "files": [
-        "dist"
+        "dist",
+        "LICENSE-GROK-BUILD",
+        "THIRD-PARTY-NOTICES.md"
     ],
     "type": "module",
     "publishConfig": {

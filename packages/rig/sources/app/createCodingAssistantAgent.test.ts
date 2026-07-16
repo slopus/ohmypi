@@ -6,6 +6,7 @@ import {
     modelMoonshotKimiK25,
     modelOpenaiGpt55,
     modelOpenaiGpt56Sol,
+    modelXaiGrokBuild,
 } from "../providers/models.js";
 import { createCodingAssistantAgent } from "./createCodingAssistantAgent.js";
 
@@ -59,6 +60,195 @@ describe("createCodingAssistantAgent", () => {
             "TaskStop",
             "AskUserQuestion",
         ]);
+    });
+
+    it("creates a Grok Build agent with the native Grok tool surface", () => {
+        const runtime = createCodingAssistantAgent({
+            cwd: "/tmp/rig-app-test",
+            env: { XAI_API_KEY: "xai-test-key" },
+            modelId: modelXaiGrokBuild.id,
+        });
+
+        expect(runtime.provider.id).toBe("grok");
+        expect(runtime.agent.model).toEqual(modelXaiGrokBuild);
+        expect(runtime.agent.tools.map((tool) => tool.name)).toEqual([
+            "run_terminal_command",
+            "read_file",
+            "search_replace",
+            "list_dir",
+            "grep",
+            "get_command_or_subagent_output",
+            "kill_command_or_subagent",
+        ]);
+    });
+
+    it("creates a Grok agent for an account-discovered model", () => {
+        const grok45 = {
+            contextWindow: 500_000,
+            defaultThinkingLevel: "high",
+            id: "xai/grok-4.5",
+            name: "Grok 4.5",
+            thinkingLevels: ["low", "medium", "high"],
+        } as const;
+        const runtime = createCodingAssistantAgent({
+            cwd: "/tmp/rig-app-test",
+            env: { XAI_API_KEY: "xai-test-key" },
+            grokModelsByProviderId: { grok: [modelXaiGrokBuild, grok45] },
+            modelId: grok45.id,
+        });
+
+        expect(runtime.provider.id).toBe("grok");
+        expect(runtime.agent.model).toEqual(grok45);
+        expect(runtime.agent.tools.map((tool) => tool.name)).toContain("run_terminal_command");
+    });
+
+    it("creates agents for named provider instances and applies their model filters", () => {
+        const providers = {
+            work_codex: {
+                authFile: "/tmp/codex-work-auth.json",
+                enabled: true,
+                includeModels: [modelOpenaiGpt56Sol.id],
+                type: "codex" as const,
+            },
+            work_claude: {
+                configDir: "/tmp/claude-work",
+                enabled: true,
+                includeModels: [modelAnthropicFable5.id],
+                type: "claude" as const,
+            },
+        };
+
+        const codex = createCodingAssistantAgent({
+            cwd: "/tmp/rig-app-test",
+            modelId: modelOpenaiGpt56Sol.id,
+            providerId: "work_codex",
+            providers,
+        });
+        const claude = createCodingAssistantAgent({
+            cwd: "/tmp/rig-app-test",
+            modelId: modelAnthropicFable5.id,
+            providerId: "work_claude",
+            providers,
+        });
+
+        expect(codex.provider.id).toBe("work_codex");
+        expect(codex.provider.models).toEqual([modelOpenaiGpt56Sol]);
+        expect(claude.provider.id).toBe("work_claude");
+        expect(claude.provider.models).toEqual([modelAnthropicFable5]);
+    });
+
+    it("rejects disabled provider instances", () => {
+        expect(() =>
+            createCodingAssistantAgent({
+                cwd: "/tmp/rig-app-test",
+                providerId: "codex",
+                providers: {
+                    codex: { enabled: false, type: "codex" },
+                },
+            }),
+        ).toThrow("Unknown or disabled inference provider 'codex'.");
+    });
+
+    it("rejects an explicitly selected provider whose filters remove every model", () => {
+        expect(() =>
+            createCodingAssistantAgent({
+                cwd: "/tmp/rig-app-test",
+                modelId: modelOpenaiGpt56Sol.id,
+                providerId: "work_codex",
+                providers: {
+                    work_codex: {
+                        enabled: true,
+                        excludeModels: [modelOpenaiGpt56Sol.id],
+                        includeModels: [modelOpenaiGpt56Sol.id],
+                        type: "codex",
+                    },
+                },
+            }),
+        ).toThrow("Provider 'work_codex' has no models after applying its model filters.");
+    });
+
+    it("prefers an enabled named instance over a disabled built-in compatibility alias", () => {
+        const runtime = createCodingAssistantAgent({
+            cwd: "/tmp/rig-app-test",
+            modelId: modelAnthropicFable5.id,
+            providerId: "claude-sdk",
+            providers: {
+                claude: { enabled: false, type: "claude" },
+                "claude-sdk": {
+                    configDir: "/tmp/claude-alternate",
+                    enabled: true,
+                    type: "claude",
+                },
+            },
+        });
+
+        expect(runtime.provider.id).toBe("claude-sdk");
+    });
+
+    it("does not fall back to the default Bedrock credential for a named instance", () => {
+        expect(() =>
+            createCodingAssistantAgent({
+                cwd: "/tmp/rig-app-test",
+                env: { AWS_BEARER_TOKEN_BEDROCK: "default-token" },
+                modelId: modelOpenaiGpt56Sol.id,
+                providerId: "work_bedrock",
+                providers: {
+                    work_bedrock: {
+                        bearerTokenEnvVar: "WORK_BEDROCK_TOKEN",
+                        enabled: true,
+                        type: "bedrock",
+                    },
+                },
+            }),
+        ).toThrow(
+            "Inference provider 'work_bedrock' requires the WORK_BEDROCK_TOKEN environment variable.",
+        );
+    });
+
+    it("applies a Bedrock model-specific region override", () => {
+        const runtime = createCodingAssistantAgent({
+            cwd: "/tmp/rig-app-test",
+            env: { WORK_BEDROCK_TOKEN: "work-token" },
+            modelId: modelOpenaiGpt56Sol.id,
+            providerId: "work_bedrock",
+            providers: {
+                work_bedrock: {
+                    bearerTokenEnvVar: "WORK_BEDROCK_TOKEN",
+                    enabled: true,
+                    modelOverrides: {
+                        [modelOpenaiGpt56Sol.id]: { region: "us-east-1" },
+                    },
+                    region: "us-west-2",
+                    type: "bedrock",
+                },
+            },
+        });
+
+        expect(runtime.provider.models.map((model) => model.id)).toContain(modelOpenaiGpt56Sol.id);
+    });
+
+    it("allows a Bedrock endpoint override to bypass regional availability", () => {
+        const runtime = createCodingAssistantAgent({
+            cwd: "/tmp/rig-app-test",
+            env: { WORK_BEDROCK_TOKEN: "work-token" },
+            modelId: modelOpenaiGpt56Sol.id,
+            providerId: "work_bedrock",
+            providers: {
+                work_bedrock: {
+                    bearerTokenEnvVar: "WORK_BEDROCK_TOKEN",
+                    enabled: true,
+                    modelOverrides: {
+                        [modelOpenaiGpt56Sol.id]: {
+                            endpoint: "https://mantle.example/openai/v1",
+                        },
+                    },
+                    region: "us-west-2",
+                    type: "bedrock",
+                },
+            },
+        });
+
+        expect(runtime.provider.models.map((model) => model.id)).toContain(modelOpenaiGpt56Sol.id);
     });
 
     it("adds provider-neutral goal tools when the session supports goals", () => {

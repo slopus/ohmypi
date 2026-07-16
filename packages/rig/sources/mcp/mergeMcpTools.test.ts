@@ -42,6 +42,7 @@ function tool(name: string) {
         description: "Test tool.",
         arguments: Type.Object({}),
         returnType: Type.Unknown(),
+        shouldReviewInAutoMode: () => false,
         execute: () => undefined,
         toLLM: () => [],
         toUI: () => name,

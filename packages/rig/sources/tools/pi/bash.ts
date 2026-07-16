@@ -1,6 +1,7 @@
 import { Type } from "@sinclair/typebox";
 
 import { defineTool } from "../../agent/types.js";
+import { summarizeEscalatedShellAction } from "../../permissions/summarizeEscalatedShellAction.js";
 import {
     runShellCommand,
     summarizeTextOutput,
@@ -20,8 +21,28 @@ export const piBashTool = defineTool({
         timeout: Type.Optional(
             Type.Number({ description: "Timeout in seconds (optional, no default timeout)" }),
         ),
+        sandbox_permissions: Type.Optional(
+            Type.Union([Type.Literal("use_default"), Type.Literal("require_escalated")], {
+                description:
+                    "Request reviewed execution outside the workspace sandbox in Auto mode. Defaults to use_default.",
+            }),
+        ),
+        justification: Type.Optional(
+            Type.String({
+                description:
+                    "Concise user-facing reason why sandbox escalation is needed. Use only with require_escalated.",
+            }),
+        ),
     }),
     returnType: textOutputSchema,
+    autoPermissionInstructions:
+        'For bash, request full-access execution with sandbox_permissions: "require_escalated" and include a concise justification. Keep sandbox_permissions at "use_default" or omit it for ordinary commands.',
+    describeAutoPermissionAction: ({ command }, context) =>
+        summarizeEscalatedShellAction({ command, cwd: context.fs.cwd }),
+    shouldReviewInAutoMode: ({ sandbox_permissions }) =>
+        sandbox_permissions === "require_escalated",
+    shouldRunInFullAccessInAutoMode: ({ sandbox_permissions }) =>
+        sandbox_permissions === "require_escalated",
     execute: async ({ command, timeout }, context, execution) => {
         const options: Parameters<typeof runShellCommand>[1] = { maxOutputBytes: 512_000 };
         if (timeout !== undefined) options.timeoutMs = timeout * 1000;

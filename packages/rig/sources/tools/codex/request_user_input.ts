@@ -43,6 +43,7 @@ export const codexRequestUserInputTool = defineTool({
         { additionalProperties: false },
     ),
     returnType: Type.Object({ answers: Type.Record(Type.String(), answerSchema) }),
+    shouldReviewInAutoMode: () => false,
     async execute({ questions }, context, execution) {
         if (context.userInput === undefined) {
             throw new Error("Interactive user input is unavailable in this session.");

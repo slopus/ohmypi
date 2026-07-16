@@ -23,6 +23,7 @@ import type { SessionGoal } from "../goals/index.js";
 import { parsePermissionMode } from "../permissions/index.js";
 import {
     InMemorySession,
+    type InMemorySessionOptions,
     type InMemorySessionPersistence,
     type PersistedQueuedRun,
     type PersistedSessionMessage,
@@ -42,6 +43,7 @@ import type { TaskDrain } from "./TrackedTaskDrain.js";
 import { isTransientInferenceSessionEvent } from "./isTransientInferenceSessionEvent.js";
 
 export interface PersistentSessionStoreOptions {
+    createRuntime?: InMemorySessionOptions["createRuntime"];
     databasePath: string;
     durableGlobalEventQueue?: boolean;
     mcpToolProvider?: McpToolProvider;
@@ -52,6 +54,7 @@ export interface PersistentSessionStoreOptions {
 
 export class PersistentSessionStore implements SessionStore, InMemorySessionPersistence {
     #agentManager: AgentSessionManager;
+    #createRuntime: InMemorySessionOptions["createRuntime"];
     #database: DatabaseSync;
     #modelCatalog: ModelCatalog;
     #mcpToolProvider: McpToolProvider | undefined;
@@ -62,6 +65,7 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
 
     constructor(options: PersistentSessionStoreOptions) {
         this.#modelCatalog = options.modelCatalog ?? createModelCatalog();
+        this.#createRuntime = options.createRuntime;
         this.#mcpToolProvider = options.mcpToolProvider;
         this.#now = options.now ?? Date.now;
         this.#taskDrain = options.taskDrain;
@@ -164,6 +168,7 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
         const session = new InMemorySession({
             agentManager: this.#agentManager,
             createEventId: createEventIdFactory(),
+            ...(this.#createRuntime === undefined ? {} : { createRuntime: this.#createRuntime }),
             emitCreatedEvent: false,
             modelCatalog: this.#modelCatalog,
             ...(this.#mcpToolProvider !== undefined
@@ -194,6 +199,7 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
         const session = new InMemorySession({
             agentManager: this.#agentManager,
             createEventId: createEventIdFactory(),
+            ...(this.#createRuntime === undefined ? {} : { createRuntime: this.#createRuntime }),
             emitCreatedEvent: false,
             modelCatalog: this.#modelCatalog,
             ...(this.#mcpToolProvider !== undefined
@@ -251,14 +257,18 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
                 INSERT INTO queued_runs (
                     session_id,
                     run_id,
+                    debug,
+                    debug_directory,
                     display_text,
                     kind,
                     text,
                     user_message_json,
                     created_at_ms
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(session_id, run_id) DO UPDATE SET
+                    debug = excluded.debug,
+                    debug_directory = excluded.debug_directory,
                     display_text = excluded.display_text,
                     kind = excluded.kind,
                     text = excluded.text,
@@ -268,6 +278,8 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
             .run(
                 sessionId,
                 run.runId,
+                run.debug === true ? 1 : 0,
+                run.debugDirectory ?? null,
                 run.displayText,
                 run.kind,
                 run.text,
@@ -809,6 +821,8 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
             CREATE TABLE IF NOT EXISTS queued_runs (
                 session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
                 run_id TEXT NOT NULL,
+                debug INTEGER NOT NULL DEFAULT 0,
+                debug_directory TEXT,
                 display_text TEXT NOT NULL,
                 kind TEXT NOT NULL DEFAULT 'user',
                 text TEXT NOT NULL,
@@ -844,6 +858,8 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
         this.#ensureSessionColumn("goal_json", "TEXT");
         this.#ensureSessionColumn("next_task_id", "INTEGER NOT NULL DEFAULT 1");
         this.#ensureQueuedRunColumn("kind", "TEXT NOT NULL DEFAULT 'user'");
+        this.#ensureQueuedRunColumn("debug", "INTEGER NOT NULL DEFAULT 0");
+        this.#ensureQueuedRunColumn("debug_directory", "TEXT");
         this.#database.exec(`
             CREATE INDEX IF NOT EXISTS sessions_parent_created
                 ON sessions(parent_session_id, created_at_ms)
@@ -904,20 +920,25 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
         return this.#database
             .prepare(
                 `
-                SELECT run_id, display_text, kind, text, user_message_json
+                SELECT run_id, debug, debug_directory, display_text, kind, text, user_message_json
                 FROM queued_runs
                 WHERE session_id = ?
                 ORDER BY created_at_ms ASC
                 `,
             )
             .all(sessionId)
-            .map((row) => ({
-                displayText: readString(row, "display_text"),
-                kind: readString(row, "kind") as PersistedQueuedRun["kind"],
-                runId: readString(row, "run_id"),
-                text: readString(row, "text"),
-                userMessage: JSON.parse(readString(row, "user_message_json")),
-            })) as PersistedQueuedRun[];
+            .map((row) => {
+                const debugDirectory = readOptionalString(row, "debug_directory");
+                return {
+                    ...(readNumber(row, "debug") === 0 ? {} : { debug: true }),
+                    ...(debugDirectory === undefined ? {} : { debugDirectory }),
+                    displayText: readString(row, "display_text"),
+                    kind: readString(row, "kind") as PersistedQueuedRun["kind"],
+                    runId: readString(row, "run_id"),
+                    text: readString(row, "text"),
+                    userMessage: JSON.parse(readString(row, "user_message_json")),
+                };
+            }) as PersistedQueuedRun[];
     }
 
     #loadSession(sessionId: string): InMemorySession | undefined {
@@ -1026,6 +1047,7 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
             createEventId: createEventIdFactory(
                 lastEventId === undefined ? {} : { after: lastEventId },
             ),
+            ...(this.#createRuntime === undefined ? {} : { createRuntime: this.#createRuntime }),
             events: this.#loadEvents(sessionId),
             ...(lastEventId !== undefined ? { lastEventId } : {}),
             modelCatalog: this.#modelCatalog,

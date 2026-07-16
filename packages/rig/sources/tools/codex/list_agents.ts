@@ -14,6 +14,7 @@ export const codexListAgentsTool = defineTool({
         ),
     }),
     returnType: Type.Object({ agents: Type.Array(managedSubagentSchema) }),
+    shouldReviewInAutoMode: () => false,
     execute: ({ path_prefix }, context) => ({
         agents: Array.from(requireSubagentContext(context).list(path_prefix), (agent) => ({
             ...agent,

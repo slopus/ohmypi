@@ -1,6 +1,7 @@
 import { Type } from "@sinclair/typebox";
 
 import { defineTool } from "../../agent/types.js";
+import { shouldReviewPathInAutoMode } from "../../permissions/shouldReviewPathInAutoMode.js";
 import { readFileReturnSchema, readTextFile } from "../utils/index.js";
 
 const DEFAULT_MAX_LINES = 2000;
@@ -18,6 +19,10 @@ export const piReadTool = defineTool({
         limit: Type.Optional(Type.Number({ description: "Maximum number of lines to read" })),
     }),
     returnType: readFileReturnSchema,
+    shouldReviewInAutoMode: ({ path }, context) =>
+        shouldReviewPathInAutoMode(path, context, { write: false }),
+    shouldRunInFullAccessInAutoMode: ({ path }, context) =>
+        shouldReviewPathInAutoMode(path, context, { write: false }),
     execute: async ({ path, offset, limit }, context) => {
         const options: Parameters<typeof readTextFile>[0] = { path };
         if (offset !== undefined) options.offset = offset;

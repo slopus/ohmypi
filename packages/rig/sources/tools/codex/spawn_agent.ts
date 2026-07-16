@@ -30,6 +30,7 @@ export const codexSpawnAgentTool = defineTool({
         path: Type.String(),
         task_name: Type.String(),
     }),
+    shouldReviewInAutoMode: () => false,
     execute: async (
         { context: contextMode, message, model, provider, task_name },
         context,

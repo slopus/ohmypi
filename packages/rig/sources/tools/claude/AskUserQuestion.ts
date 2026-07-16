@@ -38,6 +38,7 @@ export const claudeAskUserQuestionTool = defineTool({
         questions: Type.Array(questionSchema),
         answers: Type.Record(Type.String(), Type.String()),
     }),
+    shouldReviewInAutoMode: () => false,
     async execute({ questions }, context, execution) {
         if (new Set(questions.map((question) => question.question)).size !== questions.length) {
             throw new Error("Interactive question text must be unique.");

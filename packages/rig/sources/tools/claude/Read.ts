@@ -1,6 +1,7 @@
 import { Type } from "@sinclair/typebox";
 
 import { defineTool } from "../../agent/types.js";
+import { shouldReviewPathInAutoMode } from "../../permissions/shouldReviewPathInAutoMode.js";
 import {
     mediaTypeForPath,
     readFileReturnSchema,
@@ -55,6 +56,10 @@ export const claudeReadTool = defineTool({
         ),
     }),
     returnType: claudeReadReturnSchema,
+    shouldReviewInAutoMode: ({ file_path }, context) =>
+        shouldReviewPathInAutoMode(file_path, context, { write: false }),
+    shouldRunInFullAccessInAutoMode: ({ file_path }, context) =>
+        shouldReviewPathInAutoMode(file_path, context, { write: false }),
     execute: async ({ file_path, offset, limit }, context) => {
         const lower = file_path.toLowerCase();
         if (lower.endsWith(".ipynb")) {

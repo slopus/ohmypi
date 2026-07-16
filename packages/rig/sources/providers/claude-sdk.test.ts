@@ -80,6 +80,7 @@ describe("Claude SDK provider", () => {
         const calls: Parameters<ClaudeSdkQuery>[0][] = [];
         const provider = createClaudeSdkProvider({
             agentContext: harness.context,
+            env: { CLAUDE_CONFIG_DIR: "/test/claude-config" },
             pathToClaudeCodeExecutable: "/test/claude",
             sessionId: "11111111-1111-4111-8111-111111111111",
             tools: [
@@ -93,6 +94,7 @@ describe("Claude SDK provider", () => {
                     returnType: Type.Object({
                         text: Type.String(),
                     }),
+                    shouldReviewInAutoMode: () => false,
                     execute: async ({ path }) => ({ text: `read ${path}` }),
                     toLLM: (result) => [{ type: "text", text: result.text }],
                     toUI: (result) => result.text,
@@ -154,6 +156,7 @@ describe("Claude SDK provider", () => {
         expect(calls[0]?.options?.extraArgs).toEqual({ "disable-slash-commands": null });
         expect(calls[0]?.options?.env?.CLAUDE_CODE_DISABLE_BUNDLED_SKILLS).toBe("1");
         expect(calls[0]?.options?.env?.CLAUDE_AGENT_SDK_MCP_NO_PREFIX).toBe("1");
+        expect(calls[0]?.options?.env?.CLAUDE_CONFIG_DIR).toBe("/test/claude-config");
         expect(calls[0]?.options?.includePartialMessages).toBe(true);
         expect(calls[0]?.options?.maxTurns).toBe(1);
         expect(calls[0]?.options?.permissionMode).toBe("dontAsk");
@@ -305,6 +308,7 @@ describe("Claude SDK provider", () => {
             description: "Read a file through the project tool.",
             arguments: Type.Object({ path: Type.String() }),
             returnType: Type.Object({ text: Type.String() }),
+            shouldReviewInAutoMode: () => false,
             execute: ({ path }) => {
                 executionCount += 1;
                 return { text: `contents of ${path}` };

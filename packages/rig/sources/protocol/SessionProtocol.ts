@@ -327,12 +327,14 @@ export interface TrimGlobalEventsResponse {
 
 export interface SubmitMessageRequest {
     content?: readonly ContentBlock[];
+    debug?: boolean;
     displayText?: string;
     interactive?: boolean;
     text: string;
 }
 
 export interface SubmitMessageResponse {
+    debugDirectory?: string;
     eventId: EventId;
     runId: string;
     sessionId: string;

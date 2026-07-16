@@ -17,6 +17,7 @@ export const claudeTaskListTool = defineTool({
     description: "List all tasks with their status, owner, and unresolved dependencies.",
     arguments: Type.Object({}, { additionalProperties: false }),
     returnType: Type.Object({ tasks: Type.Array(taskSummarySchema) }),
+    shouldReviewInAutoMode: () => false,
     execute(_args, context) {
         if (context.tasks === undefined) {
             throw new Error("Task tracking is unavailable in this session.");

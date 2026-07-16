@@ -1,6 +1,7 @@
 import { Type } from "@sinclair/typebox";
 
 import { defineTool } from "../../agent/types.js";
+import { shouldReviewPathInAutoMode } from "../../permissions/shouldReviewPathInAutoMode.js";
 import { textOutputSchema, toTextBlocks, writeTextFile } from "../utils/index.js";
 
 const CLAUDE_WRITE_DESCRIPTION = `Writes a file to the local filesystem.
@@ -23,6 +24,10 @@ export const claudeWriteTool = defineTool({
         content: Type.String({ description: "The content to write to the file" }),
     }),
     returnType: textOutputSchema,
+    shouldReviewInAutoMode: ({ file_path }, context) =>
+        shouldReviewPathInAutoMode(file_path, context, { write: true }),
+    shouldRunInFullAccessInAutoMode: ({ file_path }, context) =>
+        shouldReviewPathInAutoMode(file_path, context, { write: true }),
     execute: async ({ file_path, content }, context) => {
         const result = await writeTextFile({ path: file_path, content }, context);
         return {

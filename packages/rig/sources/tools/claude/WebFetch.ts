@@ -63,6 +63,7 @@ export function createClaudeWebFetchTool(dependencies: ClaudeWebFetchDependencie
             prompt: Type.String({ description: "The prompt to run on the fetched content" }),
         }),
         returnType: claudeWebFetchReturnSchema,
+        shouldReviewInAutoMode: () => true,
         execute: async ({ url, prompt }, _context, execution) => {
             try {
                 new URL(url);

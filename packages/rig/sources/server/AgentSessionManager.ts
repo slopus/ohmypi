@@ -83,7 +83,12 @@ export class AgentSessionManager {
         const child = this.#resolveTarget(parentSessionId, target);
         if (child.subagentSummary().status === "suspended") child.clearSuspension();
         this.#stoppedExplicitly.delete(child.id);
-        const submitted = child.submit({ text: message });
+        const submitted = child.submit({
+            ...(this.#repository.get(parentSessionId)?.activeRunDebug?.() === true
+                ? { debug: true }
+                : {}),
+            text: message,
+        });
         const parent = this.#parentFor(child);
         this.recordChanged(child);
         this.#startBackgroundMonitor(parent, child, submitted.runId);
@@ -118,7 +123,11 @@ export class AgentSessionManager {
 
     resume(parentSessionId: string, target: string): ManagedSubagent {
         const child = this.#resolveTarget(parentSessionId, target);
-        const submitted = child.resumeSuspended();
+        const submitted = child.resumeSuspended(
+            this.#repository.get(parentSessionId)?.activeRunDebug?.() === true
+                ? { debug: true }
+                : {},
+        );
         const parent = this.#parentFor(child);
         this.recordChanged(child);
         this.#startBackgroundMonitor(parent, child, submitted.runId);
@@ -230,7 +239,10 @@ export class AgentSessionManager {
                           request.contextMessages,
                       )
                     : this.#repository.createSubagent(childRequest, metadata);
-            submitted = child.submit({ text: request.prompt });
+            submitted = child.submit({
+                ...(parent.activeRunDebug?.() === true ? { debug: true } : {}),
+                text: request.prompt,
+            });
             this.recordChanged(child);
         } finally {
             releaseSlot();
