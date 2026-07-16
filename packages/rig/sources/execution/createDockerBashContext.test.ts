@@ -4,6 +4,7 @@ import type Dockerode from "dockerode";
 import { describe, expect, it, vi } from "vitest";
 
 import { createPermissionContext } from "../permissions/index.js";
+import { SecretRegistry, SessionSecretContext } from "../secrets/index.js";
 import { createDockerBashContext } from "./createDockerBashContext.js";
 import type { DockerEnvironment } from "./DockerEnvironment.js";
 
@@ -100,21 +101,90 @@ describe("createDockerBashContext", () => {
             stderr: "Docker socket unavailable during abort.",
         });
     });
+
+    it("passes only selected attached bundles through Docker exec", async () => {
+        const fake = createFakeDockerEnvironment(["service_token=ambient-secret"]);
+        const registry = new SecretRegistry([
+            {
+                description: "Service credentials",
+                environment: {
+                    SERVICE_REGION: "docker-region",
+                    SERVICE_TOKEN: "docker-secret",
+                },
+                id: "service",
+            },
+            {
+                description: "Database credentials",
+                environment: { DATABASE_URL: "docker-database" },
+                id: "database",
+            },
+        ]);
+        const secrets = new SessionSecretContext(registry, ["service"], ["database"]);
+        const context = createDockerBashContext(
+            fake.environment,
+            createPermissionContext("full_access"),
+            secrets,
+        );
+
+        await context.startSession({ command: "secrets-omitted" });
+        fake.foregroundStreams[0]?.end();
+        await context.readSession(1, { waitMs: 1_000 });
+
+        await context.startSession({ command: "secrets-empty", secrets: [] });
+        fake.foregroundStreams[1]?.end();
+        await context.readSession(2, { waitMs: 1_000 });
+
+        await context.startSession({ command: "service-secret", secrets: ["service"] });
+        fake.foregroundStreams[2]?.end();
+        await context.readSession(3, { waitMs: 1_000 });
+
+        await context.startSession({
+            command: "all-selected-secrets",
+            secrets: ["service", "database"],
+        });
+
+        expect(fake.foregroundEnvironments).toEqual([
+            ["SERVICE_REGION=", "SERVICE_TOKEN=", "DATABASE_URL=", "service_token="],
+            ["SERVICE_REGION=", "SERVICE_TOKEN=", "DATABASE_URL=", "service_token="],
+            [
+                "SERVICE_REGION=docker-region",
+                "SERVICE_TOKEN=docker-secret",
+                "DATABASE_URL=",
+                "service_token=",
+            ],
+            [
+                "SERVICE_REGION=docker-region",
+                "SERVICE_TOKEN=docker-secret",
+                "DATABASE_URL=docker-database",
+                "service_token=",
+            ],
+        ]);
+        expect(fake.foregroundCommands[3]).not.toContain("docker-secret");
+        expect(fake.foregroundCommands[3]).not.toContain("docker-database");
+        fake.foregroundStreams[3]?.end();
+        await context.readSession(4, { waitMs: 1_000 });
+    });
 });
 
-function createFakeDockerEnvironment(): {
+function createFakeDockerEnvironment(environmentVariables: readonly string[] = []): {
     container: Dockerode.Container;
     environment: DockerEnvironment;
     foregroundCommands: string[][];
+    foregroundEnvironments: string[][];
     foregroundStreams: PassThrough[];
 } {
     const foregroundCommands: string[][] = [];
+    const foregroundEnvironments: string[][] = [];
     const foregroundStreams: PassThrough[] = [];
     const container = {
-        async exec(options: { AttachStdin?: boolean; Cmd?: string[] }) {
+        async inspect() {
+            return { Config: { Env: [...environmentVariables] } };
+        },
+        async exec(options: { AttachStdin?: boolean; Cmd?: string[]; Env?: string[] }) {
             const stream = new PassThrough();
             if (options.AttachStdin === true) {
                 foregroundCommands.push(options.Cmd ?? []);
+                foregroundEnvironments.push(options.Env ?? []);
                 foregroundStreams.push(stream);
             } else {
                 queueMicrotask(() => stream.end());
@@ -141,6 +211,7 @@ function createFakeDockerEnvironment(): {
             container: async () => container,
         } as unknown as DockerEnvironment,
         foregroundCommands,
+        foregroundEnvironments,
         foregroundStreams,
     };
 }

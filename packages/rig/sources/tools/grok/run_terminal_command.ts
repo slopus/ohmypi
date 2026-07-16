@@ -28,6 +28,12 @@ Usage notes:
             description:
                 "One sentence explaining why this command needs to run and how it contributes to the goal.",
         }),
+        secrets: Type.Optional(
+            Type.Array(Type.String(), {
+                description:
+                    "IDs of attached secret bundles to inject for this command. Use an empty array for none.",
+            }),
+        ),
         background: Type.Boolean({
             description:
                 "Set true for a long-running command. Returns a task_id while the command continues in the background.",
@@ -51,11 +57,12 @@ Usage notes:
         sandbox_permissions === "require_escalated",
     shouldRunInFullAccessInAutoMode: ({ sandbox_permissions }) =>
         sandbox_permissions === "require_escalated",
-    execute: async ({ background, command, timeout }, context, execution) => {
+    execute: async ({ background, command, secrets, timeout }, context, execution) => {
         if (background) {
             const taskId = await context.bash.startSession({
                 command,
                 maxOutputBytes: 512_000,
+                ...(secrets === undefined ? {} : { secrets }),
                 ...(timeout === undefined || timeout === 0 ? {} : { timeoutMs: timeout }),
             });
             return {
@@ -67,6 +74,7 @@ Usage notes:
         const result = await context.bash.run({
             command,
             maxOutputBytes: 512_000,
+            ...(secrets === undefined ? {} : { secrets }),
             timeoutMs: timeout === undefined || timeout === 0 ? 120_000 : timeout,
             ...(execution.signal === undefined ? {} : { signal: execution.signal }),
         });

@@ -33,6 +33,12 @@ export const codexExecCommandTool = defineTool({
                     "Output token budget. Defaults to 10000 tokens; larger requests may be capped by policy.",
             }),
         ),
+        secrets: Type.Optional(
+            Type.Array(Type.String(), {
+                description:
+                    "IDs of attached secret bundles to inject for this command. Use an empty array for none.",
+            }),
+        ),
         shell: Type.Optional(
             Type.String({
                 description: "Shell binary to launch. Defaults to the user's default shell.",
@@ -65,7 +71,7 @@ export const codexExecCommandTool = defineTool({
     shouldRunInFullAccessInAutoMode: ({ sandbox_permissions }) =>
         sandbox_permissions === "require_escalated",
     execute: async (
-        { cmd, max_output_tokens, shell, workdir, yield_time_ms },
+        { cmd, max_output_tokens, secrets, shell, workdir, yield_time_ms },
         context,
         execution,
     ) => {
@@ -75,6 +81,7 @@ export const codexExecCommandTool = defineTool({
             maxOutputBytes: Math.max(4_000, (max_output_tokens ?? 10_000) * 4),
         };
         if (workdir !== undefined) startOptions.cwd = workdir;
+        if (secrets !== undefined) startOptions.secrets = secrets;
         if (shell !== undefined) startOptions.shell = shell;
         const sessionId = await context.bash.startSession(startOptions);
         const snapshot = await readSessionWithProgress({

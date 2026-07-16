@@ -15,6 +15,7 @@ import { KIMI_SYSTEM_PROMPT } from "./prompts/kimiSystemPrompt.js";
 import type { Message } from "./types.js";
 import { createPermissionContext } from "../permissions/index.js";
 import { defineModel, defineProvider, type Model, type Provider } from "../providers/types.js";
+import { SecretRegistry, SessionSecretContext } from "../secrets/index.js";
 import { claudeBashTool } from "../tools/claude/Bash.js";
 import { codexExecCommandTool } from "../tools/codex/exec_command.js";
 import { grokRunTerminalCommandTool } from "../tools/grok/run_terminal_command.js";
@@ -225,6 +226,51 @@ describe("createSystemPrompt", () => {
             );
             expect(prompt).toContain(expected);
         }
+    });
+
+    it("describes attached bundles without exposing values or the old shell argument", async () => {
+        const cwd = await makeTempDir();
+        const model = defineModel({
+            id: "mock/model",
+            name: "Mock Model",
+            thinkingLevels: ["off"],
+            defaultThinkingLevel: "off",
+        });
+        const context = contextFor(cwd);
+        const registry = new SecretRegistry([
+            {
+                description: "Service API credentials",
+                environment: {
+                    SERVICE_REGION: "never-show-this-region",
+                    SERVICE_TOKEN: "never-show-this-token",
+                },
+                id: "service",
+            },
+            {
+                description: "Production database credentials",
+                environment: { DATABASE_URL: "never-show-this-database" },
+                id: "database",
+            },
+        ]);
+        context.secrets = new SessionSecretContext(registry, ["service"], ["database"]);
+
+        const prompt = await createSystemPrompt({
+            provider: providerFor("mock", model),
+            model,
+            messages: [],
+            context,
+        });
+
+        expect(prompt).toContain('- "service": Service API credentials');
+        expect(prompt).toContain("Environment variables: SERVICE_REGION, SERVICE_TOKEN");
+        expect(prompt).toContain('- "database": Production database credentials');
+        expect(prompt).toContain("Environment variables: DATABASE_URL");
+        expect(prompt).toContain("`secrets` argument to the IDs");
+        expect(prompt).toContain("Use an empty array");
+        expect(prompt).not.toContain("never-show-this-token");
+        expect(prompt).not.toContain("never-show-this-region");
+        expect(prompt).not.toContain("never-show-this-database");
+        expect(prompt).not.toContain("secret_ids");
     });
 
     it("uses the Claude Code prompt for modern Anthropic models", async () => {

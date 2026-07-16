@@ -6,6 +6,7 @@ import { loadSkillInstructions } from "./skills/loadSkillInstructions.js";
 import { systemMessageToText } from "./systemMessageToText.js";
 import type { AnyDefinedTool, Message } from "./types.js";
 import type { Model, Provider } from "../providers/types.js";
+import { createSecretInstructions } from "../secrets/index.js";
 
 export interface CreateSystemPromptOptions {
     provider: Provider;
@@ -49,6 +50,11 @@ export async function createSystemPrompt(
         parts.push(
             createPermissionInstructions(options.context.permissions.mode, options.tools ?? []),
         );
+    }
+
+    if (options.context.secrets !== undefined) {
+        const secretInstructions = createSecretInstructions(options.context.secrets);
+        if (secretInstructions !== undefined) parts.push(secretInstructions);
     }
 
     return parts.length > 0 ? parts.join("\n\n") : undefined;

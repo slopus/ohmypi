@@ -4,6 +4,7 @@ import { timingSafeEqual } from "node:crypto";
 import type {
     AbortRunResponse,
     AnswerUserInputRequest,
+    AttachSecretRequest,
     ChangeEffortRequest,
     ChangeModelRequest,
     ChangePermissionModeRequest,
@@ -18,6 +19,7 @@ import type {
     GetDaemonConfigResponse,
     GetSessionUsageResponse,
     ListGlobalEventsResponse,
+    ListSecretsResponse,
     HealthResponse,
     GoalSessionResponse,
     ListModelsResponse,
@@ -27,7 +29,10 @@ import type {
     RewindSessionRequest,
     RewindSessionResponse,
     RecordSessionActivityResponse,
+    RegisterSecretRequest,
+    RegisterSecretResponse,
     SearchFilesResponse,
+    SecretSessionResponse,
     SessionEvent,
     SetGoalRequest,
     ShutdownServerResponse,
@@ -38,6 +43,7 @@ import type {
     SubmitMessageResponse,
     TrimGlobalEventsRequest,
     TrimGlobalEventsResponse,
+    UnregisterSecretResponse,
     UpdateDaemonConfigRequest,
     UpdateDaemonConfigResponse,
 } from "../protocol/index.js";
@@ -61,6 +67,7 @@ import { resolveDockerExecutionConfig, validateDockerExecutionConfig } from "../
 import type { DockerExecutionConfig } from "../execution/index.js";
 import type { TaskDrain } from "./TrackedTaskDrain.js";
 import type { ProviderQuota } from "../providers/providerQuota.js";
+import type { SecretRegistration } from "../secrets/index.js";
 
 export interface ProtocolHttpServerOptions {
     defaultDocker?: DockerExecutionConfig;
@@ -76,6 +83,7 @@ export interface ProtocolHttpServerOptions {
     onShutdown?: () => void;
     store?: SessionStore;
     taskDrain?: TaskDrain;
+    secrets?: readonly SecretRegistration[];
     token: string;
 }
 
@@ -85,6 +93,7 @@ export function createProtocolHttpServer(options: ProtocolHttpServerOptions): Se
         options.store ??
         new InMemorySessionStore({
             modelCatalog,
+            ...(options.secrets === undefined ? {} : { secrets: options.secrets }),
         });
     const state = createInitializationState({ ...options, modelCatalog });
     const fileSearchService = options.fileSearchService ?? new FileSearchService();
@@ -116,8 +125,18 @@ export function createProtocolHttpServer(options: ProtocolHttpServerOptions): Se
         const handling =
             mutating && options.taskDrain !== undefined ? options.taskDrain.run(handle) : handle();
         void handling.catch((error: unknown) => {
-            sendJson(response, mutating && options.taskDrain?.closing === true ? 503 : 500, {
-                error: error instanceof Error ? error.message : String(error),
+            const invalidJson = error instanceof InvalidJsonBodyError;
+            const status = invalidJson
+                ? 400
+                : mutating && options.taskDrain?.closing === true
+                  ? 503
+                  : 500;
+            sendJson(response, status, {
+                error: invalidJson
+                    ? "Request body must be valid JSON."
+                    : error instanceof Error
+                      ? error.message
+                      : String(error),
             });
         });
     });
@@ -287,11 +306,55 @@ async function handleRequest(
         return;
     }
 
+    if (request.method === "GET" && route.name === "secret-registrations") {
+        sendJson<ListSecretsResponse>(response, 200, { secrets: store.listSecrets() });
+        return;
+    }
+
+    if (request.method === "POST" && route.name === "secret-registrations") {
+        const body = await readJson<unknown>(request);
+        if (body === null || typeof body !== "object" || Array.isArray(body)) {
+            sendJson(response, 400, { error: "Secret settings must be a JSON object." });
+            return;
+        }
+        try {
+            sendJson<RegisterSecretResponse>(response, 200, {
+                secret: store.registerSecret(body as RegisterSecretRequest),
+            });
+        } catch (error) {
+            sendJson(response, 400, {
+                error: error instanceof Error ? error.message : "The secret could not be saved.",
+            });
+        }
+        return;
+    }
+
+    if (request.method === "DELETE" && route.name === "secret-registration") {
+        sendJson<UnregisterSecretResponse>(response, 200, {
+            removed: store.unregisterSecret(route.secretId),
+        });
+        return;
+    }
+
     if (request.method === "POST" && route.name === "sessions") {
-        const body = await readJson<CreateSessionRequest>(request);
+        const body = await readJson<CreateSessionRequest | null>(request);
+        if (body === null || typeof body !== "object" || Array.isArray(body)) {
+            sendJson(response, 400, { error: "Session settings must be a JSON object." });
+            return;
+        }
         if (body.permissionMode !== undefined && !isPermissionMode(body.permissionMode)) {
             sendJson(response, 400, {
                 error: "Permission mode must be Auto, Workspace write, Read only, or Full access.",
+            });
+            return;
+        }
+        if (
+            body.secretIds !== undefined &&
+            (!Array.isArray(body.secretIds) ||
+                body.secretIds.some((secretId) => typeof secretId !== "string"))
+        ) {
+            sendJson(response, 400, {
+                error: "Secret IDs must be provided as a list of text IDs.",
             });
             return;
         }
@@ -316,8 +379,14 @@ async function handleRequest(
             }
             sessionRequest.docker = resolveDockerExecutionConfig(docker, body.cwd);
         }
-        const session = store.create(sessionRequest);
-        sendJson<CreateSessionResponse>(response, 201, { session: session.snapshot() });
+        try {
+            const session = store.create(sessionRequest);
+            sendJson<CreateSessionResponse>(response, 201, { session: session.snapshot() });
+        } catch (error) {
+            sendJson(response, 409, {
+                error: error instanceof Error ? error.message : "The session could not be created.",
+            });
+        }
         return;
     }
 
@@ -566,6 +635,50 @@ async function handleRequest(
         return;
     }
 
+    if (request.method === "POST" && route.name === "secrets") {
+        const body = await readJson<AttachSecretRequest | null>(request);
+        if (
+            body === null ||
+            typeof body !== "object" ||
+            typeof body.secretId !== "string" ||
+            body.secretId.length === 0
+        ) {
+            sendJson(response, 400, { error: "Choose a secret to attach." });
+            return;
+        }
+        const scope = body.scope ?? "session";
+        if (scope !== "session" && scope !== "project") {
+            sendJson(response, 400, { error: "Secret scope must be Session or Project." });
+            return;
+        }
+        try {
+            sendJson<SecretSessionResponse>(response, 200, {
+                session:
+                    store.attachSecret(session.id, body.secretId, scope)?.snapshot() ??
+                    session.snapshot(),
+            });
+        } catch (error) {
+            sendJson(response, 409, {
+                error: error instanceof Error ? error.message : "The secret could not be attached.",
+            });
+        }
+        return;
+    }
+
+    if (request.method === "DELETE" && route.name === "secret") {
+        const scope = url.searchParams.get("scope") ?? "session";
+        if (scope !== "session" && scope !== "project") {
+            sendJson(response, 400, { error: "Secret scope must be Session or Project." });
+            return;
+        }
+        sendJson<SecretSessionResponse>(response, 200, {
+            session:
+                store.detachSecret(session.id, route.secretId, scope)?.snapshot() ??
+                session.snapshot(),
+        });
+        return;
+    }
+
     if (request.method === "POST" && route.name === "goal") {
         const body = await readJson<SetGoalRequest>(request);
         if (typeof body.objective !== "string") {
@@ -752,10 +865,12 @@ function matchRoute(pathname: string):
               | "config"
               | "health"
               | "models"
+              | "secret-registrations"
               | "sessions"
               | "shutdown";
           sessionId?: undefined;
       }
+    | { name: "secret-registration"; secretId: string; sessionId?: undefined }
     | {
           name:
               | "abort"
@@ -773,6 +888,7 @@ function matchRoute(pathname: string):
               | "permissions"
               | "reset"
               | "rewind"
+              | "secrets"
               | "service-tier"
               | "session"
               | "stream"
@@ -782,6 +898,7 @@ function matchRoute(pathname: string):
           sessionId: string;
       }
     | { name: "user-input"; requestId: string; sessionId: string }
+    | { name: "secret"; secretId: string; sessionId: string }
     | { name: "workflow-stop"; sessionId: string; workflowRunId: string }
     | undefined {
     if (pathname === "/health") return { name: "health" };
@@ -790,8 +907,17 @@ function matchRoute(pathname: string):
     if (pathname === "/events/stream") return { name: "global-events-stream" };
     if (pathname === "/events/trim") return { name: "global-events-trim" };
     if (pathname === "/models") return { name: "models" };
+    if (pathname === "/secrets") return { name: "secret-registrations" };
     if (pathname === "/sessions") return { name: "sessions" };
     if (pathname === "/shutdown") return { name: "shutdown" };
+
+    const globalParts = pathname.split("/").filter(Boolean);
+    if (globalParts.length === 2 && globalParts[0] === "secrets") {
+        return {
+            name: "secret-registration",
+            secretId: decodeURIComponent(globalParts[1] ?? ""),
+        };
+    }
 
     const parts = pathname.split("/").filter(Boolean);
     if (parts[0] !== "sessions" || parts[1] === undefined) {
@@ -822,6 +948,9 @@ function matchRoute(pathname: string):
     if (parts.length === 4 && parts[2] === "background-processes" && parts[3] === "stop") {
         return { name: "background-processes-stop", sessionId };
     }
+    if (parts.length === 4 && parts[2] === "secrets" && parts[3] !== undefined) {
+        return { name: "secret", secretId: decodeURIComponent(parts[3]), sessionId };
+    }
     if (parts.length !== 3) return undefined;
 
     if (parts[2] === "abort") return { name: "abort", sessionId };
@@ -840,6 +969,7 @@ function matchRoute(pathname: string):
     if (parts[2] === "permissions") return { name: "permissions", sessionId };
     if (parts[2] === "reset") return { name: "reset", sessionId };
     if (parts[2] === "rewind") return { name: "rewind", sessionId };
+    if (parts[2] === "secrets") return { name: "secrets", sessionId };
     if (parts[2] === "service-tier") return { name: "service-tier", sessionId };
     if (parts[2] === "stream") return { name: "stream", sessionId };
     if (parts[2] === "steer") return { name: "steer", sessionId };
@@ -860,11 +990,13 @@ function isSessionMutation(routeName: string, method: string | undefined): boole
                 "messages",
                 "reset",
                 "rewind",
+                "secrets",
                 "steer",
             ].includes(routeName)) ||
         (method === "POST" && routeName === "workflow-stop") ||
         (["DELETE", "PATCH", "POST"].includes(method ?? "") && routeName === "goal") ||
         (method === "POST" && routeName === "user-input") ||
+        (method === "DELETE" && routeName === "secret") ||
         (method === "PATCH" &&
             ["effort", "model", "permissions", "service-tier"].includes(routeName))
     );
@@ -876,6 +1008,8 @@ function isMutatingProtocolRequest(request: IncomingMessage): boolean {
     if (route === undefined) return false;
     if (route.name === "config") return request.method === "PATCH";
     if (route.name === "global-events-trim") return request.method === "POST";
+    if (route.name === "secret-registrations") return request.method === "POST";
+    if (route.name === "secret-registration") return request.method === "DELETE";
     if (route.name === "sessions") return request.method === "POST";
     if (route.sessionId === undefined) return false;
     return isSessionMutation(route.name, request.method);
@@ -888,8 +1022,14 @@ async function readJson<T>(request: IncomingMessage): Promise<T> {
     }
 
     const body = Buffer.concat(chunks).toString("utf8");
-    return (body.length === 0 ? {} : JSON.parse(body)) as T;
+    try {
+        return (body.length === 0 ? {} : JSON.parse(body)) as T;
+    } catch {
+        throw new InvalidJsonBodyError();
+    }
 }
+
+class InvalidJsonBodyError extends Error {}
 
 function streamEvents(
     request: IncomingMessage,

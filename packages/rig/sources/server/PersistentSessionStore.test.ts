@@ -161,6 +161,104 @@ describe("PersistentSessionStore", () => {
         }
     });
 
+    it("restores secret registrations and source-scoped attachments after reopening SQLite", async () => {
+        const { cleanup, databasePath } = await createDatabasePath();
+        try {
+            const store = new PersistentSessionStore({ databasePath });
+            store.registerSecret({
+                description: "Service API credentials",
+                environment: {
+                    SERVICE_REGION: "persisted-region",
+                    SERVICE_TOKEN: "persisted-token",
+                },
+                id: "service",
+            });
+            store.registerSecret({
+                description: "Project service credentials",
+                environment: { PROJECT_TOKEN: "persisted-project-token" },
+                id: "project-service",
+            });
+            const session = store.create({
+                cwd: "/tmp/rig-secret-session",
+                secretIds: ["service"],
+            });
+            store.attachSecret(session.id, "project-service", "project");
+            expect(session.snapshot()).toMatchObject({
+                projectSecretIds: ["project-service"],
+                secretIds: ["project-service", "service"],
+                sessionSecretIds: ["service"],
+            });
+            expect(session.requestForSubagent()).not.toHaveProperty("secretIds");
+            store.close();
+
+            const database = new DatabaseSync(databasePath);
+            const sessionRow = database
+                .prepare("SELECT secret_ids_json FROM sessions WHERE id = ?")
+                .get(session.id) as { secret_ids_json: string };
+            const registrationRow = database
+                .prepare(
+                    "SELECT description, environment_json FROM secret_registrations WHERE id = ?",
+                )
+                .get("service") as { description: string; environment_json: string };
+            expect(sessionRow.secret_ids_json).toBe('["service"]');
+            expect(registrationRow.description).toBe("Service API credentials");
+            expect(JSON.parse(registrationRow.environment_json)).toEqual({
+                SERVICE_REGION: "persisted-region",
+                SERVICE_TOKEN: "persisted-token",
+            });
+            database.close();
+
+            let restoredEnvironment: NodeJS.ProcessEnv | undefined;
+            const restoredStore = new PersistentSessionStore({
+                databasePath,
+                createRuntime: (options) => {
+                    restoredEnvironment = options.secrets?.resolve(["project-service", "service"]);
+                    throw new Error("Captured restored secret environment.");
+                },
+            });
+            try {
+                expect(restoredStore.listSecrets()).toEqual([
+                    {
+                        description: "Project service credentials",
+                        environmentVariables: ["PROJECT_TOKEN"],
+                        id: "project-service",
+                    },
+                    {
+                        description: "Service API credentials",
+                        environmentVariables: ["SERVICE_REGION", "SERVICE_TOKEN"],
+                        id: "service",
+                    },
+                ]);
+                const restoredSession = restoredStore.get(session.id);
+                if (restoredSession === undefined) throw new Error("Expected restored session.");
+                await expect(restoredSession.compact()).rejects.toThrow(
+                    "Captured restored secret environment.",
+                );
+                expect(restoredEnvironment).toEqual({
+                    PROJECT_TOKEN: "persisted-project-token",
+                    SERVICE_REGION: "persisted-region",
+                    SERVICE_TOKEN: "persisted-token",
+                });
+                expect(restoredSession.snapshot()).toMatchObject({
+                    projectSecretIds: ["project-service"],
+                    secretIds: ["project-service", "service"],
+                    sessionSecretIds: ["service"],
+                });
+
+                const fork = restoredStore.fork(session.id);
+                expect(fork?.snapshot()).toMatchObject({
+                    projectSecretIds: ["project-service"],
+                    secretIds: ["project-service"],
+                    sessionSecretIds: [],
+                });
+            } finally {
+                restoredStore.close();
+            }
+        } finally {
+            await cleanup();
+        }
+    });
+
     it("conservatively restores null, missing, and unknown agent event subtypes", async () => {
         const { cleanup, databasePath } = await createDatabasePath();
         try {
@@ -195,6 +293,59 @@ describe("PersistentSessionStore", () => {
                     "null-subtype",
                     "missing-subtype",
                     "unknown-subtype",
+                ]);
+            } finally {
+                restoredStore.close();
+            }
+        } finally {
+            await cleanup();
+        }
+    });
+
+    it("restores historical masking destinations after rotating a registration", async () => {
+        const { cleanup, databasePath } = await createDatabasePath();
+        try {
+            const store = new PersistentSessionStore({ databasePath });
+            store.registerSecret({
+                description: "Initial service credentials",
+                environment: { OLD_SERVICE_TOKEN: "old" },
+                id: "service",
+            });
+            const session = store.create({
+                cwd: "/tmp/rotated-secret-session",
+                secretIds: ["service"],
+            });
+            store.registerSecret({
+                description: "Rotated service credentials",
+                environment: { NEW_SERVICE_TOKEN: "new" },
+                id: "service",
+            });
+            store.close();
+
+            let restoredDestinations: readonly string[] | undefined;
+            const restoredStore = new PersistentSessionStore({
+                databasePath,
+                createRuntime: (options) => {
+                    restoredDestinations = options.secrets?.environmentVariables();
+                    throw new Error("Captured restored masking destinations.");
+                },
+            });
+            try {
+                const restoredSession = restoredStore.get(session.id);
+                if (restoredSession === undefined) throw new Error("Expected restored session.");
+                await expect(restoredSession.compact()).rejects.toThrow(
+                    "Captured restored masking destinations.",
+                );
+                expect(restoredDestinations).toHaveLength(2);
+                expect(restoredDestinations).toEqual(
+                    expect.arrayContaining(["OLD_SERVICE_TOKEN", "NEW_SERVICE_TOKEN"]),
+                );
+                expect(restoredStore.listSecrets()).toEqual([
+                    {
+                        description: "Rotated service credentials",
+                        environmentVariables: ["NEW_SERVICE_TOKEN"],
+                        id: "service",
+                    },
                 ]);
             } finally {
                 restoredStore.close();
@@ -239,6 +390,39 @@ describe("PersistentSessionStore", () => {
                 expect(new Set(catchup?.map((event) => event.id)).size).toBe(catchup?.length);
                 expect(restored?.events.since(transient.id)).toEqual(catchup);
                 expect(restored?.events.since(otherSessionCursor)).toBeUndefined();
+            } finally {
+                restoredStore.close();
+            }
+        } finally {
+            await cleanup();
+        }
+    });
+
+    it("persists registration removal and clears session and project attachments", async () => {
+        const { cleanup, databasePath } = await createDatabasePath();
+        try {
+            const store = new PersistentSessionStore({ databasePath });
+            store.registerSecret({
+                description: "Disposable credentials",
+                environment: { DISPOSABLE_TOKEN: "removed-value" },
+                id: "disposable",
+            });
+            const session = store.create({
+                cwd: "/tmp/removed-secret-project",
+                secretIds: ["disposable"],
+            });
+            store.attachSecret(session.id, "disposable", "project");
+            expect(store.unregisterSecret("disposable")).toBe(true);
+            store.close();
+
+            const restoredStore = new PersistentSessionStore({ databasePath });
+            try {
+                expect(restoredStore.listSecrets()).toEqual([]);
+                expect(restoredStore.get(session.id)?.snapshot()).toMatchObject({
+                    projectSecretIds: [],
+                    secretIds: [],
+                    sessionSecretIds: [],
+                });
             } finally {
                 restoredStore.close();
             }

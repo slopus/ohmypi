@@ -28,6 +28,12 @@ export const claudeBashTool = defineTool({
                     "Set to true to run this command in the background. Use TaskOutput to read the output later.",
             }),
         ),
+        secrets: Type.Optional(
+            Type.Array(Type.String(), {
+                description:
+                    "IDs of attached secret bundles to inject for this command. Use an empty array for none.",
+            }),
+        ),
         dangerouslyDisableSandbox: Type.Optional(
             Type.Boolean({
                 description:
@@ -43,10 +49,11 @@ export const claudeBashTool = defineTool({
     shouldReviewInAutoMode: ({ dangerouslyDisableSandbox }) => dangerouslyDisableSandbox === true,
     shouldRunInFullAccessInAutoMode: ({ dangerouslyDisableSandbox }) =>
         dangerouslyDisableSandbox === true,
-    execute: async ({ command, run_in_background, timeout }, context, execution) => {
+    execute: async ({ command, run_in_background, secrets, timeout }, context, execution) => {
         if (run_in_background === true) {
             const sessionId = await context.bash.startSession({
                 command,
+                ...(secrets === undefined ? {} : { secrets }),
                 timeoutMs: timeout ?? 120_000,
             });
             return {
@@ -58,6 +65,7 @@ export const claudeBashTool = defineTool({
             };
         }
         const options: Parameters<typeof runShellCommand>[1] = {};
+        if (secrets !== undefined) options.secrets = secrets;
         if (timeout !== undefined) options.timeoutMs = timeout;
         if (execution.onProgress !== undefined) options.onProgress = execution.onProgress;
         if (execution.signal !== undefined) options.signal = execution.signal;

@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { NativeProxessManager } from "../../processes/index.js";
 import { createNodeAgentContext } from "./createNodeAgentContext.js";
+import { SecretRegistry, SessionSecretContext } from "../../secrets/index.js";
 
 const tempDirs: string[] = [];
 
@@ -86,6 +87,70 @@ describe("createNodeAgentContext", () => {
             restoreEnvironment("RIG_GYM_TOKEN", previousToken);
             restoreEnvironment("RIG_GYM_INFERENCE_URL", previousUrl);
             restoreEnvironment("SHELL_SAFE_TEST_VALUE", previousSafeValue);
+        }
+    });
+
+    it("injects selected attached bundles and masks every attached ambient destination", async () => {
+        const cwd = await makeTempDir();
+        const environmentVariables = [
+            "MANAGED_SECRET_TEST_TOKEN",
+            "MANAGED_SECRET_TEST_REGION",
+            "MANAGED_DATABASE_TEST_URL",
+        ] as const;
+        const previousValues = environmentVariables.map((name) => process.env[name]);
+        for (const name of environmentVariables) process.env[name] = `ambient-${name}`;
+        const registry = new SecretRegistry([
+            {
+                description: "Service API credentials",
+                environment: {
+                    MANAGED_SECRET_TEST_REGION: "registered-region",
+                    MANAGED_SECRET_TEST_TOKEN: "registered-token",
+                },
+                id: "service",
+            },
+            {
+                description: "Database credentials",
+                environment: { MANAGED_DATABASE_TEST_URL: "registered-database-url" },
+                id: "database",
+            },
+        ]);
+        const secrets = new SessionSecretContext(registry, ["service"], ["database"]);
+        const context = createNodeAgentContext({
+            cwd,
+            permissionMode: "full_access",
+            processManager: new NativeProxessManager(),
+            secrets,
+        });
+        const script = `process.stdout.write(JSON.stringify({database:process.env.MANAGED_DATABASE_TEST_URL,region:process.env.MANAGED_SECRET_TEST_REGION,token:process.env.MANAGED_SECRET_TEST_TOKEN}))`;
+        const printSecrets = `${JSON.stringify(process.execPath)} -e ${JSON.stringify(script)}`;
+
+        try {
+            const omitted = await context.bash.run({ command: printSecrets });
+            const empty = await context.bash.run({ command: printSecrets, secrets: [] });
+            const serviceOnly = await context.bash.run({
+                command: printSecrets,
+                secrets: ["service"],
+            });
+            const selected = await context.bash.run({
+                command: printSecrets,
+                secrets: ["service", "database"],
+            });
+
+            expect(JSON.parse(omitted.stdout)).toEqual({});
+            expect(JSON.parse(empty.stdout)).toEqual({});
+            expect(JSON.parse(serviceOnly.stdout)).toEqual({
+                region: "registered-region",
+                token: "registered-token",
+            });
+            expect(JSON.parse(selected.stdout)).toEqual({
+                database: "registered-database-url",
+                region: "registered-region",
+                token: "registered-token",
+            });
+        } finally {
+            environmentVariables.forEach((name, index) =>
+                restoreEnvironment(name, previousValues[index]),
+            );
         }
     });
 

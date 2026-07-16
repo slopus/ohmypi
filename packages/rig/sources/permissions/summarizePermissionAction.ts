@@ -12,7 +12,12 @@ export function summarizePermissionAction(toolName: string, args: unknown): stri
         }
         const command = readString(record, "cmd") ?? readString(record, "command");
         if (command !== undefined) {
-            return `running ${quoteVisibleExact(command)}`;
+            const secrets = readStringArray(record, "secrets");
+            const secretSuffix =
+                secrets.length === 0
+                    ? ""
+                    : ` with ${secrets.length === 1 ? "secret" : "secrets"} ${secrets.map(quoteVisibleExact).join(", ")}`;
+            return `running ${quoteVisibleExact(command)}${secretSuffix}`;
         }
         const url = readString(record, "url");
         if (url !== undefined) return `accessing ${singleLine(url)}`;
@@ -20,6 +25,11 @@ export function summarizePermissionAction(toolName: string, args: unknown): stri
         if (path !== undefined) return `using ${singleLine(path)}`;
     }
     return `the ${humanize(toolName)} action`;
+}
+
+function readStringArray(record: Record<string, unknown>, key: string): readonly string[] {
+    const value = record[key];
+    return Array.isArray(value) && value.every((entry) => typeof entry === "string") ? value : [];
 }
 
 function summarizeMcpAction(toolName: string, record: Record<string, unknown>): string | undefined {

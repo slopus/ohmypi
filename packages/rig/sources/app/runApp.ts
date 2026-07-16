@@ -211,12 +211,17 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
     const app = new CodingAssistantApp({
         ...(activeAgentLabel === undefined ? {} : { activeAgentLabel }),
         agent,
+        attachSecret: (id, scope) => agent.attachSecret(id, scope),
         cwd: sessionCwd,
+        detachSecret: (id, scope) => agent.detachSecret(id, scope),
         initialSessionEvents: history.events,
         initialBackgroundProcesses: session.session.backgroundProcesses ?? [],
         initialMcpServers: session.session.mcpServers,
         ...(initialNotices.length === 0 ? {} : { initialNotices }),
         initialSubagents: subagents.subagents,
+        initialProjectSecretIds: session.session.projectSecretIds ?? [],
+        initialSessionSecretIds:
+            session.session.sessionSecretIds ?? session.session.secretIds ?? [],
         initialUserInputs: session.session.pendingUserInputs,
         initialTasks: session.session.tasks,
         ...(session.session.lastEventId === undefined
@@ -225,6 +230,7 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
         initialWorkflows: session.session.workflows ?? [],
         workflowsEnabled: session.session.workflowsEnabled !== false,
         modelLocked: session.session.modelLocked,
+        listSecrets: () => localServer.client.listSecrets().then((response) => response.secrets),
         onDefaultModelChange: (preference) =>
             enqueueRuntimeConfigWrite(() =>
                 writeRuntimeConfig(loadedConfig.paths.runtime, {
@@ -272,6 +278,8 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
         onStopWorkflow: (runId) =>
             localServer.client.stopWorkflow(session.session.id, runId).then(() => undefined),
         processManager,
+        registerSecret: (registration) =>
+            localServer.client.registerSecret(registration).then((response) => response.secret),
         respondUserInput: (requestId, response) =>
             localServer.client
                 .answerUserInput(session.session.id, requestId, response)
@@ -294,6 +302,8 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
         }),
         theme,
         tui,
+        unregisterSecret: (id) =>
+            localServer.client.unregisterSecret(id).then((response) => response.removed),
         version,
     });
     let terminalThemeRefresh = 0;

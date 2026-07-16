@@ -15,11 +15,13 @@ import {
     DockerEnvironment,
     type DockerExecutionConfig,
 } from "../../execution/index.js";
+import type { SessionSecretContext } from "../../secrets/index.js";
 
 export interface CreateDockerAgentContextOptions {
     docker: DockerExecutionConfig;
     goals?: GoalContext;
     permissionMode?: PermissionMode;
+    secrets?: SessionSecretContext;
     sessionId: string;
     tasks?: TaskContext;
     userInput?: UserInputContext;
@@ -30,11 +32,12 @@ export function createDockerAgentContext(options: CreateDockerAgentContextOption
     const permissions = createPermissionContext(options.permissionMode ?? DEFAULT_PERMISSION_MODE);
     const environment = new DockerEnvironment(options.docker, options.sessionId);
     const context: AgentContext = {
-        bash: createDockerBashContext(environment, permissions),
+        bash: createDockerBashContext(environment, permissions, options.secrets),
         fileReads: createFileReadState(),
         fs: createDockerFileSystemContext(environment, permissions),
         permissions,
     };
+    if (options.secrets !== undefined) context.secrets = options.secrets;
     if (options.userInput !== undefined) context.userInput = options.userInput;
     if (options.goals !== undefined) context.goals = options.goals;
     if (options.tasks !== undefined) context.tasks = options.tasks;

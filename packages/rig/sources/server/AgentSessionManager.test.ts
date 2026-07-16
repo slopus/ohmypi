@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
+import type { CreateSessionRequest, SessionAgentMetadata } from "../protocol/index.js";
 import type { InMemorySession } from "./InMemorySession.js";
 import { AgentSessionManager } from "./AgentSessionManager.js";
 
@@ -47,7 +48,9 @@ describe("AgentSessionManager", () => {
                 providerId: "codex",
             }),
         } as unknown as InMemorySession;
-        const createSubagent = vi.fn(() => child);
+        const createSubagent = vi.fn(
+            (_request: CreateSessionRequest, _metadata: SessionAgentMetadata) => child,
+        );
         const manager = new AgentSessionManager({
             repository: {
                 createSubagent,
@@ -84,6 +87,68 @@ describe("AgentSessionManager", () => {
             }),
         ).rejects.toThrow("Model 'missing/model' is not available for provider 'claude-sdk'.");
         expect(createSubagent).toHaveBeenCalledOnce();
+    });
+
+    it("does not propagate session-scoped attachments to spawned subagents", async () => {
+        const child = {
+            agentMetadata: () => ({
+                depth: 1,
+                parentSessionId: "root-1",
+                rootSessionId: "root-1",
+                taskName: "inspect_secrets",
+                type: "subagent" as const,
+            }),
+            id: "child-1",
+            isSubagent: () => true,
+            subagentSummary: () => ({ status: "running" }),
+            submit: vi.fn(() => ({ runId: "child-run" })),
+        } as unknown as InMemorySession;
+        const parent = {
+            agentMetadata: () => ({ depth: 0, rootSessionId: "root-1", type: "primary" }),
+            hasModel: () => true,
+            id: "root-1",
+            isSubagent: () => false,
+            recordSubagentChanged: vi.fn(),
+            requestForSubagent: () => ({
+                cwd: "/tmp/rig-manager-test",
+                modelId: "openai/gpt-5.5",
+                permissionMode: "auto",
+                providerId: "codex",
+            }),
+            snapshot: () => ({
+                projectSecretIds: [],
+                secretIds: ["service"],
+                sessionSecretIds: ["service"],
+            }),
+        } as unknown as InMemorySession;
+        let childRequest: CreateSessionRequest | undefined;
+        const createSubagent = vi.fn(
+            (request: CreateSessionRequest, _metadata: SessionAgentMetadata) => {
+                childRequest = request;
+                return child;
+            },
+        );
+        const manager = new AgentSessionManager({
+            repository: {
+                createSubagent,
+                get: (sessionId) => (sessionId === parent.id ? parent : undefined),
+                listByRoot: () => [],
+            },
+        });
+
+        expect(parent.snapshot()).toMatchObject({
+            secretIds: ["service"],
+            sessionSecretIds: ["service"],
+        });
+        await manager.spawn(parent.id, {
+            background: true,
+            description: "Inspect without parent secrets",
+            prompt: "Inspect the project.",
+            taskName: "inspect_secrets",
+        });
+
+        expect(createSubagent).toHaveBeenCalledOnce();
+        expect(childRequest).not.toHaveProperty("secretIds");
     });
 
     it("updates every subagent permission boundary with the root session", async () => {

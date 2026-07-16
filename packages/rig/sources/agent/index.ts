@@ -68,6 +68,7 @@ export type { GoalContext } from "./context/GoalContext.js";
 export type { UserInputContext } from "./context/UserInputContext.js";
 export type { TaskContext } from "./context/TaskContext.js";
 export type { WorkflowContext } from "../workflows/index.js";
+export type { SessionSecretContext } from "../secrets/index.js";
 export type {
     ManagedSubagent,
     SpawnSubagentRequest,

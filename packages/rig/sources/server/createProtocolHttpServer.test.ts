@@ -1,4 +1,5 @@
 import { mkdtemp, rm } from "node:fs/promises";
+import { request as httpRequest } from "node:http";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -44,6 +45,70 @@ describe("createProtocolHttpServer", () => {
             });
             expect(getProviderQuota).toHaveBeenCalledTimes(1);
             expect(getProviderQuota).toHaveBeenCalledWith("codex");
+        } finally {
+            await close();
+        }
+    });
+
+    it("unions session and project attachment sources and detaches them independently", async () => {
+        const store = new InMemorySessionStore();
+        store.registerSecret({
+            description: "Service API credentials",
+            environment: { SERVICE_TOKEN: "secret-value" },
+            id: "service",
+        });
+        const { client, close } = await startServer({ store });
+        try {
+            const created = await client.createSession({ cwd: "/tmp/secret-project" });
+            expect(created.session.secretIds).toEqual([]);
+
+            await expect(client.attachSecret(created.session.id, "missing")).rejects.toThrow(
+                "not registered",
+            );
+            const sessionAttached = await client.attachSecret(created.session.id, "service");
+            expect(sessionAttached.session).toMatchObject({
+                projectSecretIds: [],
+                secretIds: ["service"],
+                sessionSecretIds: ["service"],
+            });
+
+            const projectAttached = await client.attachSecret(
+                created.session.id,
+                "service",
+                "project",
+            );
+            expect(projectAttached.session).toMatchObject({
+                projectSecretIds: ["service"],
+                secretIds: ["service"],
+                sessionSecretIds: ["service"],
+            });
+
+            const sessionDetached = await client.detachSecret(created.session.id, "service");
+            expect(sessionDetached.session).toMatchObject({
+                projectSecretIds: ["service"],
+                secretIds: ["service"],
+                sessionSecretIds: [],
+            });
+
+            const projectDetached = await client.detachSecret(
+                created.session.id,
+                "service",
+                "project",
+            );
+            expect(projectDetached.session).toMatchObject({
+                projectSecretIds: [],
+                secretIds: [],
+                sessionSecretIds: [],
+            });
+            expect(
+                store
+                    .get(created.session.id)
+                    ?.events.since(undefined)
+                    ?.filter((event) => event.type === "secrets_changed")
+                    .at(-1),
+            ).toMatchObject({
+                data: { projectSecretIds: [], secretIds: [], sessionSecretIds: [] },
+            });
         } finally {
             await close();
         }
@@ -122,6 +187,124 @@ describe("createProtocolHttpServer", () => {
                     },
                 ],
             });
+        } finally {
+            await close();
+        }
+    });
+
+    it("applies project attachments to existing and future sessions in the same cwd only", async () => {
+        const store = new InMemorySessionStore();
+        store.registerSecret({
+            description: "Shared project credentials",
+            environment: { PROJECT_TOKEN: "project-value" },
+            id: "project-service",
+        });
+        const { client, close } = await startServer({ store });
+        try {
+            const first = await client.createSession({ cwd: "/tmp/shared-secret-project" });
+            const existing = await client.createSession({ cwd: "/tmp/shared-secret-project/." });
+            const isolated = await client.createSession({ cwd: "/tmp/isolated-secret-project" });
+
+            await client.attachSecret(first.session.id, "project-service", "project");
+
+            expect(store.get(first.session.id)?.snapshot().projectSecretIds).toEqual([
+                "project-service",
+            ]);
+            expect(store.get(existing.session.id)?.snapshot().projectSecretIds).toEqual([
+                "project-service",
+            ]);
+            expect(store.get(isolated.session.id)?.snapshot().secretIds).toEqual([]);
+
+            const future = await client.createSession({ cwd: "/tmp/shared-secret-project" });
+            const isolatedFuture = await client.createSession({
+                cwd: "/tmp/isolated-secret-project",
+            });
+            expect(future.session).toMatchObject({
+                projectSecretIds: ["project-service"],
+                secretIds: ["project-service"],
+                sessionSecretIds: [],
+            });
+            expect(isolatedFuture.session.secretIds).toEqual([]);
+
+            await client.detachSecret(existing.session.id, "project-service", "project");
+            expect(store.get(first.session.id)?.snapshot().secretIds).toEqual([]);
+            expect(store.get(existing.session.id)?.snapshot().secretIds).toEqual([]);
+            expect(store.get(future.session.id)?.snapshot().secretIds).toEqual([]);
+        } finally {
+            await close();
+        }
+    });
+
+    it("registers and lists bundle metadata without returning secret values", async () => {
+        const { client, close } = await startServer();
+        try {
+            const registered = await client.registerSecret({
+                description: "Service API credentials",
+                environment: {
+                    SERVICE_REGION: "never-return-region",
+                    SERVICE_TOKEN: "never-return-token",
+                },
+                id: "service",
+            });
+            expect(registered.secret).toEqual({
+                description: "Service API credentials",
+                environmentVariables: ["SERVICE_REGION", "SERVICE_TOKEN"],
+                id: "service",
+            });
+
+            const listed = await client.listSecrets();
+            expect(listed.secrets).toEqual([registered.secret]);
+            expect(JSON.stringify({ listed, registered })).not.toContain("never-return-region");
+            expect(JSON.stringify({ listed, registered })).not.toContain("never-return-token");
+        } finally {
+            await close();
+        }
+    });
+
+    it("does not reflect malformed secret registration values in JSON errors", async () => {
+        const { close, socketPath } = await startServer();
+        const secretValue = "malformed-value-must-not-return";
+        try {
+            const response = await requestRawJson(socketPath, "/secrets", {
+                body: `{"id":"service","environment":{"TOKEN":"${secretValue}"}`,
+                method: "POST",
+            });
+
+            expect(response.statusCode).toBe(400);
+            expect(response.body).toContain("Request body must be valid JSON.");
+            expect(response.body).not.toContain(secretValue);
+        } finally {
+            await close();
+        }
+    });
+
+    it("removes a registration and clears both attachment sources", async () => {
+        const { client, close, store } = await startServer();
+        try {
+            await client.registerSecret({
+                description: "Disposable credentials",
+                environment: { DISPOSABLE_TOKEN: "never-return-this" },
+                id: "disposable",
+            });
+            const created = await client.createSession({ cwd: "/tmp/removable-secret-project" });
+            await client.attachSecret(created.session.id, "disposable", "session");
+            await client.attachSecret(created.session.id, "disposable", "project");
+
+            await expect(client.unregisterSecret("disposable")).resolves.toEqual({
+                removed: true,
+            });
+            expect(await client.listSecrets()).toEqual({ secrets: [] });
+            expect(store.get(created.session.id)?.snapshot()).toMatchObject({
+                projectSecretIds: [],
+                secretIds: [],
+                sessionSecretIds: [],
+            });
+            await expect(client.unregisterSecret("disposable")).resolves.toEqual({
+                removed: false,
+            });
+            await expect(client.attachSecret(created.session.id, "disposable")).rejects.toThrow(
+                "not registered",
+            );
         } finally {
             await close();
         }
@@ -267,6 +450,39 @@ describe("createProtocolHttpServer", () => {
 
             expect(recordUserActivity).toHaveBeenCalledOnce();
             expect(session.events.since(undefined)).toHaveLength(eventCount ?? 0);
+        } finally {
+            await close();
+        }
+    });
+
+    it("accepts registered initial attachments and rejects malformed secret ID lists", async () => {
+        const store = new InMemorySessionStore();
+        store.registerSecret({
+            description: "Service API credentials",
+            environment: { SERVICE_TOKEN: "secret-value" },
+            id: "service",
+        });
+        const { client, close } = await startServer({ store });
+        try {
+            const created = await client.createSession({
+                cwd: "/tmp/secret-project",
+                secretIds: ["service"],
+            });
+            expect(created.session.secretIds).toEqual(["service"]);
+
+            await expect(
+                client.createSession({
+                    cwd: "/tmp/malformed-secret-project",
+                    secretIds: "service" as unknown as readonly string[],
+                }),
+            ).rejects.toThrow("Secret IDs must be provided as a list of text IDs.");
+            await expect(
+                client.createSession({
+                    cwd: "/tmp/unknown-secret-project",
+                    secretIds: ["missing"],
+                }),
+            ).rejects.toThrow("not registered");
+            expect(store.list()).toHaveLength(1);
         } finally {
             await close();
         }
@@ -1170,6 +1386,38 @@ async function startServer(
             await rm(directory, { recursive: true, force: true });
         },
     };
+}
+
+async function requestRawJson(
+    socketPath: string,
+    path: string,
+    options: { body: string; method: string },
+): Promise<{ body: string; statusCode: number | undefined }> {
+    return new Promise((resolve, reject) => {
+        const request = httpRequest(
+            {
+                headers: {
+                    authorization: "Bearer secret",
+                    "content-type": "application/json",
+                },
+                method: options.method,
+                path,
+                socketPath,
+            },
+            (response) => {
+                const chunks: Buffer[] = [];
+                response.on("data", (chunk: Buffer) => chunks.push(chunk));
+                response.on("end", () => {
+                    resolve({
+                        body: Buffer.concat(chunks).toString("utf8"),
+                        statusCode: response.statusCode,
+                    });
+                });
+            },
+        );
+        request.once("error", reject);
+        request.end(options.body);
+    });
 }
 
 function readOnlySubagentState(): PersistedSessionState {

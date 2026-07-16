@@ -12,12 +12,14 @@ import {
     DEFAULT_PERMISSION_MODE,
     type PermissionMode,
 } from "../../permissions/index.js";
+import type { SessionSecretContext } from "../../secrets/index.js";
 
 export interface CreateNodeAgentContextOptions {
     cwd: string;
     goals?: GoalContext;
     processManager: NativeProxessManager;
     permissionMode?: PermissionMode;
+    secrets?: SessionSecretContext;
     tasks?: TaskContext;
     userInput?: UserInputContext;
     workflows?: WorkflowContext;
@@ -33,10 +35,12 @@ export function createNodeAgentContext(options: CreateNodeAgentContextOptions): 
             cwd: options.cwd,
             processManager: options.processManager,
             permissions,
+            ...(options.secrets === undefined ? {} : { secrets: options.secrets }),
         }),
         fileReads: createFileReadState(),
         permissions,
     };
+    if (options.secrets !== undefined) context.secrets = options.secrets;
     if (options.userInput !== undefined) context.userInput = options.userInput;
     if (options.goals !== undefined) context.goals = options.goals;
     if (options.tasks !== undefined) context.tasks = options.tasks;

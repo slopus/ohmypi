@@ -19,6 +19,7 @@ export interface RunCommandOptions {
     timeoutMs?: number;
     maxOutputBytes?: number;
     onProgress?: (display: string) => void;
+    secrets?: readonly string[];
     signal?: AbortSignal;
 }
 
@@ -40,6 +41,7 @@ export async function runShellCommand(
     };
     if (options.timeoutMs !== undefined) runOptions.timeoutMs = options.timeoutMs;
     if (options.maxOutputBytes !== undefined) runOptions.maxOutputBytes = options.maxOutputBytes;
+    if (options.secrets !== undefined) runOptions.secrets = options.secrets;
     if (options.signal !== undefined) runOptions.signal = options.signal;
     if (options.onProgress !== undefined) {
         const { signal: _signal, ...sessionOptions } = runOptions;
@@ -78,6 +80,7 @@ export async function runCommand(
     };
     if (options.timeoutMs !== undefined) runOptions.timeoutMs = options.timeoutMs;
     if (options.maxOutputBytes !== undefined) runOptions.maxOutputBytes = options.maxOutputBytes;
+    if (options.secrets !== undefined) runOptions.secrets = options.secrets;
     if (options.signal !== undefined) runOptions.signal = options.signal;
     return context.bash.run(runOptions);
 }

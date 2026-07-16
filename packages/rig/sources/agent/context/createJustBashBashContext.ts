@@ -89,6 +89,7 @@ export function createJustBashBashContext(bash: Bash, cwd: string): BashContext 
         },
         readSession,
         async run(runOptions) {
+            assertNoSecrets(runOptions.secrets);
             const controller = new AbortController();
             const timeout =
                 runOptions.timeoutMs === undefined
@@ -114,6 +115,7 @@ export function createJustBashBashContext(bash: Bash, cwd: string): BashContext 
             }
         },
         async startSession(runOptions) {
+            assertNoSecrets(runOptions.secrets);
             const controller = new AbortController();
             const sessionId = nextSessionId;
             nextSessionId += 1;
@@ -174,4 +176,10 @@ export function createJustBashBashContext(bash: Bash, cwd: string): BashContext 
             return false;
         },
     };
+}
+
+function assertNoSecrets(secrets: readonly string[] | undefined): void {
+    if (secrets !== undefined && secrets.length > 0) {
+        throw new Error("The in-memory Bash backend cannot inject Rig secrets.");
+    }
 }

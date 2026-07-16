@@ -63,6 +63,12 @@ export function createSlashCommands(
             aliases: [],
         },
         {
+            value: "secrets",
+            label: "/secrets",
+            description: "Manage secret bundles and attachments.",
+            aliases: [],
+        },
+        {
             value: "ps",
             label: "/ps",
             description: "List background terminals.",

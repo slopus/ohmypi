@@ -34,12 +34,14 @@ import type {
     FileSearchResult,
     EventId,
     McpServerSummary,
+    SecretSummary,
     SessionEvent,
     SessionTask,
     SteerMessageResponse,
     SubagentSummary,
     WorkflowRun,
 } from "../protocol/index.js";
+import type { SecretAttachmentScope, SecretRegistration } from "../secrets/index.js";
 import type { UserInputRequest, UserInputResponse } from "../user-input/index.js";
 import { humanizeWorkflowName } from "../workflows/index.js";
 import { createCodeReviewPrompt } from "../review/index.js";
@@ -52,6 +54,7 @@ import type {
 } from "./CodingAssistantAgentBackend.js";
 import { createEditorTheme } from "./createEditorTheme.js";
 import { createSelectionPanel } from "./createSelectionPanel.js";
+import { createSecretInputPanel } from "./createSecretInputPanel.js";
 import { createWorkflowMonitor } from "./createWorkflowMonitor.js";
 import { containsMarkdownTable } from "./containsMarkdownTable.js";
 import { DEFAULT_TERMINAL_THEME } from "./defaultTerminalTheme.js";
@@ -139,18 +142,22 @@ const MAX_DIFF_ROWS_PER_TOOL = 120;
 export interface CodingAssistantAppOptions {
     activeAgentLabel?: string;
     agent: CodingAssistantAgentBackend;
+    attachSecret?: (id: string, scope: SecretAttachmentScope) => void | Promise<void>;
     cwd: string;
     initialBackgroundProcesses?: readonly BashSessionActivity[];
     initialMcpServers?: readonly McpServerSummary[];
     initialNotices?: readonly { text: string; title: string }[];
     initialSessionEvents?: readonly SessionEvent[];
     initialSubagents?: readonly SubagentSummary[];
+    initialProjectSecretIds?: readonly string[];
+    initialSessionSecretIds?: readonly string[];
     initialTasks?: readonly SessionTask[];
     initialWorkflowEventId?: EventId;
     initialWorkflows?: readonly WorkflowRun[];
     workflowsEnabled?: boolean;
     initialUserInputs?: readonly UserInputRequest[];
     modelLocked?: boolean;
+    listSecrets?: () => readonly SecretSummary[] | Promise<readonly SecretSummary[]>;
     processManager: NativeProxessManager;
     sessionBacked?: boolean;
     tui: TUI;
@@ -167,6 +174,9 @@ export interface CodingAssistantAppOptions {
     ) => Promise<ClipboardImage | undefined>;
     searchFiles?: (query: string) => Promise<readonly FileSearchResult[]>;
     completionChime?: boolean;
+    registerSecret?: (registration: SecretRegistration) => SecretSummary | Promise<SecretSummary>;
+    unregisterSecret?: (id: string) => boolean | Promise<boolean>;
+    detachSecret?: (id: string, scope: SecretAttachmentScope) => void | Promise<void>;
     durableGlobalEventQueue?: boolean;
     showReasoning?: boolean;
     showUsage?: boolean;
@@ -271,9 +281,18 @@ interface FreeformUserInput {
     requestId: string;
 }
 
+interface SecretRegistrationDraft {
+    description: string;
+    environment: Record<string, string>;
+    id: string;
+}
+
 export class CodingAssistantApp implements Component, Focusable {
     readonly #activeAgentLabel: string | undefined;
     readonly #agent: CodingAssistantAgentBackend;
+    readonly #attachSecret:
+        | ((id: string, scope: SecretAttachmentScope) => void | Promise<void>)
+        | undefined;
     readonly #cwd: string;
     readonly #idFactory: () => string;
     readonly #now: () => number;
@@ -286,6 +305,16 @@ export class CodingAssistantApp implements Component, Focusable {
     readonly #onUserActivity: (() => void) | undefined;
     readonly #onStopWorkflow: ((runId: string) => void | Promise<void>) | undefined;
     readonly #onExit: (() => void | Promise<void>) | undefined;
+    readonly #detachSecret:
+        | ((id: string, scope: SecretAttachmentScope) => void | Promise<void>)
+        | undefined;
+    readonly #listSecrets:
+        | (() => readonly SecretSummary[] | Promise<readonly SecretSummary[]>)
+        | undefined;
+    readonly #registerSecret:
+        | ((registration: SecretRegistration) => SecretSummary | Promise<SecretSummary>)
+        | undefined;
+    readonly #unregisterSecret: ((id: string) => boolean | Promise<boolean>) | undefined;
     readonly #respondUserInput:
         | ((requestId: string, response: UserInputResponse) => void | Promise<void>)
         | undefined;
@@ -352,6 +381,10 @@ export class CodingAssistantApp implements Component, Focusable {
     #sessionBacked: boolean;
     #modelLocked: boolean;
     #mcpServers: readonly McpServerSummary[];
+    #projectSecretIds: readonly string[];
+    #secretRegistrations: readonly SecretSummary[] = [];
+    #secretsListVisible = false;
+    #sessionSecretIds: readonly string[];
     #slashCommandSelectionIndex = 0;
     readonly #slashCommands: readonly SlashCommandItem[];
     #skillCommands: SlashCommandItem[] = [];
@@ -400,6 +433,7 @@ export class CodingAssistantApp implements Component, Focusable {
                 ? undefined
                 : this.#singleLine(options.activeAgentLabel);
         this.#agent = options.agent;
+        this.#attachSecret = options.attachSecret;
         this.#cwd = options.cwd;
         this.#idFactory = options.idFactory ?? createId;
         this.#now = options.now ?? Date.now;
@@ -408,6 +442,10 @@ export class CodingAssistantApp implements Component, Focusable {
         this.#onUserActivity = options.onUserActivity;
         this.#onStopWorkflow = options.onStopWorkflow;
         this.#onExit = options.onExit;
+        this.#detachSecret = options.detachSecret;
+        this.#listSecrets = options.listSecrets;
+        this.#registerSecret = options.registerSecret;
+        this.#unregisterSecret = options.unregisterSecret;
         this.#respondUserInput = options.respondUserInput;
         this.#processManager = options.processManager;
         this.#readClipboardImage = options.readClipboardImage ?? readClipboardImage;
@@ -418,6 +456,8 @@ export class CodingAssistantApp implements Component, Focusable {
         this.#showUsage = options.showUsage ?? false;
         this.#modelLocked = options.modelLocked ?? !options.agent.canChangeModel;
         this.#mcpServers = options.initialMcpServers ?? [];
+        this.#projectSecretIds = options.initialProjectSecretIds ?? [];
+        this.#sessionSecretIds = options.initialSessionSecretIds ?? [];
         this.#subagents = options.initialSubagents ?? [];
         this.#tasks = options.initialTasks ?? [];
         this.#workflows = options.initialWorkflows ?? [];
@@ -479,15 +519,18 @@ export class CodingAssistantApp implements Component, Focusable {
 
         this.#replayingInitialSessionEvents = true;
         try {
-            let reachedWorkflowSnapshot = options.initialWorkflowEventId === undefined;
+            let reachedInitialSnapshot = options.initialWorkflowEventId === undefined;
             for (const event of options.initialSessionEvents ?? []) {
-                // The snapshot is authoritative through its last event. Apply only workflow events
-                // that raced in after it so stale runs are not resurrected after a daemon restart.
-                if (event.type === "workflow_changed" && !reachedWorkflowSnapshot) {
-                    if (event.id === options.initialWorkflowEventId) reachedWorkflowSnapshot = true;
+                // The snapshot is authoritative through its last event. Apply only state events
+                // that raced in after it so persisted history cannot overwrite current state.
+                if (
+                    (event.type === "workflow_changed" || event.type === "secrets_changed") &&
+                    !reachedInitialSnapshot
+                ) {
+                    if (event.id === options.initialWorkflowEventId) reachedInitialSnapshot = true;
                     continue;
                 }
-                if (event.id === options.initialWorkflowEventId) reachedWorkflowSnapshot = true;
+                if (event.id === options.initialWorkflowEventId) reachedInitialSnapshot = true;
                 this.applySessionEvent(event);
             }
         } finally {
@@ -693,6 +736,15 @@ export class CodingAssistantApp implements Component, Focusable {
 
         if (event.type === "tasks_changed") {
             this.#tasks = event.data.tasks;
+            this.#requestRender();
+            return;
+        }
+
+        if (event.type === "secrets_changed") {
+            const refreshSecretsList = this.#secretsListVisible;
+            this.#projectSecretIds = event.data.projectSecretIds ?? [];
+            this.#sessionSecretIds = event.data.sessionSecretIds ?? event.data.secretIds;
+            if (refreshSecretsList) this.#showSecretsMenu();
             this.#requestRender();
             return;
         }
@@ -1601,6 +1653,11 @@ export class CodingAssistantApp implements Component, Focusable {
             return true;
         }
 
+        if (prompt === "/secrets") {
+            this.#openSecretsMenu();
+            return true;
+        }
+
         if (prompt === "/usage" || prompt === "/tokens") {
             this.#showUsageSummary();
             return true;
@@ -1791,6 +1848,442 @@ export class CodingAssistantApp implements Component, Focusable {
             title: "goal",
             text: `Goal started: ${argument}`,
         });
+    }
+
+    #openSecretsMenu(): void {
+        if (
+            this.#attachSecret === undefined ||
+            this.#detachSecret === undefined ||
+            this.#listSecrets === undefined ||
+            this.#registerSecret === undefined ||
+            this.#unregisterSecret === undefined
+        ) {
+            this.#appendEntry({
+                role: "event",
+                title: "Secrets",
+                text: "Secret management is unavailable in this session.",
+            });
+            return;
+        }
+
+        this.#showSelectionPanel(
+            createSelectionPanel({
+                theme: this.#theme,
+                title: "Secrets",
+                subtitle: "Loading registered secret bundles",
+                items: [{ value: "loading", label: "Loading..." }],
+                onSelect: () => {},
+                onCancel: () => this.#closeSelectionPanel(),
+            }),
+        );
+        void Promise.resolve()
+            .then(() => this.#listSecrets?.())
+            .then((secrets) => {
+                if (secrets === undefined) return;
+                this.#secretRegistrations = [...secrets];
+                this.#showSecretsMenu();
+                this.#requestRender();
+            })
+            .catch(() => {
+                this.#closeSelectionPanel();
+                this.#appendEntry({
+                    role: "error",
+                    text: "Could not load secret registrations.",
+                });
+                this.#requestRender();
+            });
+    }
+
+    #showSecretsMenu(): void {
+        this.#showSelectionPanel(
+            createSelectionPanel({
+                theme: this.#theme,
+                title: "Secrets",
+                subtitle: "Values stay masked and are injected only into selected commands",
+                items: [
+                    {
+                        value: "add",
+                        label: "Add secret",
+                        description: "Register a bundle of environment variables.",
+                    },
+                    ...this.#secretRegistrations.map((secret) => ({
+                        value: `secret:${secret.id}`,
+                        label: secret.id,
+                        description: `${secret.description} · ${secret.environmentVariables.join(", ")} · ${this.#secretAttachmentStatus(secret.id)}`,
+                    })),
+                ],
+                onSelect: (item) => {
+                    if (item.value === "add") {
+                        this.#openSecretIdInput();
+                        return;
+                    }
+                    const secret = this.#secretRegistrations.find(
+                        (candidate) => `secret:${candidate.id}` === item.value,
+                    );
+                    if (secret !== undefined) this.#openSecretActions(secret);
+                },
+                onCancel: () => this.#closeSelectionPanel(),
+            }),
+        );
+        this.#secretsListVisible = true;
+    }
+
+    #secretAttachmentStatus(secretId: string): string {
+        const session = this.#sessionSecretIds.includes(secretId);
+        const project = this.#projectSecretIds.includes(secretId);
+        if (session && project) return "Attached: Session and Project";
+        if (session) return "Attached: Session";
+        if (project) return "Attached: Project";
+        return "Not attached";
+    }
+
+    #openSecretActions(secret: SecretSummary): void {
+        this.#showSelectionPanel(
+            createSelectionPanel({
+                theme: this.#theme,
+                title: secret.id,
+                subtitle: `${secret.description} · ${this.#secretAttachmentStatus(secret.id)}`,
+                items: [
+                    {
+                        value: "attach",
+                        label: "Attach",
+                        description: "Make this bundle available to selected commands.",
+                    },
+                    {
+                        value: "detach",
+                        label: "Detach",
+                        description: "Stop making this bundle available at one scope.",
+                    },
+                    {
+                        value: "remove",
+                        label: "Remove registration",
+                        description: "Delete this bundle from Rig.",
+                    },
+                    { value: "back", label: "Back" },
+                ],
+                onSelect: (item) => {
+                    if (item.value === "attach" || item.value === "detach") {
+                        this.#openSecretScopeMenu(secret, item.value);
+                        return;
+                    }
+                    if (item.value === "remove") {
+                        this.#confirmSecretRemoval(secret);
+                        return;
+                    }
+                    this.#showSecretsMenu();
+                },
+                onCancel: () => this.#showSecretsMenu(),
+            }),
+        );
+    }
+
+    #openSecretScopeMenu(secret: SecretSummary, operation: "attach" | "detach"): void {
+        this.#showSelectionPanel(
+            createSelectionPanel({
+                theme: this.#theme,
+                title: `${operation === "attach" ? "Attach" : "Detach"} ${secret.id}`,
+                subtitle: "Choose where this attachment applies",
+                selectedValue: "session",
+                items: [
+                    {
+                        value: "session",
+                        label: "Session",
+                        description: this.#sessionSecretIds.includes(secret.id)
+                            ? "This session only · Attached"
+                            : "This session only",
+                    },
+                    {
+                        value: "project",
+                        label: "Project",
+                        description: this.#projectSecretIds.includes(secret.id)
+                            ? "All sessions in this project · Attached"
+                            : "All sessions in this project",
+                    },
+                ],
+                onSelect: (item) => {
+                    const scope = item.value as SecretAttachmentScope;
+                    this.#closeSelectionPanel();
+                    this.#changeSecretAttachment(secret, operation, scope);
+                },
+                onCancel: () => this.#openSecretActions(secret),
+            }),
+        );
+    }
+
+    #changeSecretAttachment(
+        secret: SecretSummary,
+        operation: "attach" | "detach",
+        scope: SecretAttachmentScope,
+    ): void {
+        const callback = operation === "attach" ? this.#attachSecret : this.#detachSecret;
+        if (callback === undefined) return;
+        void Promise.resolve()
+            .then(() => callback(secret.id, scope))
+            .then(() => {
+                if (scope === "session") {
+                    this.#sessionSecretIds = this.#updateSecretIds(
+                        this.#sessionSecretIds,
+                        secret.id,
+                        operation === "attach",
+                    );
+                } else {
+                    this.#projectSecretIds = this.#updateSecretIds(
+                        this.#projectSecretIds,
+                        secret.id,
+                        operation === "attach",
+                    );
+                }
+                this.#appendEntry({
+                    role: "event",
+                    title: "Secrets",
+                    text: `${operation === "attach" ? "Attached" : "Detached"} '${secret.id}' ${scope === "session" ? "for this session" : "for this project"}.`,
+                });
+                this.#showSecretsMenu();
+                this.#requestRender();
+            })
+            .catch(() => {
+                this.#appendEntry({
+                    role: "error",
+                    text: `Could not ${operation} the secret for this ${scope}.`,
+                });
+                this.#openSecretActions(secret);
+                this.#requestRender();
+            });
+    }
+
+    #updateSecretIds(ids: readonly string[], secretId: string, attached: boolean): string[] {
+        if (!attached) return ids.filter((id) => id !== secretId);
+        return ids.includes(secretId) ? [...ids] : [...ids, secretId];
+    }
+
+    #confirmSecretRemoval(secret: SecretSummary): void {
+        this.#showSelectionPanel(
+            createSelectionPanel({
+                theme: this.#theme,
+                title: `Remove ${secret.id}?`,
+                subtitle: "This also detaches the bundle from every session and project",
+                selectedValue: "cancel",
+                items: [
+                    { value: "cancel", label: "Cancel", description: "Keep this registration." },
+                    {
+                        value: "remove",
+                        label: "Remove registration",
+                        description: "Delete this secret bundle.",
+                    },
+                ],
+                onSelect: (item) => {
+                    if (item.value !== "remove") {
+                        this.#openSecretActions(secret);
+                        return;
+                    }
+                    this.#closeSelectionPanel();
+                    this.#removeSecretRegistration(secret);
+                },
+                onCancel: () => this.#openSecretActions(secret),
+            }),
+        );
+    }
+
+    #removeSecretRegistration(secret: SecretSummary): void {
+        if (this.#unregisterSecret === undefined) return;
+        void Promise.resolve()
+            .then(() => this.#unregisterSecret?.(secret.id))
+            .then(() => {
+                this.#secretRegistrations = this.#secretRegistrations.filter(
+                    (candidate) => candidate.id !== secret.id,
+                );
+                this.#sessionSecretIds = this.#updateSecretIds(
+                    this.#sessionSecretIds,
+                    secret.id,
+                    false,
+                );
+                this.#projectSecretIds = this.#updateSecretIds(
+                    this.#projectSecretIds,
+                    secret.id,
+                    false,
+                );
+                this.#appendEntry({
+                    role: "event",
+                    title: "Secrets",
+                    text: `Removed secret registration '${secret.id}'.`,
+                });
+                this.#showSecretsMenu();
+                this.#requestRender();
+            })
+            .catch(() => {
+                this.#appendEntry({
+                    role: "error",
+                    text: "Could not remove the secret registration.",
+                });
+                this.#openSecretActions(secret);
+                this.#requestRender();
+            });
+    }
+
+    #openSecretIdInput(error?: string): void {
+        this.#showSelectionPanel(
+            createSecretInputPanel({
+                theme: this.#theme,
+                title: "Add Secret",
+                subtitle:
+                    error ?? "Use 1-128 letters, numbers, periods, underscores, colons, or hyphens",
+                label: "ID",
+                onSubmit: (value) => {
+                    const id = value.trim();
+                    if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u.test(id)) {
+                        this.#openSecretIdInput("Enter a valid secret ID.");
+                        return;
+                    }
+                    this.#openSecretDescriptionInput(id);
+                },
+                onCancel: () => this.#showSecretsMenu(),
+            }),
+        );
+    }
+
+    #openSecretDescriptionInput(id: string, error?: string): void {
+        this.#showSelectionPanel(
+            createSecretInputPanel({
+                theme: this.#theme,
+                title: "Add Secret",
+                subtitle: error ?? `Describe ${id}`,
+                label: "Description",
+                onSubmit: (value) => {
+                    const description = value.trim();
+                    if (description.length === 0) {
+                        this.#openSecretDescriptionInput(id, "Enter a description.");
+                        return;
+                    }
+                    this.#openSecretEnvironmentNameInput({
+                        description,
+                        environment: {},
+                        id,
+                    });
+                },
+                onCancel: () => this.#showSecretsMenu(),
+            }),
+        );
+    }
+
+    #openSecretEnvironmentNameInput(draft: SecretRegistrationDraft, error?: string): void {
+        this.#showSelectionPanel(
+            createSecretInputPanel({
+                theme: this.#theme,
+                title: "Add Environment Variable",
+                subtitle: error ?? `${draft.id} · Enter a variable name`,
+                label: "Name",
+                onSubmit: (value) => {
+                    const name = value.trim();
+                    if (!/^[A-Za-z_][A-Za-z0-9_]*$/u.test(name)) {
+                        this.#openSecretEnvironmentNameInput(
+                            draft,
+                            "Enter a valid environment variable name.",
+                        );
+                        return;
+                    }
+                    if (
+                        Object.keys(draft.environment).some(
+                            (existingName) => existingName.toLowerCase() === name.toLowerCase(),
+                        )
+                    ) {
+                        this.#openSecretEnvironmentNameInput(
+                            draft,
+                            "That environment variable is already in this bundle.",
+                        );
+                        return;
+                    }
+                    this.#openSecretValueInput(draft, name);
+                },
+                onCancel: () => this.#showSecretsMenu(),
+            }),
+        );
+    }
+
+    #openSecretValueInput(draft: SecretRegistrationDraft, name: string, error?: string): void {
+        this.#showSelectionPanel(
+            createSecretInputPanel({
+                theme: this.#theme,
+                title: `Set ${name}`,
+                subtitle: error ?? "The value is masked and will not be added to the transcript",
+                label: "Value",
+                masked: true,
+                onSubmit: (value) => {
+                    if (value.includes("\0")) {
+                        this.#openSecretValueInput(
+                            draft,
+                            name,
+                            "Secret values cannot contain null bytes.",
+                        );
+                        return;
+                    }
+                    this.#openSecretVariableChoice({
+                        ...draft,
+                        environment: { ...draft.environment, [name]: value },
+                    });
+                },
+                onCancel: () => this.#showSecretsMenu(),
+            }),
+        );
+    }
+
+    #openSecretVariableChoice(draft: SecretRegistrationDraft): void {
+        const variableCount = Object.keys(draft.environment).length;
+        this.#showSelectionPanel(
+            createSelectionPanel({
+                theme: this.#theme,
+                title: "Add Secret",
+                subtitle: `${draft.id} · ${variableCount} environment variable${variableCount === 1 ? "" : "s"}`,
+                items: [
+                    {
+                        value: "register",
+                        label: "Register secret",
+                        description: "Store this bundle with every value masked.",
+                    },
+                    {
+                        value: "another",
+                        label: "Add another variable",
+                        description: "Add another name and value to this bundle.",
+                    },
+                ],
+                onSelect: (item) => {
+                    if (item.value === "another") {
+                        this.#openSecretEnvironmentNameInput(draft);
+                        return;
+                    }
+                    this.#closeSelectionPanel();
+                    this.#registerSecretBundle(draft);
+                },
+                onCancel: () => this.#showSecretsMenu(),
+            }),
+        );
+    }
+
+    #registerSecretBundle(draft: SecretRegistrationDraft): void {
+        if (this.#registerSecret === undefined) return;
+        void Promise.resolve()
+            .then(() => this.#registerSecret?.(draft))
+            .then((secret) => {
+                if (secret === undefined) return;
+                this.#secretRegistrations = [
+                    ...this.#secretRegistrations.filter((candidate) => candidate.id !== secret.id),
+                    secret,
+                ].sort((left, right) => left.id.localeCompare(right.id));
+                this.#appendEntry({
+                    role: "event",
+                    title: "Secrets",
+                    text: `Registered secret '${secret.id}'.`,
+                });
+                this.#showSecretsMenu();
+                this.#requestRender();
+            })
+            .catch(() => {
+                this.#appendEntry({
+                    role: "error",
+                    text: "Could not register the secret. Check the ID and environment names.",
+                });
+                this.#openSecretVariableChoice(draft);
+                this.#requestRender();
+            });
     }
 
     #showMcpStatus(): void {
@@ -3975,11 +4468,13 @@ export class CodingAssistantApp implements Component, Focusable {
 
     #showSelectionPanel(component: Component): void {
         this.#lastEscapeAtMs = undefined;
+        this.#secretsListVisible = false;
         this.#selectionPanel = component;
     }
 
     #closeSelectionPanel(): void {
         this.#lastEscapeAtMs = undefined;
+        this.#secretsListVisible = false;
         this.#selectionPanel = undefined;
     }
 
@@ -4163,7 +4658,14 @@ export class CodingAssistantApp implements Component, Focusable {
         if (command !== undefined) {
             const shell = stringField("shell");
             const shellSuffix = shell === undefined ? "" : ` (Shell: ${this.#singleLine(shell)})`;
-            return `${this.#singleLine(command)}${shellSuffix}`;
+            const secrets = Array.isArray(record.secrets)
+                ? record.secrets.filter((value): value is string => typeof value === "string")
+                : [];
+            const secretSuffix =
+                secrets.length === 0
+                    ? ""
+                    : ` (Secrets: ${secrets.map((id) => this.#singleLine(id)).join(", ")})`;
+            return `${this.#singleLine(command)}${shellSuffix}${secretSuffix}`;
         }
 
         const path = stringField("file_path") ?? stringField("path");

@@ -27,6 +27,7 @@ import {
     type StopReason,
 } from "../providers/types.js";
 import type { PermissionMode } from "../permissions/index.js";
+import type { SecretAttachmentScope } from "../secrets/index.js";
 import type { GoalStatus, SessionGoal } from "../goals/index.js";
 import { ProtocolHttpClient } from "./ProtocolHttpClient.js";
 import { RemoteAgentRunError } from "./RemoteAgentRunError.js";
@@ -166,6 +167,28 @@ export class RemoteAgent implements CodingAssistantAgentBackend {
 
     get goal(): SessionGoal | undefined {
         return this.#session.goal === undefined ? undefined : { ...this.#session.goal };
+    }
+
+    get projectSecretIds(): readonly string[] {
+        return [...(this.#session.projectSecretIds ?? [])];
+    }
+
+    get secretIds(): readonly string[] {
+        return [...(this.#session.secretIds ?? [])];
+    }
+
+    get sessionSecretIds(): readonly string[] {
+        return [...(this.#session.sessionSecretIds ?? this.#session.secretIds ?? [])];
+    }
+
+    async attachSecret(secretId: string, scope: SecretAttachmentScope = "session"): Promise<void> {
+        const response = await this.#client.attachSecret(this.#session.id, secretId, scope);
+        this.#replaceSession(response.session);
+    }
+
+    async detachSecret(secretId: string, scope: SecretAttachmentScope = "session"): Promise<void> {
+        const response = await this.#client.detachSecret(this.#session.id, secretId, scope);
+        this.#replaceSession(response.session);
     }
 
     abort(options?: AbortRunOptions) {
@@ -438,9 +461,11 @@ export class RemoteAgent implements CodingAssistantAgentBackend {
         }
 
         if (event.type === "session_created") {
-            this.#replaceSession(event.data.session);
+            this.#replaceSession({ ...event.data.session, lastEventId: event.id });
             return;
         }
+
+        this.#session = { ...this.#session, lastEventId: event.id };
 
         if (event.type === "message_submitted") {
             if (event.data.delivery === "steer") {
@@ -589,6 +614,16 @@ export class RemoteAgent implements CodingAssistantAgentBackend {
             return;
         }
 
+        if (event.type === "secrets_changed") {
+            this.#session = {
+                ...this.#session,
+                projectSecretIds: event.data.projectSecretIds ?? [],
+                secretIds: event.data.secretIds,
+                sessionSecretIds: event.data.sessionSecretIds ?? event.data.secretIds,
+            };
+            return;
+        }
+
         if (event.type === "goal_changed") {
             if (event.data.goal === null) {
                 const { goal: _goal, ...session } = this.#session;
@@ -634,6 +669,13 @@ export class RemoteAgent implements CodingAssistantAgentBackend {
     }
 
     #replaceSession(session: ProtocolSession): void {
+        if (
+            session.lastEventId !== undefined &&
+            this.#session.lastEventId !== undefined &&
+            session.lastEventId < this.#session.lastEventId
+        ) {
+            return;
+        }
         this.#recordConfirmedSession(session);
         this.#session = session;
         if (this.#serviceTierChangeCount > 0) {

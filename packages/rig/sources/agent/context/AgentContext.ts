@@ -7,6 +7,7 @@ import type { UserInputContext } from "./UserInputContext.js";
 import type { TaskContext } from "./TaskContext.js";
 import type { PermissionContext } from "../../permissions/index.js";
 import type { WorkflowContext } from "../../workflows/index.js";
+import type { SessionSecretContext } from "../../secrets/index.js";
 
 export interface AgentContext {
     fs: FileSystemContext;
@@ -14,6 +15,7 @@ export interface AgentContext {
     fileReads?: FileReadState;
     goals?: GoalContext;
     permissions?: PermissionContext;
+    secrets?: SessionSecretContext;
     subagents?: SubagentContext;
     tasks?: TaskContext;
     userInput?: UserInputContext;

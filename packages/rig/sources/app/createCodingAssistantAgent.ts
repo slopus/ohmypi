@@ -8,6 +8,7 @@ import {
     type AnyDefinedTool,
     type GoalContext,
     type PermissionMode,
+    type SessionSecretContext,
     type SubagentContext,
     type TaskContext,
     type UserInputContext,
@@ -60,6 +61,7 @@ export interface CreateCodingAssistantAgentOptions {
     permissionMode?: PermissionMode;
     providers?: ConfigProviders;
     serviceTier?: ServiceTier;
+    secrets?: SessionSecretContext;
     subagents?: SubagentContext;
     tasks?: TaskContext;
     userInput?: UserInputContext;
@@ -77,6 +79,7 @@ export function createCodingAssistantAgent(
     const sharedContextOptions = {
         ...(options.goals !== undefined ? { goals: options.goals } : {}),
         ...(options.permissionMode !== undefined ? { permissionMode: options.permissionMode } : {}),
+        ...(options.secrets !== undefined ? { secrets: options.secrets } : {}),
         ...(options.tasks !== undefined ? { tasks: options.tasks } : {}),
         ...(options.userInput !== undefined ? { userInput: options.userInput } : {}),
         ...(workflowsEnabled ? { workflows: options.workflows } : {}),

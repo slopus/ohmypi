@@ -225,6 +225,34 @@ rig exec --resume SESSION_ID "Try the alternative approach"
 rig exec --last --fork "Explore a separate solution"
 ```
 
+### Secrets
+
+Use `/secrets` to register named bundles of environment variables and attach
+them to the current session or project. Session attachments apply only to that
+session. Project attachments apply to current and future sessions opened in the
+same project. When both sources attach a bundle, detaching one source leaves the
+other attachment intact.
+
+Shell commands receive no secret values by default. Set the command's optional
+`secrets` argument to a list of the attached bundle IDs that command needs. One
+or several bundles can be selected; an empty list selects none. Rig rejects IDs
+that are not attached to the current session or project.
+
+Registrations, including their values, are persisted as plaintext JSON in Rig's
+SQLite database. The database file is restricted to mode `0600` and its parent
+directory is created with mode `0700`. This is not encryption or secure
+deletion: SQLite pages and WAL files may retain replaced or removed values.
+
+Rig-generated prompts, list responses, attachment events, command metadata, and
+permission summaries contain bundle IDs and environment-variable names, never
+values. Command output is not redacted: a command that prints a value can send
+it to the model and place it in the transcript, saved session, events, or debug
+records. Commands can also save values to files.
+
+Per-command injection is not a process-isolation boundary. Processes running as
+the same operating-system user or inside the same container must be mutually
+trusted because they may be able to inspect one another's environments.
+
 ### Saved sessions
 
 Use the picker to resume or fork work in the current directory. Add `--all` to

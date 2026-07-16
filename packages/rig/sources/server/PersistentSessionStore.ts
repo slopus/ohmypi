@@ -10,6 +10,8 @@ import type {
     CreateSessionRequest,
     EventId,
     ModelCatalog,
+    RegisterSecretRequest,
+    SecretSummary,
     SessionEvent,
     SessionAgentMetadata,
     SessionInterruption,
@@ -41,6 +43,9 @@ import type { DockerExecutionConfig } from "../execution/index.js";
 import { summarizeDockerExecution } from "../execution/index.js";
 import type { TaskDrain } from "./TrackedTaskDrain.js";
 import { isTransientInferenceSessionEvent } from "./isTransientInferenceSessionEvent.js";
+import { SecretRegistry, type SecretRegistration } from "../secrets/index.js";
+import type { SecretAttachmentScope } from "../secrets/index.js";
+import { normalizeProjectCwd } from "./normalizeProjectCwd.js";
 
 export interface PersistentSessionStoreOptions {
     createRuntime?: InMemorySessionOptions["createRuntime"];
@@ -50,6 +55,7 @@ export interface PersistentSessionStoreOptions {
     modelCatalog?: ModelCatalog;
     now?: () => number;
     taskDrain?: TaskDrain;
+    secrets?: readonly SecretRegistration[];
 }
 
 export class PersistentSessionStore implements SessionStore, InMemorySessionPersistence {
@@ -60,10 +66,12 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
     #mcpToolProvider: McpToolProvider | undefined;
     #now: () => number;
     #persistentGlobalEventQueue: PersistentGlobalEventQueue | undefined;
+    #secrets: SecretRegistry;
     #sessions = new Map<string, InMemorySession>();
     #taskDrain: TaskDrain | undefined;
 
     constructor(options: PersistentSessionStoreOptions) {
+        this.#secrets = new SecretRegistry();
         this.#modelCatalog = options.modelCatalog ?? createModelCatalog();
         this.#createRuntime = options.createRuntime;
         this.#mcpToolProvider = options.mcpToolProvider;
@@ -76,7 +84,10 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
             enableForeignKeyConstraints: true,
             timeout: 5_000,
         });
+        if (options.databasePath !== ":memory:") chmodSync(options.databasePath, 0o600);
         this.#initialize();
+        this.#loadSecretRegistrations();
+        for (const secret of options.secrets ?? []) this.registerSecret(secret);
         if (options.durableGlobalEventQueue === true) {
             this.#persistentGlobalEventQueue = new PersistentGlobalEventQueue(this.#database);
         }
@@ -89,9 +100,6 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
             },
             ...(this.#taskDrain === undefined ? {} : { taskDrain: this.#taskDrain }),
         });
-        if (options.databasePath !== ":memory:") {
-            chmodSync(options.databasePath, 0o600);
-        }
         this.#repairInterruptedTitleGenerations();
         const repairEventIdFactories = new Map<string, () => EventId>();
         repairLegacyOrphanedSteering(this.#database, {
@@ -118,6 +126,32 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
         }
 
         session.changeModel(request);
+        return session;
+    }
+
+    attachSecret(
+        sessionId: string,
+        secretId: string,
+        scope: SecretAttachmentScope,
+    ): InMemorySession | undefined {
+        const session = this.get(sessionId);
+        if (session === undefined) return undefined;
+        this.#secrets.reference(secretId);
+        if (scope === "project") {
+            const cwd = normalizeProjectCwd(session.snapshot().cwd);
+            this.#database
+                .prepare(
+                    "INSERT OR IGNORE INTO project_secret_attachments (cwd, secret_id) VALUES (?, ?)",
+                )
+                .run(cwd, secretId);
+            for (const candidate of this.#sessions.values()) {
+                if (normalizeProjectCwd(candidate.snapshot().cwd) === cwd) {
+                    candidate.attachSecret(secretId, { scope });
+                }
+            }
+        } else {
+            session.attachSecret(secretId, { scope });
+        }
         return session;
     }
 
@@ -160,6 +194,29 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
         return this.#createSession(request);
     }
 
+    detachSecret(
+        sessionId: string,
+        secretId: string,
+        scope: SecretAttachmentScope,
+    ): InMemorySession | undefined {
+        const session = this.get(sessionId);
+        if (session === undefined) return undefined;
+        if (scope === "project") {
+            const cwd = normalizeProjectCwd(session.snapshot().cwd);
+            this.#database
+                .prepare("DELETE FROM project_secret_attachments WHERE cwd = ? AND secret_id = ?")
+                .run(cwd, secretId);
+            for (const candidate of this.#sessions.values()) {
+                if (normalizeProjectCwd(candidate.snapshot().cwd) === cwd) {
+                    candidate.detachSecret(secretId, { scope });
+                }
+            }
+        } else {
+            session.detachSecret(secretId, { scope });
+        }
+        return session;
+    }
+
     fork(sessionId: string): InMemorySession | undefined {
         this.#assertAcceptingMutations();
         const source = this.get(sessionId);
@@ -177,6 +234,8 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
             onAppendEvent: (event) => this.#appendEvent(event),
             persistence: this,
             request: source.requestForSubagent(),
+            projectSecretIds: this.#projectSecrets(source.snapshot().cwd),
+            secretRegistry: this.#secrets,
             restore: state,
             ...(this.#taskDrain === undefined ? {} : { taskDrain: this.#taskDrain }),
         });
@@ -209,8 +268,10 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
             ...(contextMessages !== undefined ? { initialContextMessages: contextMessages } : {}),
             onAppendEvent: (event) => this.#appendEvent(event),
             persistence: this,
+            projectSecretIds: this.#projectSecrets(request.cwd),
             request,
             ...(this.#taskDrain === undefined ? {} : { taskDrain: this.#taskDrain }),
+            secretRegistry: this.#secrets,
         });
         this.#sessions.set(session.id, session);
         session.emitCreatedEvent();
@@ -296,6 +357,7 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
                     id,
                     cwd,
                     docker_json,
+                    secret_ids_json,
                     provider_id,
                     model_id,
                     permission_mode,
@@ -421,6 +483,66 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
             });
     }
 
+    listSecrets(): readonly SecretSummary[] {
+        return this.#secrets.references();
+    }
+
+    registerSecret(request: RegisterSecretRequest): SecretSummary {
+        const candidate = new SecretRegistry([request]);
+        this.#transaction(() => {
+            this.#database
+                .prepare(
+                    `
+                    INSERT INTO secret_registrations (id, description, environment_json)
+                    VALUES (?, ?, ?)
+                    ON CONFLICT(id) DO UPDATE SET
+                        description = excluded.description,
+                        environment_json = excluded.environment_json
+                    `,
+                )
+                .run(request.id, request.description.trim(), JSON.stringify(request.environment));
+            const rememberEnvironmentVariable = this.#database.prepare(
+                `
+                INSERT INTO secret_environment_variables (secret_id, normalized_name, name)
+                VALUES (?, ?, ?)
+                ON CONFLICT(secret_id, normalized_name) DO UPDATE SET name = excluded.name
+                `,
+            );
+            for (const name of Object.keys(request.environment)) {
+                rememberEnvironmentVariable.run(request.id, name.toUpperCase(), name);
+            }
+        });
+        this.#secrets.register(request);
+        return candidate.reference(request.id);
+    }
+
+    unregisterSecret(secretId: string): boolean {
+        if (!this.#secrets.references().some((secret) => secret.id === secretId)) return false;
+        const rows = this.#database.prepare("SELECT id, secret_ids_json FROM sessions").all();
+        const update = this.#database.prepare(
+            "UPDATE sessions SET secret_ids_json = ? WHERE id = ?",
+        );
+        this.#transaction(() => {
+            this.#database.prepare("DELETE FROM secret_registrations WHERE id = ?").run(secretId);
+            for (const row of rows) {
+                const ids = JSON.parse(readString(row, "secret_ids_json")) as string[];
+                update.run(
+                    JSON.stringify(ids.filter((id) => id !== secretId)),
+                    readString(row, "id"),
+                );
+            }
+            this.#database
+                .prepare("DELETE FROM project_secret_attachments WHERE secret_id = ?")
+                .run(secretId);
+        });
+        this.#secrets.unregister(secretId);
+        for (const session of this.#sessions.values()) {
+            session.detachSecret(secretId, { scope: "project" });
+            session.detachSecret(secretId, { scope: "session" });
+        }
+        return true;
+    }
+
     #listSubagentSessionsByRoot(rootSessionId: string): readonly InMemorySession[] {
         return this.#database
             .prepare(
@@ -529,6 +651,7 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
                     description,
                     cwd,
                     docker_json,
+                    secret_ids_json,
                     provider_id,
                     model_id,
                     effort,
@@ -560,7 +683,7 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
                     created_at_ms,
                     updated_at_ms
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                     agent_id = excluded.agent_id,
                     session_kind = excluded.session_kind,
@@ -572,6 +695,7 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
                     description = excluded.description,
                     cwd = excluded.cwd,
                     docker_json = excluded.docker_json,
+                    secret_ids_json = excluded.secret_ids_json,
                     provider_id = excluded.provider_id,
                     model_id = excluded.model_id,
                     effort = excluded.effort,
@@ -615,6 +739,7 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
                 state.agent.description ?? null,
                 state.cwd,
                 state.docker === undefined ? null : JSON.stringify(state.docker),
+                JSON.stringify(state.secretIds ?? []),
                 state.providerId,
                 state.modelId,
                 state.effort ?? null,
@@ -758,6 +883,7 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
                 description TEXT,
                 cwd TEXT NOT NULL,
                 docker_json TEXT,
+                secret_ids_json TEXT NOT NULL DEFAULT '[]',
                 provider_id TEXT NOT NULL,
                 model_id TEXT NOT NULL,
                 effort TEXT,
@@ -830,9 +956,29 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
                 created_at_ms INTEGER NOT NULL,
                 PRIMARY KEY (session_id, run_id)
             );
+
+            CREATE TABLE IF NOT EXISTS secret_registrations (
+                id TEXT PRIMARY KEY,
+                description TEXT NOT NULL,
+                environment_json TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS secret_environment_variables (
+                secret_id TEXT NOT NULL REFERENCES secret_registrations(id) ON DELETE CASCADE,
+                normalized_name TEXT NOT NULL,
+                name TEXT NOT NULL,
+                PRIMARY KEY (secret_id, normalized_name)
+            );
+
+            CREATE TABLE IF NOT EXISTS project_secret_attachments (
+                cwd TEXT NOT NULL,
+                secret_id TEXT NOT NULL,
+                PRIMARY KEY (cwd, secret_id)
+            );
         `);
         this.#ensureSessionColumn("title", "TEXT");
         this.#ensureSessionColumn("docker_json", "TEXT");
+        this.#ensureSessionColumn("secret_ids_json", "TEXT NOT NULL DEFAULT '[]'");
         this.#ensureSessionColumn("title_status", "TEXT NOT NULL DEFAULT 'idle'");
         this.#ensureSessionColumn("title_error", "TEXT");
         this.#ensureSessionColumn("recap", "TEXT");
@@ -864,6 +1010,40 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
             CREATE INDEX IF NOT EXISTS sessions_parent_created
                 ON sessions(parent_session_id, created_at_ms)
         `);
+    }
+
+    #loadSecretRegistrations(): void {
+        const rows = this.#database
+            .prepare("SELECT id, description, environment_json FROM secret_registrations")
+            .all();
+        for (const row of rows) {
+            this.#secrets.register({
+                description: readString(row, "description"),
+                environment: JSON.parse(readString(row, "environment_json")) as Readonly<
+                    Record<string, string>
+                >,
+                id: readString(row, "id"),
+            });
+        }
+        const rememberEnvironmentVariable = this.#database.prepare(
+            `
+            INSERT OR IGNORE INTO secret_environment_variables (secret_id, normalized_name, name)
+            VALUES (?, ?, ?)
+            `,
+        );
+        for (const secret of this.#secrets.references()) {
+            for (const name of secret.environmentVariables) {
+                rememberEnvironmentVariable.run(secret.id, name.toUpperCase(), name);
+            }
+        }
+        const environmentRows = this.#database
+            .prepare("SELECT secret_id, name FROM secret_environment_variables")
+            .all();
+        for (const row of environmentRows) {
+            this.#secrets.rememberEnvironmentVariables(readString(row, "secret_id"), [
+                readString(row, "name"),
+            ]);
+        }
     }
 
     #loadEvents(sessionId: string): SessionEvent[] {
@@ -958,6 +1138,7 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
         const effort = readOptionalString(row, "effort");
         const serviceTier = readOptionalString(row, "service_tier");
         const dockerJson = readOptionalString(row, "docker_json");
+        const secretIdsJson = readOptionalString(row, "secret_ids_json");
         const instructions = readOptionalString(row, "instructions");
         const interruptionJson = readOptionalString(row, "interruption_json");
         const lastMessageAt = readOptionalNumber(row, "last_message_at_ms");
@@ -1013,6 +1194,7 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
             models: JSON.parse(readString(row, "models_json")) as Model[],
             providerId: readString(row, "provider_id"),
             permissionMode,
+            secretIds: secretIdsJson === undefined ? [] : (JSON.parse(secretIdsJson) as string[]),
             queuedRuns: this.#loadQueuedRuns(sessionId),
             status: readString(row, "status") as PersistedSessionState["status"],
             tasks: JSON.parse(readString(row, "tasks_json")) as PersistedSessionState["tasks"],
@@ -1040,6 +1222,7 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
             ...(restore.instructions !== undefined ? { instructions: restore.instructions } : {}),
             modelId,
             providerId: restore.providerId,
+            secretIds: restore.secretIds ?? [],
             workflowsEnabled: restore.workflowsEnabled !== false,
         };
         return new InMemorySession({
@@ -1056,10 +1239,21 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
                 : {}),
             onAppendEvent: (event) => this.#appendEvent(event),
             persistence: this,
+            projectSecretIds: this.#projectSecrets(restore.cwd),
             request,
+            secretRegistry: this.#secrets,
             restore,
             ...(this.#taskDrain === undefined ? {} : { taskDrain: this.#taskDrain }),
         });
+    }
+
+    #projectSecrets(cwd: string): readonly string[] {
+        return this.#database
+            .prepare(
+                "SELECT secret_id FROM project_secret_attachments WHERE cwd = ? ORDER BY secret_id",
+            )
+            .all(normalizeProjectCwd(cwd))
+            .map((row) => readString(row, "secret_id"));
     }
 
     #repairInterruptedTitleGenerations(): void {

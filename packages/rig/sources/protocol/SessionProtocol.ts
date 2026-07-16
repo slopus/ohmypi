@@ -16,6 +16,11 @@ import type { ChangeGoalStatusRequest, CreateGoalRequest, SessionGoal } from "..
 import type { EventId } from "./EventId.js";
 import type { DockerExecutionConfig } from "../execution/index.js";
 import type { BashSessionActivity } from "../agent/context/BashContext.js";
+import type {
+    SecretAttachmentScope,
+    SecretReference,
+    SecretRegistration,
+} from "../secrets/index.js";
 
 export type SessionStatus =
     | "idle"
@@ -119,6 +124,9 @@ export interface ProtocolSession {
     modelId: string;
     effort?: string;
     serviceTier?: ServiceTier;
+    secretIds?: readonly string[];
+    projectSecretIds?: readonly string[];
+    sessionSecretIds?: readonly string[];
     environment?: SessionExecutionEnvironment;
     modelLocked: boolean;
     models: readonly Model[];
@@ -192,6 +200,7 @@ export interface CreateSessionRequest {
     modelId?: string;
     providerId?: string;
     permissionMode?: PermissionMode;
+    secretIds?: readonly string[];
     workflowsEnabled?: boolean;
     docker?: DockerExecutionConfig;
     local?: boolean;
@@ -199,6 +208,30 @@ export interface CreateSessionRequest {
 
 export interface ChangePermissionModeRequest {
     permissionMode: PermissionMode;
+}
+
+export interface AttachSecretRequest {
+    secretId: string;
+    scope?: SecretAttachmentScope;
+}
+
+export interface SecretSessionResponse {
+    session: ProtocolSession;
+}
+
+export type RegisterSecretRequest = SecretRegistration;
+export type SecretSummary = SecretReference;
+
+export interface ListSecretsResponse {
+    secrets: readonly SecretSummary[];
+}
+
+export interface RegisterSecretResponse {
+    secret: SecretSummary;
+}
+
+export interface UnregisterSecretResponse {
+    removed: boolean;
 }
 
 export type SetGoalRequest = CreateGoalRequest;
@@ -395,6 +428,7 @@ export type SessionEvent =
     | EffortChangedEvent
     | ServiceTierChangedEvent
     | PermissionModeChangedEvent
+    | SecretsChangedEvent
     | UserInputRequestedEvent
     | UserInputResolvedEvent
     | McpServersChangedEvent
@@ -547,6 +581,15 @@ export type ServiceTierChangedEvent = BaseSessionEvent<
 export type PermissionModeChangedEvent = BaseSessionEvent<
     "permission_mode_changed",
     { permissionMode: PermissionMode }
+>;
+
+export type SecretsChangedEvent = BaseSessionEvent<
+    "secrets_changed",
+    {
+        projectSecretIds: readonly string[];
+        secretIds: readonly string[];
+        sessionSecretIds: readonly string[];
+    }
 >;
 
 export type UserInputRequestedEvent = BaseSessionEvent<"user_input_requested", UserInputRequest>;

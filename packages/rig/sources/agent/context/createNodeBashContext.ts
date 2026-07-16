@@ -10,11 +10,13 @@ import type { BashContext, BashSessionSnapshot } from "./BashContext.js";
 import { assertCanUseCustomShell } from "./assertCanUseCustomShell.js";
 import { createSandboxedCommand } from "./createSandboxedCommand.js";
 import { createToolEnvironment } from "./createToolEnvironment.js";
+import { createCommandEnvironment, type SessionSecretContext } from "../../secrets/index.js";
 
 export interface CreateNodeBashContextOptions {
     cwd: string;
     processManager: NativeProxessManager;
     permissions: PermissionContext;
+    secrets?: SessionSecretContext;
 }
 
 interface NodeBashSession {
@@ -128,7 +130,11 @@ export function createNodeBashContext(options: CreateNodeBashContextOptions): Ba
             const processRunOptions: Parameters<NativeProxessManager["run"]>[0] = {
                 command,
                 cwd,
-                env: createToolEnvironment(options.permissions.mode),
+                env: createCommandEnvironment(
+                    createToolEnvironment(options.permissions.mode),
+                    options.secrets,
+                    runOptions.secrets,
+                ),
                 ...(options.permissions.mode === "full_access" ||
                 globalThis.process.platform === "win32"
                     ? {}
@@ -159,7 +165,11 @@ export function createNodeBashContext(options: CreateNodeBashContextOptions): Ba
                 cleanupProcessGroupOnExit: true,
                 command,
                 cwd,
-                env: createToolEnvironment(options.permissions.mode),
+                env: createCommandEnvironment(
+                    createToolEnvironment(options.permissions.mode),
+                    options.secrets,
+                    runOptions.secrets,
+                ),
                 maxOutputBytes: runOptions.maxOutputBytes ?? 512_000,
                 ...(runOptions.shell !== undefined
                     ? { shell: runOptions.shell }

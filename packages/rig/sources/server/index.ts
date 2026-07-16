@@ -1,8 +1,18 @@
 export { InMemorySession } from "./InMemorySession.js";
-export { InMemorySessionStore } from "./InMemorySessionStore.js";
+export { InMemorySessionStore, type InMemorySessionStoreOptions } from "./InMemorySessionStore.js";
 export { getLocalServerPaths, type LocalServerPaths } from "./LocalServerPaths.js";
 export { getEnvironmentLocalServerPaths } from "./getEnvironmentLocalServerPaths.js";
-export { PersistentSessionStore } from "./PersistentSessionStore.js";
+export {
+    PersistentSessionStore,
+    type PersistentSessionStoreOptions,
+} from "./PersistentSessionStore.js";
+export { SecretRegistry } from "../secrets/index.js";
+export type {
+    RigSecret,
+    SecretAttachmentScope,
+    SecretReference,
+    SecretRegistration,
+} from "../secrets/index.js";
 export { PersistentGlobalEventQueue } from "./PersistentGlobalEventQueue.js";
 export type {
     GlobalEventQueue,

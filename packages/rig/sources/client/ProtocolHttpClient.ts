@@ -22,12 +22,16 @@ import type {
     GoalSessionResponse,
     ListGlobalEventsResponse,
     ListModelsResponse,
+    ListSecretsResponse,
     ListSessionsResponse,
     ListSubagentsResponse,
     ProtocolSession,
     RecordSessionActivityResponse,
     RewindSessionResponse,
+    RegisterSecretRequest,
+    RegisterSecretResponse,
     SearchFilesResponse,
+    SecretSessionResponse,
     SessionEvent,
     ShutdownServerResponse,
     SetGoalRequest,
@@ -37,9 +41,11 @@ import type {
     SubmitMessageRequest,
     SubmitMessageResponse,
     TrimGlobalEventsResponse,
+    UnregisterSecretResponse,
     UpdateDaemonConfigRequest,
     UpdateDaemonConfigResponse,
 } from "../protocol/index.js";
+import type { SecretAttachmentScope } from "../secrets/index.js";
 import { parseGlobalSseEvent } from "./parseGlobalSseEvent.js";
 import { EventStreamHttpError } from "./EventStreamHttpError.js";
 
@@ -157,6 +163,40 @@ export class ProtocolHttpClient {
             `/sessions/${encodeURIComponent(sessionId)}/service-tier`,
             request,
         );
+    }
+
+    attachSecret(
+        sessionId: string,
+        secretId: string,
+        scope: SecretAttachmentScope = "session",
+    ): Promise<SecretSessionResponse> {
+        return this.#requestJson("POST", `/sessions/${encodeURIComponent(sessionId)}/secrets`, {
+            scope,
+            secretId,
+        });
+    }
+
+    detachSecret(
+        sessionId: string,
+        secretId: string,
+        scope: SecretAttachmentScope = "session",
+    ): Promise<SecretSessionResponse> {
+        return this.#requestJson(
+            "DELETE",
+            `/sessions/${encodeURIComponent(sessionId)}/secrets/${encodeURIComponent(secretId)}?scope=${scope}`,
+        );
+    }
+
+    listSecrets(): Promise<ListSecretsResponse> {
+        return this.#requestJson("GET", "/secrets");
+    }
+
+    registerSecret(request: RegisterSecretRequest): Promise<RegisterSecretResponse> {
+        return this.#requestJson("POST", "/secrets", request);
+    }
+
+    unregisterSecret(secretId: string): Promise<UnregisterSecretResponse> {
+        return this.#requestJson("DELETE", `/secrets/${encodeURIComponent(secretId)}`);
     }
 
     setGoal(sessionId: string, request: SetGoalRequest): Promise<GoalSessionResponse> {

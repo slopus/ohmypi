@@ -16,6 +16,7 @@ import type {
     GetSessionUsageResponse,
     SteerMessageResponse,
 } from "../protocol/index.js";
+import type { SecretAttachmentScope } from "../secrets/index.js";
 
 export interface CodingAssistantModelChoice {
     model: Model;
@@ -37,11 +38,16 @@ export interface CodingAssistantAgentBackend {
     readonly modelChoices?: readonly CodingAssistantModelChoice[];
     readonly permissionMode: PermissionMode;
     readonly goal?: SessionGoal | undefined;
+    readonly projectSecretIds?: readonly string[];
+    readonly secretIds?: readonly string[];
+    readonly sessionSecretIds?: readonly string[];
     getUsage?(): Promise<GetSessionUsageResponse>;
     abort?(options?: AbortRunOptions): Promise<AbortRunResponse>;
+    attachSecret?(secretId: string, scope?: SecretAttachmentScope): Promise<void>;
     compact(signal?: AbortSignal): Promise<AgentCompactionResult>;
     changeGoalStatus?(status: GoalStatus): Promise<void>;
     clearGoal?(): Promise<void>;
+    detachSecret?(secretId: string, scope?: SecretAttachmentScope): Promise<void>;
     reset(): void | Promise<void>;
     rewind?(messageId: string): Promise<UserMessage>;
     stopBackgroundProcesses?(): Promise<number>;

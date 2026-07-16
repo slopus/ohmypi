@@ -93,6 +93,8 @@ import { summarizeDockerExecution } from "../execution/index.js";
 import type { TaskDrain } from "./TrackedTaskDrain.js";
 import { aggregateSessionUsage, type SessionUsageSummary } from "./sessionUsage/index.js";
 import { createRequestDebugDirectory, DebugLog } from "../debug/index.js";
+import { SecretRegistry, SessionSecretContext } from "../secrets/index.js";
+import type { SecretAttachmentScope } from "../secrets/index.js";
 
 export interface PersistedSessionMessage {
     isPartial: boolean;
@@ -135,6 +137,7 @@ export interface PersistedSessionState {
     models: readonly Model[];
     providerId: string;
     permissionMode: PermissionMode;
+    secretIds?: readonly string[];
     queuedRuns: readonly PersistedQueuedRun[];
     recap?: string;
     nextTaskId: number;
@@ -183,6 +186,8 @@ export interface InMemorySessionOptions {
     onAppendEvent?: (event: SessionEvent) => void;
     persistence?: InMemorySessionPersistence;
     request: CreateSessionRequest;
+    projectSecretIds?: readonly string[];
+    secretRegistry?: SecretRegistry;
     restore?: PersistedSessionState;
     taskDrain?: TaskDrain;
 }
@@ -292,6 +297,7 @@ export class InMemorySession {
     #request: CreateSessionRequest;
     #restoredActiveRunId: string | undefined;
     #runtime: CodingAssistantRuntime | undefined;
+    #secrets: SessionSecretContext;
     #status: SessionStatus = "idle";
     #suspendedRunIds = new Set<string>();
     #suspendOnAbort = false;
@@ -316,6 +322,9 @@ export class InMemorySession {
         this.#persistence = options.persistence;
         this.#request = {
             ...options.request,
+            ...(options.request.secretIds === undefined
+                ? {}
+                : { secretIds: [...options.request.secretIds] }),
             ...(options.request.docker === undefined
                 ? {}
                 : { docker: { ...options.request.docker } }),
@@ -323,6 +332,16 @@ export class InMemorySession {
         this.#taskDrain = options.taskDrain;
         this.#workflowsEnabled =
             options.restore?.workflowsEnabled ?? options.request.workflowsEnabled ?? true;
+        const secretRegistry = options.secretRegistry ?? new SecretRegistry();
+        const secretIds = options.restore?.secretIds ?? options.request.secretIds ?? [];
+        if (options.restore === undefined) {
+            for (const secretId of secretIds) secretRegistry.reference(secretId);
+        }
+        this.#secrets = new SessionSecretContext(
+            secretRegistry,
+            secretIds,
+            options.projectSecretIds,
+        );
         this.id = options.restore?.id ?? createId();
         this.#agentMetadata = options.restore?.agent ??
             options.metadata ?? {
@@ -772,6 +791,7 @@ export class InMemorySession {
             messages: state.messages.map((message) => ({ ...message })),
             nextTaskId: 1,
             queuedRuns: [],
+            secretIds: [],
             status: "idle",
             tasks: [],
             titleStatus: title === undefined ? "idle" : "ready",
@@ -851,6 +871,26 @@ export class InMemorySession {
         ) {
             await this.#ensureMcpTools(runtime);
         }
+        return this.snapshot();
+    }
+
+    attachSecret(
+        secretId: string,
+        options: { scope?: SecretAttachmentScope } = {},
+    ): ProtocolSession {
+        const scope = options.scope ?? "session";
+        this.#secrets.attach(secretId, scope);
+        this.#append("secrets_changed", this.#secretAttachmentData());
+        return this.snapshot();
+    }
+
+    detachSecret(
+        secretId: string,
+        options: { scope?: SecretAttachmentScope } = {},
+    ): ProtocolSession {
+        const scope = options.scope ?? "session";
+        if (!this.#secrets.detach(secretId, scope)) return this.snapshot();
+        this.#append("secrets_changed", this.#secretAttachmentData());
         return this.snapshot();
     }
 
@@ -1597,6 +1637,9 @@ export class InMemorySession {
             modelId: this.#modelId,
             modelLocked: this.#modelLocked(),
             models: this.#models,
+            projectSecretIds: this.#secrets.projectIds(),
+            secretIds: this.#secrets.ids(),
+            sessionSecretIds: this.#secrets.sessionIds(),
             status: this.#status,
             snapshot,
             titleStatus: this.#titleStatus,
@@ -1684,6 +1727,7 @@ export class InMemorySession {
             models: this.#models,
             providerId: this.#providerId,
             permissionMode: this.#permissionMode,
+            secretIds: this.#secrets.sessionIds(),
             queuedRuns: [...this.#queue],
             ...(this.#recap !== undefined ? { recap: this.#recap } : {}),
             nextTaskId: this.#nextTaskId,
@@ -2159,6 +2203,18 @@ export class InMemorySession {
         this.#restartMetadataSettlement();
     }
 
+    #secretAttachmentData(): {
+        projectSecretIds: readonly string[];
+        secretIds: readonly string[];
+        sessionSecretIds: readonly string[];
+    } {
+        return {
+            projectSecretIds: this.#secrets.projectIds(),
+            secretIds: this.#secrets.ids(),
+            sessionSecretIds: this.#secrets.sessionIds(),
+        };
+    }
+
     #appendAgentEvent(runId: string, event: AgentLoopEvent): void {
         if (this.#activeRun?.runId !== runId) {
             return;
@@ -2309,6 +2365,7 @@ export class InMemorySession {
             modelId: this.#modelId,
             permissionMode: this.#permissionMode,
             providerId: this.#providerId,
+            secrets: this.#secrets,
             userInput: {
                 request: (request, requestOptions) =>
                     this.requestUserInput(request, requestOptions),

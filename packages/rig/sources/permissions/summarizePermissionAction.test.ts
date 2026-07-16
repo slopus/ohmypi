@@ -4,6 +4,15 @@ import { summarizePermissionAction } from "./summarizePermissionAction.js";
 import { summarizeEscalatedShellAction } from "./summarizeEscalatedShellAction.js";
 
 describe("summarizePermissionAction", () => {
+    it("discloses selected secret IDs without including values", () => {
+        expect(
+            summarizePermissionAction("exec_command", {
+                cmd: "gh api user",
+                secrets: ["github", "audit"],
+            }),
+        ).toBe('running "gh api user" with secrets "github", "audit"');
+    });
+
     it("keeps the complete command visible while escaping control characters", () => {
         const command = `printf start
 ${"x".repeat(140)}

@@ -21,6 +21,12 @@ export const piBashTool = defineTool({
         timeout: Type.Optional(
             Type.Number({ description: "Timeout in seconds (optional, no default timeout)" }),
         ),
+        secrets: Type.Optional(
+            Type.Array(Type.String(), {
+                description:
+                    "IDs of attached secret bundles to inject for this command. Use an empty array for none.",
+            }),
+        ),
         sandbox_permissions: Type.Optional(
             Type.Union([Type.Literal("use_default"), Type.Literal("require_escalated")], {
                 description:
@@ -43,8 +49,9 @@ export const piBashTool = defineTool({
         sandbox_permissions === "require_escalated",
     shouldRunInFullAccessInAutoMode: ({ sandbox_permissions }) =>
         sandbox_permissions === "require_escalated",
-    execute: async ({ command, timeout }, context, execution) => {
+    execute: async ({ command, secrets, timeout }, context, execution) => {
         const options: Parameters<typeof runShellCommand>[1] = { maxOutputBytes: 512_000 };
+        if (secrets !== undefined) options.secrets = secrets;
         if (timeout !== undefined) options.timeoutMs = timeout * 1000;
         if (execution.onProgress !== undefined) options.onProgress = execution.onProgress;
         if (execution.signal !== undefined) options.signal = execution.signal;

@@ -3,6 +3,7 @@ export interface BashRunOptions {
     cwd?: string;
     timeoutMs?: number;
     maxOutputBytes?: number;
+    secrets?: readonly string[];
     shell?: string;
     signal?: AbortSignal;
 }

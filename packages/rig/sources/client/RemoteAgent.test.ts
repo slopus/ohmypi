@@ -41,6 +41,51 @@ describe("RemoteAgent", () => {
         expect(harness.context.permissions.mode).toBe("read_only");
     });
 
+    it("does not let an older attachment response overwrite a newer event", async () => {
+        const model = defineModel({
+            id: "openai/test",
+            name: "Test model",
+            thinkingLevels: ["off"],
+            defaultThinkingLevel: "off",
+        });
+        const session = protocolSession(model);
+        let resolveAttach!: (response: { session: ProtocolSession }) => void;
+        const attachSecret = vi.fn(
+            () =>
+                new Promise<{ session: ProtocolSession }>((resolve) => {
+                    resolveAttach = resolve;
+                }),
+        );
+        const agent = new RemoteAgent({
+            client: { attachSecret } as unknown as ProtocolHttpClient,
+            context: createJustBashToolHarness().context,
+            session,
+        });
+
+        const attaching = agent.attachSecret("service");
+        await vi.waitFor(() => expect(attachSecret).toHaveBeenCalledOnce());
+        agent.applySessionEvent({
+            createdAt: 2,
+            data: { projectSecretIds: [], secretIds: [], sessionSecretIds: [] },
+            id: "01900000-0000-7002-8000-000000000000",
+            sessionId: session.id,
+            type: "secrets_changed",
+        });
+        resolveAttach({
+            session: {
+                ...session,
+                lastEventId: "01900000-0000-7001-8000-000000000000",
+                projectSecretIds: [],
+                secretIds: ["service"],
+                sessionSecretIds: ["service"],
+            },
+        });
+
+        await attaching;
+        expect(agent.secretIds).toEqual([]);
+        expect(agent.sessionSecretIds).toEqual([]);
+    });
+
     it("steers the active remote run through the dedicated endpoint", async () => {
         const model = defineModel({
             id: "openai/test",

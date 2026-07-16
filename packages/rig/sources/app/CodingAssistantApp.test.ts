@@ -6841,6 +6841,292 @@ describe("CodingAssistantApp", () => {
         expect(nextTurn).toContain("• answer 5");
         expect(nextTurn).toContain("› fourth");
     });
+
+    it("lists source-aware secret attachments and defaults attachment scope to Session", async () => {
+        const model = defineModel({
+            id: "openai/gpt-test",
+            name: "GPT Test",
+            thinkingLevels: ["off"],
+            defaultThinkingLevel: "off",
+        });
+        const provider = defineProvider({
+            id: "codex",
+            models: [model],
+            stream() {
+                return streamText("unused");
+            },
+        });
+        const harness = createJustBashToolHarness();
+        const attachSecret = vi.fn(async () => {});
+        const detachSecret = vi.fn(async () => {});
+        const unregisterSecret = vi.fn(async () => true);
+        const app = new CodingAssistantApp({
+            agent: new Agent({
+                provider,
+                modelId: model.id,
+                context: harness.context,
+                printToConsole: false,
+            }),
+            attachSecret,
+            cwd: harness.context.fs.cwd,
+            detachSecret,
+            initialProjectSecretIds: ["project-only", "both"],
+            initialSessionSecretIds: ["session-only", "both"],
+            listSecrets: async () => [
+                {
+                    id: "session-only",
+                    description: "Session token",
+                    environmentVariables: ["SESSION_TOKEN"],
+                },
+                {
+                    id: "project-only",
+                    description: "Project token",
+                    environmentVariables: ["PROJECT_TOKEN"],
+                },
+                {
+                    id: "both",
+                    description: "Shared token",
+                    environmentVariables: ["SHARED_TOKEN"],
+                },
+            ],
+            processManager: new NativeProxessManager(),
+            registerSecret: async () => ({
+                id: "unused",
+                description: "Unused",
+                environmentVariables: ["UNUSED"],
+            }),
+            tui: fakeTui(),
+            unregisterSecret,
+        });
+
+        submit(app, "/secrets");
+        await delay(10);
+
+        const listed = stripAnsi(app.render(120).join("\n"));
+        expect(listed).toContain("session-only");
+        expect(listed).toContain("Attached: Session");
+        expect(listed).toContain("project-only");
+        expect(listed).toContain("Attached: Project");
+        expect(listed).toContain("both");
+        expect(listed).toContain("Attached: Session and Project");
+
+        app.handleInput("\x1b[B");
+        app.handleInput("\x1b[B");
+        app.handleInput("\r");
+        app.handleInput("\r");
+
+        const scopeMenu = stripAnsi(app.render(100).join("\n"));
+        expect(scopeMenu.indexOf("Session")).toBeLessThan(scopeMenu.indexOf("Project"));
+
+        app.handleInput("\r");
+        await delay(10);
+
+        expect(attachSecret).toHaveBeenCalledWith("project-only", "session");
+        expect(stripAnsi(app.render(120).join("\n"))).toContain("Attached: Session and Project");
+
+        app.handleInput("\x1b[B");
+        app.handleInput("\x1b[B");
+        app.handleInput("\r");
+        app.handleInput("\x1b[B");
+        app.handleInput("\r");
+        app.handleInput("\x1b[B");
+        app.handleInput("\r");
+        await delay(10);
+
+        expect(detachSecret).toHaveBeenCalledWith("project-only", "project");
+
+        app.handleInput("\x1b[B");
+        app.handleInput("\r");
+        app.handleInput("\x1b[B");
+        app.handleInput("\x1b[B");
+        app.handleInput("\r");
+        app.handleInput("\x1b[B");
+        app.handleInput("\r");
+        await delay(10);
+
+        expect(unregisterSecret).toHaveBeenCalledWith("session-only");
+    });
+
+    it("refreshes the open secrets list from legacy and source-aware attachment events", async () => {
+        const model = defineModel({
+            id: "openai/gpt-test",
+            name: "GPT Test",
+            thinkingLevels: ["off"],
+            defaultThinkingLevel: "off",
+        });
+        const provider = defineProvider({
+            id: "codex",
+            models: [model],
+            stream() {
+                return streamText("unused");
+            },
+        });
+        const harness = createJustBashToolHarness();
+        const tui = fakeTui();
+        const app = new CodingAssistantApp({
+            agent: new Agent({
+                provider,
+                modelId: model.id,
+                context: harness.context,
+                printToConsole: false,
+            }),
+            attachSecret: async () => {},
+            cwd: harness.context.fs.cwd,
+            detachSecret: async () => {},
+            initialSessionEvents: [
+                {
+                    createdAt: 0,
+                    data: {
+                        projectSecretIds: [],
+                        secretIds: ["legacy"],
+                        sessionSecretIds: ["legacy"],
+                    },
+                    id: "snapshot-last-event",
+                    sessionId: "session-1",
+                    type: "secrets_changed",
+                },
+            ],
+            initialWorkflowEventId: "snapshot-last-event",
+            listSecrets: async () => [
+                {
+                    id: "legacy",
+                    description: "Legacy token",
+                    environmentVariables: ["LEGACY_TOKEN"],
+                },
+            ],
+            processManager: new NativeProxessManager(),
+            registerSecret: async () => ({
+                id: "unused",
+                description: "Unused",
+                environmentVariables: ["UNUSED"],
+            }),
+            tui,
+            unregisterSecret: async () => true,
+        });
+
+        submit(app, "/secrets");
+        await delay(10);
+        expect(stripAnsi(app.render(100).join("\n"))).toContain("Not attached");
+
+        const legacyRenderRequests = vi.mocked(tui.requestRender).mock.calls.length;
+        app.applySessionEvent({
+            createdAt: 1,
+            data: { secretIds: ["legacy"] },
+            id: "legacy-secrets-event",
+            sessionId: "session-1",
+            type: "secrets_changed",
+        } as unknown as SessionEvent);
+
+        expect(vi.mocked(tui.requestRender).mock.calls.length).toBeGreaterThan(
+            legacyRenderRequests,
+        );
+        const legacyRendered = stripAnsi(app.render(100).join("\n"));
+        expect(legacyRendered).toContain("Attached: Session");
+        expect(legacyRendered).not.toContain("Attached: Session and Project");
+
+        const sourceRenderRequests = vi.mocked(tui.requestRender).mock.calls.length;
+        app.applySessionEvent({
+            createdAt: 2,
+            data: {
+                projectSecretIds: ["legacy"],
+                secretIds: ["legacy"],
+                sessionSecretIds: [],
+            },
+            id: "source-secrets-event",
+            sessionId: "session-1",
+            type: "secrets_changed",
+        });
+
+        expect(vi.mocked(tui.requestRender).mock.calls.length).toBeGreaterThan(
+            sourceRenderRequests,
+        );
+        expect(stripAnsi(app.render(100).join("\n"))).toContain("Attached: Project");
+    });
+
+    it("registers multiple masked values without rendering them or exposing callback errors", async () => {
+        const model = defineModel({
+            id: "openai/gpt-test",
+            name: "GPT Test",
+            thinkingLevels: ["off"],
+            defaultThinkingLevel: "off",
+        });
+        const provider = defineProvider({
+            id: "codex",
+            models: [model],
+            stream() {
+                return streamText("unused");
+            },
+        });
+        const harness = createJustBashToolHarness();
+        const registerSecret = vi.fn(
+            async (registration: { environment: Record<string, string> }) => {
+                throw new Error(`Server echoed ${registration.environment.API_TOKEN}`);
+            },
+        );
+        const app = new CodingAssistantApp({
+            agent: new Agent({
+                provider,
+                modelId: model.id,
+                context: harness.context,
+                printToConsole: false,
+            }),
+            attachSecret: async () => {},
+            cwd: harness.context.fs.cwd,
+            detachSecret: async () => {},
+            listSecrets: async () => [],
+            processManager: new NativeProxessManager(),
+            registerSecret,
+            tui: fakeTui(),
+            unregisterSecret: async () => true,
+        });
+
+        submit(app, "/secrets");
+        await delay(10);
+        app.handleInput("\r");
+        app.handleInput("service");
+        app.handleInput("\r");
+        app.handleInput("Service credentials");
+        app.handleInput("\r");
+        app.handleInput("API_TOKEN");
+        app.handleInput("\r");
+        app.handleInput("top-secret-value");
+
+        const masked = stripAnsi(app.render(100).join("\n"));
+        expect(masked).not.toContain("top-secret-value");
+        expect(masked).toContain("****************");
+
+        app.handleInput("\r");
+        app.handleInput("\x1b[B");
+        app.handleInput("\r");
+        app.handleInput("api_token");
+        app.handleInput("\r");
+
+        expect(stripAnsi(app.render(100).join("\n"))).toContain(
+            "That environment variable is already in this bundle.",
+        );
+
+        app.handleInput("CLIENT_SECRET");
+        app.handleInput("\r");
+        app.handleInput("also-private");
+        app.handleInput("\r");
+        app.handleInput("\r");
+        await delay(10);
+
+        expect(registerSecret).toHaveBeenCalledWith({
+            id: "service",
+            description: "Service credentials",
+            environment: {
+                API_TOKEN: "top-secret-value",
+                CLIENT_SECRET: "also-private",
+            },
+        });
+        const rendered = stripAnsi(app.render(120).join("\n"));
+        expect(rendered).not.toContain("top-secret-value");
+        expect(rendered).not.toContain("also-private");
+        expect(rendered).toContain(
+            "Could not register the secret. Check the ID and environment names.",
+        );
+    });
 });
 
 function createDeterministicIds(): () => string {

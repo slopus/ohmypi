@@ -13,6 +13,8 @@ import { assertCanUseCustomShell } from "../agent/context/assertCanUseCustomShel
 import type { PermissionContext } from "../permissions/index.js";
 import type { DockerEnvironment } from "./DockerEnvironment.js";
 import { runDockerExec } from "./runDockerExec.js";
+import { readDockerEnvironmentVariableNames } from "./readDockerEnvironmentVariableNames.js";
+import { createDockerCommandEnvironment, type SessionSecretContext } from "../secrets/index.js";
 
 interface DockerBashSession {
     command: string;
@@ -39,12 +41,14 @@ const DEFAULT_RUN_TIMEOUT_MS = 120_000;
 export function createDockerBashContext(
     environment: DockerEnvironment,
     permissions: PermissionContext,
+    secrets?: SessionSecretContext,
 ): BashContext {
     const sessions = new Map<number, DockerBashSession>();
     const contextId = randomUUID();
     const cwd = environment.config.workingDirectory;
     let nextSessionId = 1;
     let onActiveSessionCountChange: ((count: number) => void) | undefined;
+    let ambientEnvironmentVariables: Promise<readonly string[]> | undefined;
     const activeSessionCount = () =>
         [...sessions.values()].filter((session) => !session.finished).length;
 
@@ -55,6 +59,17 @@ export function createDockerBashContext(
         const shell = options.shell ?? "/bin/sh";
         const pidFile = `/tmp/rig-exec-${process.pid}-${contextId}-${sessionId}.pid`;
         const container = await environment.container();
+        ambientEnvironmentVariables ??= readDockerEnvironmentVariableNames(container).catch(
+            (error: unknown) => {
+                ambientEnvironmentVariables = undefined;
+                throw error;
+            },
+        );
+        const secretEnvironment = createDockerCommandEnvironment(
+            secrets,
+            options.secrets,
+            await ambientEnvironmentVariables,
+        );
         const exec = await container.exec({
             AttachStdin: true,
             AttachStderr: true,
@@ -68,6 +83,13 @@ export function createDockerBashContext(
                 options.command,
                 pidFile,
             ],
+            ...(Object.keys(secretEnvironment).length === 0
+                ? {}
+                : {
+                      Env: Object.entries(secretEnvironment).map(
+                          ([name, value]) => `${name}=${value ?? ""}`,
+                      ),
+                  }),
             Tty: false,
             WorkingDir: runCwd,
         });
