@@ -129,6 +129,52 @@ describe("McpClientManager", () => {
         }
     });
 
+    it("retries MCP loading after a trust request is cancelled", async () => {
+        const root = await mkdtemp(join(tmpdir(), "rig-mcp-cancelled-trust-"));
+        const cwd = join(root, "workspace");
+        const homeDirectory = join(root, "home");
+        const fixture = join(
+            dirname(fileURLToPath(import.meta.url)),
+            "testing",
+            "stdioMcpServer.mjs",
+        );
+        const manager = new McpClientManager({
+            env: { RIG_HOME: join(root, "rig-home") } as NodeJS.ProcessEnv,
+            homeDirectory,
+        });
+        await mkdir(join(homeDirectory, ".codex"), { recursive: true });
+        await mkdir(cwd, { recursive: true });
+        await writeFile(
+            join(homeDirectory, ".codex", "config.toml"),
+            `[mcp_servers.trusted]\ncommand = "${process.execPath}"\nargs = ["${fixture}"]\n`,
+            "utf8",
+        );
+        let prompts = 0;
+        try {
+            await expect(
+                manager.load(cwd, "auto", {
+                    requestTrust: async () => {
+                        prompts += 1;
+                        throw new Error("The user input request was cancelled.");
+                    },
+                }),
+            ).rejects.toThrow("The user input request was cancelled.");
+
+            const loaded = await manager.load(cwd, "auto", {
+                requestTrust: async () => {
+                    prompts += 1;
+                    return true;
+                },
+            });
+
+            expect(prompts).toBe(2);
+            expect(loaded.tools.map((tool) => tool.name)).toContain("mcp__trusted__echo_value");
+        } finally {
+            await manager.close();
+            await rm(root, { force: true, recursive: true });
+        }
+    });
+
     it("starts trusted stdio servers from the user home instead of an untrusted workspace", async () => {
         const root = await mkdtemp(join(tmpdir(), "rig-mcp-cwd-"));
         const cwd = join(root, "workspace");

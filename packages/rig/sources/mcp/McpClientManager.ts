@@ -97,14 +97,27 @@ export class McpClientManager implements McpToolProvider {
             this.#connectionSets.set(connectionKey, pending);
             this.#connectionKeysByCwd.set(cwd, connectionKey);
         }
-        const loaded = await pending;
-        if (!loaded.cacheable && this.#connectionSets.get(connectionKey) === pending) {
-            this.#connectionSets.delete(connectionKey);
-            if (this.#connectionKeysByCwd.get(cwd) === connectionKey) {
-                this.#connectionKeysByCwd.delete(cwd);
-            }
+        let loaded: LoadedConnectionSet;
+        try {
+            loaded = await pending;
+        } catch (error) {
+            this.#evictConnectionSet(cwd, connectionKey, pending);
+            throw error;
         }
+        if (!loaded.cacheable) this.#evictConnectionSet(cwd, connectionKey, pending);
         return { servers: loaded.servers, tools: loaded.tools };
+    }
+
+    #evictConnectionSet(
+        cwd: string,
+        connectionKey: string,
+        pending: Promise<LoadedConnectionSet>,
+    ): void {
+        if (this.#connectionSets.get(connectionKey) !== pending) return;
+        this.#connectionSets.delete(connectionKey);
+        if (this.#connectionKeysByCwd.get(cwd) === connectionKey) {
+            this.#connectionKeysByCwd.delete(cwd);
+        }
     }
 
     async close(): Promise<void> {
