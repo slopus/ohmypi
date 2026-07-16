@@ -1,4 +1,4 @@
-import type { ReadFileResult } from "../utils/file.js";
+import type { ReadFileResult } from "../utils/readTextFile.js";
 
 export function createPiReadContinuationSuffix(
     result: ReadFileResult,

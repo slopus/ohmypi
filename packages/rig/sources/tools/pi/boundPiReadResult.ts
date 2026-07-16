@@ -1,4 +1,4 @@
-import type { ReadFileResult } from "../utils/file.js";
+import type { ReadFileResult } from "../utils/readTextFile.js";
 import { truncateTextHead } from "../utils/truncateTextHead.js";
 import { createPiReadContinuationSuffix } from "./createPiReadContinuationSuffix.js";
 
