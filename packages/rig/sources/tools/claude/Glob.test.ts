@@ -55,4 +55,41 @@ describe("Claude Code Glob tool", () => {
 
         expect(result.text).toBe("/workspace/available.ts");
     });
+
+    it("reports when matching files exceed the result limit", async () => {
+        const harness = createJustBashToolHarness({
+            files: Object.fromEntries(
+                Array.from({ length: 101 }, (_, index) => [
+                    `/workspace/file-${String(index).padStart(3, "0")}.ts`,
+                    "content",
+                ]),
+            ),
+        });
+
+        const result = await harness.runTool(claudeGlobTool, { pattern: "**/*.ts" });
+
+        expect(result.text).toContain(
+            "(Results are truncated. Consider using a more specific path or pattern.)",
+        );
+        expect(result).toMatchObject({ numFiles: 100, truncated: true });
+        expect(claudeGlobTool.toUI(result, { pattern: "**/*.ts" })).toBe(
+            'Found files for "**/*.ts" (100, truncated)',
+        );
+    });
+
+    it("does not report truncation when matches exactly fill the result limit", async () => {
+        const harness = createJustBashToolHarness({
+            files: Object.fromEntries(
+                Array.from({ length: 100 }, (_, index) => [
+                    `/workspace/file-${String(index).padStart(3, "0")}.ts`,
+                    "content",
+                ]),
+            ),
+        });
+
+        const result = await harness.runTool(claudeGlobTool, { pattern: "**/*.ts" });
+
+        expect(result.text).not.toContain("Results are truncated");
+        expect(result).toMatchObject({ numFiles: 100, truncated: false });
+    });
 });

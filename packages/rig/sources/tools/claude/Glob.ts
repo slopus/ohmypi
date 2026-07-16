@@ -3,7 +3,17 @@ import { Type } from "@sinclair/typebox";
 import { defineTool } from "../../agent/types.js";
 import { describeFileAutoPermissionAction } from "../../permissions/describeFileAutoPermissionAction.js";
 import { shouldReviewPathInAutoMode } from "../../permissions/shouldReviewPathInAutoMode.js";
-import { countTextLines, globFiles, textOutputSchema, toTextBlocks } from "../utils/index.js";
+import { globFiles, toTextBlocks } from "../utils/index.js";
+
+const MAX_RESULTS = 100;
+const TRUNCATION_NOTICE =
+    "(Results are truncated. Consider using a more specific path or pattern.)";
+
+const claudeGlobOutputSchema = Type.Object({
+    text: Type.String(),
+    numFiles: Type.Number(),
+    truncated: Type.Boolean(),
+});
 
 const CLAUDE_GLOB_DESCRIPTION = `- Fast file pattern matching tool that works with any codebase size
 - Supports glob patterns like "**/*.js" or "src/**/*.ts"
@@ -24,7 +34,7 @@ export const claudeGlobTool = defineTool({
             }),
         ),
     }),
-    returnType: textOutputSchema,
+    returnType: claudeGlobOutputSchema,
     describeAutoPermissionAction: ({ path }, context) =>
         describeFileAutoPermissionAction(path ?? ".", context, "searching"),
     shouldReviewInAutoMode: ({ path }, context) =>
@@ -32,18 +42,28 @@ export const claudeGlobTool = defineTool({
     shouldRunInFullAccessInAutoMode: ({ path }, context) =>
         shouldReviewPathInAutoMode(path ?? ".", context, { write: false }),
     execute: async ({ pattern, path }, context, execution) => {
-        const options: Parameters<typeof globFiles>[0] = { pattern, limit: 100 };
+        const options: Parameters<typeof globFiles>[0] = {
+            pattern,
+            limit: MAX_RESULTS + 1,
+        };
         if (path !== undefined) options.path = path;
         if (execution.signal !== undefined) options.signal = execution.signal;
         const files = await globFiles(options, context);
+        const truncated = files.length > MAX_RESULTS;
+        const filenames = files.slice(0, MAX_RESULTS);
         return {
-            text: files.length > 0 ? files.join("\n") : "No files found",
+            text:
+                filenames.length === 0
+                    ? "No files found"
+                    : [...filenames, ...(truncated ? [TRUNCATION_NOTICE] : [])].join("\n"),
+            numFiles: filenames.length,
+            truncated,
         };
     },
     toLLM: toTextBlocks,
     toUI: (result, args) =>
-        result.text === "No files found"
+        result.numFiles === 0
             ? `Found files for "${args.pattern}" (0)`
-            : `Found files for "${args.pattern}" (${countTextLines(result.text)})`,
+            : `Found files for "${args.pattern}" (${String(result.numFiles)}${result.truncated ? ", truncated" : ""})`,
     locks: [],
 });
