@@ -54,7 +54,7 @@ export const claudeBashTool = defineTool({
             const sessionId = await context.bash.startSession({
                 command,
                 ...(secrets === undefined ? {} : { secrets }),
-                timeoutMs: timeout ?? 120_000,
+                ...(timeout === undefined ? {} : { timeoutMs: timeout }),
             });
             return {
                 backgroundTaskId: String(sessionId),

@@ -58,6 +58,26 @@ describe("Claude Code Bash tool", () => {
         ).rejects.toThrow("not running");
     });
 
+    it("does not impose a foreground timeout on background commands", async () => {
+        const harness = createJustBashToolHarness();
+        const startSession = harness.context.bash.startSession.bind(harness.context.bash);
+        let observedTimeout: number | undefined;
+        harness.context.bash.startSession = (options) => {
+            observedTimeout = options.timeoutMs;
+            return startSession(options);
+        };
+
+        const started = await harness.runTool(claudeBashTool, {
+            command: "sleep 30",
+            run_in_background: true,
+        });
+
+        await harness.runTool(claudeTaskStopTool, {
+            task_id: started.backgroundTaskId as string,
+        });
+        expect(observedTimeout).toBeUndefined();
+    });
+
     it("stops a running background command", async () => {
         const harness = createJustBashToolHarness();
         const started = await harness.runTool(claudeBashTool, {
