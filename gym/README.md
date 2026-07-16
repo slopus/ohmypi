@@ -217,6 +217,7 @@ Cleanup must run when assertions fail. Leaked containers, servers, or fixture di
 interface GymOptions {
     args?: readonly string[];
     cols?: number;
+    contextWindow?: number;
     dockerSocket?: boolean;
     entrypoint?: readonly [string, ...string[]];
     environment?: Readonly<Record<string, string>>;
@@ -226,30 +227,37 @@ interface GymOptions {
     image?: string;
     inference?: readonly GymMockResponse[] | GymInferenceHandler;
     modelId?: string;
-    providerId?: "claude" | "codex" | "gym";
+    permissionMode?: "auto" | "from_config" | "full_access" | "read_only" | "workspace_write";
+    providerId?: "bedrock" | "claude" | "codex" | "gym";
+    providerOverrides?: readonly ("claude" | "codex")[];
     rows?: number;
     startupText?: string;
+    terminalColorScheme?: "dark" | "light";
     timeoutMs?: number;
 }
 ```
 
-| Option         | Default                  | Purpose                                             |
-| -------------- | ------------------------ | --------------------------------------------------- |
-| `args`         | `[]`                     | Arguments passed to the built Rig CLI               |
-| `cols`         | `100`                    | Terminal width in cells                             |
-| `dockerSocket` | `false`                  | Exposes the daemon socket for Docker tests          |
-| `entrypoint`   | Image default            | Replaces the image entrypoint for setup cases       |
-| `environment`  | `{}`                     | Extra environment variables inside the container    |
-| `files`        | `{}`                     | Fixture tree mounted into `/workspace`              |
-| `homeFiles`    | `{}`                     | Trusted fixture tree mounted into `/home/rig`       |
-| `httpProxy`    | Disabled                 | Record, replace, rewrite, or forward provider HTTP  |
-| `image`        | `rig-gym:local`          | Docker image tag to build or run                    |
-| `inference`    | `[]`                     | Ordered gym-provider responses or a request handler |
-| `modelId`      | Provider default         | Model selected for the session                      |
-| `providerId`   | `gym`                    | `gym`, compiled `claude`, or `codex`                |
-| `rows`         | `32`                     | Terminal height in cells                            |
-| `startupText`  | `Ask Rig to do anything` | Visible text that marks startup as complete         |
-| `timeoutMs`    | `20_000`                 | Maximum startup wait for the composer               |
+| Option                | Default                  | Purpose                                                                   |
+| --------------------- | ------------------------ | ------------------------------------------------------------------------- |
+| `args`                | `[]`                     | Arguments passed to the built Rig CLI                                     |
+| `cols`                | `100`                    | Terminal width in cells                                                   |
+| `contextWindow`       | Provider default         | Overrides the context window for gym-backed inference                     |
+| `dockerSocket`        | `false`                  | Exposes the daemon socket for Docker tests                                |
+| `entrypoint`          | Image default            | Replaces the image entrypoint for setup cases                             |
+| `environment`         | `{}`                     | Extra environment variables inside the container                          |
+| `files`               | `{}`                     | Fixture tree mounted into `/workspace`                                    |
+| `homeFiles`           | `{}`                     | Trusted fixture tree mounted into `/home/rig`                             |
+| `httpProxy`           | Disabled                 | Record, replace, rewrite, or forward provider HTTP                        |
+| `image`               | `rig-gym:local`          | Docker image tag to build or run                                          |
+| `inference`           | `[]`                     | Ordered gym-provider responses or a request handler                       |
+| `modelId`             | Provider default         | Model selected for the session                                            |
+| `permissionMode`      | `full_access`            | Permission mode, or `from_config` to leave the environment unset          |
+| `providerId`          | `gym`                    | `gym` or the deployed `bedrock`, `claude`, or `codex` provider            |
+| `providerOverrides`   | `[]`                     | Routes selected Claude or Codex providers through deterministic inference |
+| `rows`                | `32`                     | Terminal height in cells                                                  |
+| `startupText`         | `Ask Rig to do anything` | Visible text that marks startup as complete                               |
+| `terminalColorScheme` | `dark`                   | Initial terminal color scheme used by the Ghostty interpreter             |
+| `timeoutMs`           | `20_000`                 | Maximum startup wait for the composer                                     |
 
 Set `startupText` to a stable visible fragment only when a deliberately narrow startup viewport
 truncates the default placeholder.
@@ -372,6 +380,8 @@ interface GymInferenceResponse {
     errorMessage?: string;
     responseModel?: string;
     stopReason?: StopReason;
+    thinkingDeltaChunkSize?: number;
+    thinkingDeltaDelayMs?: number;
     textDeltaChunkSize?: number;
     textDeltaDelayMs?: number;
     toolCallDeltaDelayMs?: number;
@@ -383,6 +393,8 @@ interface GymInferenceResponse {
 - `completionDelayMs` delays the final provider result after content has streamed. It intentionally
   continues through cancellation so tests can reproduce a completion already in flight.
 - `delayMs` delays the response inside the container-side provider and respects abort signals. Use it for interruption and concurrency scenarios.
+- `thinkingDeltaChunkSize` splits thinking blocks into deterministic streaming deltas of at most that many UTF-16 code units.
+- `thinkingDeltaDelayMs` pauses between thinking deltas and respects abort signals. Pair it with `thinkingDeltaChunkSize` for live reasoning-stream scenarios.
 - `textDeltaChunkSize` splits text blocks into deterministic streaming deltas of at most that many UTF-16 code units.
 - `textDeltaDelayMs` pauses between those text deltas and respects abort signals. Pair it with `textDeltaChunkSize` for live text-stream rendering scenarios.
 - `toolCallDeltaDelayMs` pauses after `toolcall_start` and before the arguments delta. Use it to exercise the live streamed-tool-call UI deterministically.
@@ -400,6 +412,9 @@ const inference = [{ body: "scripted overload", httpStatus: 429 }];
 ```
 
 The real gym provider converts the non-success response into the same visible error path used for provider transport failures.
+
+Return `{ disconnect: true }` to destroy the response socket without sending an HTTP response. This
+reproduces a low-level inference transport failure for retry and recovery scenarios.
 
 ### Inspecting requests
 
@@ -538,12 +553,31 @@ On timeout, the error includes the last visible terminal snapshot. Do not replac
 ### Snapshots
 
 ```ts
+type TerminalColorSnapshot =
+    | { kind: "palette"; index: number }
+    | { kind: "rgb"; red: number; green: number; blue: number };
+
+interface TerminalCellSnapshot {
+    background: TerminalColorSnapshot | null;
+    bold: boolean;
+    dim: boolean;
+    foreground: TerminalColorSnapshot | null;
+    italic: boolean;
+    text: string;
+    x: number;
+    y: number;
+}
+
 interface TerminalSnapshot {
+    cells: readonly TerminalCellSnapshot[];
     cursor: {
         visible: boolean;
         x: number;
         y: number;
     };
+    defaultBackground: TerminalColorSnapshot;
+    defaultForeground: TerminalColorSnapshot;
+    outputRevision: number;
     rows: readonly string[];
     scroll: {
         atBottom: boolean;
@@ -554,14 +588,19 @@ interface TerminalSnapshot {
         totalRows: number;
         visibleRows: number;
     };
+    synchronizedOutputActive: boolean;
     text: string;
     title: string;
 }
 ```
 
+- `cells` exposes coordinates, text, colors, and styles for exact visual assertions.
 - `rows` contains exactly the visible terminal rows, with trailing spaces removed from each row.
 - `text` joins visible rows with newlines and trims empty space at the end of the screen.
 - `cursor` reports the terminal cursor position and visibility.
+- `defaultBackground` and `defaultForeground` report the terminal's effective default colors.
+- `outputRevision` identifies the latest PTY output included when the snapshot was requested.
+- `synchronizedOutputActive` reports whether synchronized-output mode is active.
 - `title` is the latest title set through terminal escape sequences.
 - `scroll` reports scrollback and visible viewport state.
 
