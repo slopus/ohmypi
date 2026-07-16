@@ -11,6 +11,7 @@ export interface AmbiguousToolCallRejection {
 export function createAmbiguousToolCallRejection(
     message: AssistantMessage,
     idFactory: () => string,
+    attribution: { providerId: string; requestedModelId: string },
     previousToolCallIds: ReadonlySet<string> = new Set(),
 ): AmbiguousToolCallRejection | undefined {
     const toolCalls = message.content.filter(
@@ -39,6 +40,7 @@ export function createAmbiguousToolCallRejection(
     const safeAssistantMessage = assistantMessageToAgentMessage(
         { ...message, content: safeContent },
         idFactory,
+        attribution,
     );
     const actionCount = toolCalls.length;
     const rejection =

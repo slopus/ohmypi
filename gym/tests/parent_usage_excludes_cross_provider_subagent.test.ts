@@ -21,7 +21,7 @@ describe("parent session usage", () => {
                 const isParent = request.providerId === "gym";
                 const last = JSON.stringify(request.context.messages.at(-1));
                 if (!isParent) {
-                    expect(request.providerId).toBe("claude-sdk");
+                    expect(request.providerId).toBe("claude");
                     return {
                         content: [{ text: "CROSS_PROVIDER_CHILD_DONE", type: "text" }],
                         usage: usage(900),
@@ -35,7 +35,7 @@ describe("parent session usage", () => {
                                     context: "task",
                                     message: "Complete the cross-provider audit.",
                                     model: "anthropic/sonnet-4-6",
-                                    provider: "claude-sdk",
+                                    provider: "claude",
                                     task_name: "usage_heavy_child",
                                 },
                                 id: "spawn-usage-heavy-child",
@@ -57,7 +57,7 @@ describe("parent session usage", () => {
                     usage: usage(50),
                 };
             },
-            providerOverrides: ["claude-sdk"],
+            providerOverrides: ["claude"],
             rows: 25,
         });
         running.add(gym);

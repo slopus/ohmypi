@@ -15,7 +15,7 @@ export function formatSessionUsageSummary(
 ): string {
     const lines: string[] = [];
     const providerIds = distinct([
-        ...summary.groups.map((group) => group.providerId ?? "earlier"),
+        ...summary.groups.map((group) => group.providerId),
         ...summary.quotas.map((entry) => entry.providerId),
         ...summary.observedQuota.map((entry) => entry.providerId),
         summary.currentProviderId,
@@ -26,7 +26,7 @@ export function formatSessionUsageSummary(
         if (providerIndex > 0) lines.push("");
         lines.push(providerName(providerId));
         const providerGroups = summary.groups.filter(
-            (candidate) => (candidate.providerId ?? "earlier") === providerId,
+            (candidate) => candidate.providerId === providerId,
         );
         for (const group of providerGroups) {
             lines.push(`  ${modelName(group, modelChoices)}`);
@@ -44,21 +44,17 @@ export function formatSessionUsageSummary(
             lines.push(`  ${contextModelName(summary, modelChoices)}`);
             lines.push(`    ${formatContext(summary, modelChoices)}`);
         }
-        if (providerId !== "earlier") {
-            const quota = summary.quotas.find((entry) => entry.providerId === providerId)?.quota;
-            const contribution = summary.observedQuota.find(
-                (entry) => entry.providerId === providerId,
-            );
-            lines.push(
-                "  Account quota",
-                `    ${formatQuotaWindow("5-hour", quota?.windows.fiveHour, now)}`,
-                `    ${formatQuotaWindow("Weekly", quota?.windows.weekly, now)}`,
-            );
-            const observed = formatObservedQuota(contribution);
-            if (observed !== undefined) {
-                lines.push(`    ${observed}`);
-                hasObservedRemaining = true;
-            }
+        const quota = summary.quotas.find((entry) => entry.providerId === providerId)?.quota;
+        const contribution = summary.observedQuota.find((entry) => entry.providerId === providerId);
+        lines.push(
+            "  Account quota",
+            `    ${formatQuotaWindow("5-hour", quota?.windows.fiveHour, now)}`,
+            `    ${formatQuotaWindow("Weekly", quota?.windows.weekly, now)}`,
+        );
+        const observed = formatObservedQuota(contribution);
+        if (observed !== undefined) {
+            lines.push(`    ${observed}`);
+            hasObservedRemaining = true;
         }
     }
 
@@ -90,7 +86,6 @@ function modelName(
     group: SessionUsageGroup,
     modelChoices: readonly CodingAssistantModelChoice[],
 ): string {
-    if (group.modelId === null) return group.modelLabel ?? "Model unavailable";
     const choice = modelChoices.find(
         (candidate) =>
             candidate.providerId === group.providerId && candidate.model.id === group.modelId,
@@ -104,7 +99,7 @@ function formatModelUsage(group: SessionUsageGroup): string {
             ? ""
             : ` · ${formatTokens(group.usage.reasoning)} reasoning`;
     const cost =
-        group.providerId === "claude-sdk" && group.usage.cost.total > 0
+        group.providerId === "claude" && group.usage.cost.total > 0
             ? ` · ${formatUsd(group.usage.cost.total)}`
             : "";
     return `${formatTokens(group.usage.totalTokens)} total · ${formatTokens(group.usage.input)} input · ${formatTokens(group.usage.output)} output · ${formatTokens(group.usage.cacheRead)} cache read · ${formatTokens(group.usage.cacheWrite)} cache write${reasoning}${cost}`;
@@ -195,8 +190,7 @@ function formatTokens(value: number): string {
 
 function providerName(providerId: string): string {
     if (providerId === "codex") return "Codex";
-    if (providerId === "claude-sdk") return "Claude";
-    if (providerId === "earlier") return "Earlier usage";
+    if (providerId === "claude") return "Claude";
     if (providerId === "gym") return "Gym";
     if (providerId === "bedrock") return "Amazon Bedrock";
     return humanizeIdentifier(providerId);

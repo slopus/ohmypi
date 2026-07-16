@@ -314,7 +314,7 @@ describe("createProtocolHttpServer", () => {
         const getProviderQuota = vi.fn(
             async (providerId: string): Promise<ProviderQuota> => ({
                 capturedAt: 10,
-                source: providerId === "codex" ? "codex" : "claude-sdk",
+                source: providerId === "codex" ? "codex" : "claude",
                 windows: {
                     fiveHour: {
                         capturedAt: 10,
@@ -338,7 +338,7 @@ describe("createProtocolHttpServer", () => {
             if (session === undefined) throw new Error("Expected the created session.");
             const before = {
                 capturedAt: 1,
-                source: "claude-sdk" as const,
+                source: "claude" as const,
                 windows: {
                     fiveHour: {
                         capturedAt: 1,
@@ -360,7 +360,7 @@ describe("createProtocolHttpServer", () => {
                     message: {
                         blocks: [{ text: "Claude turn", type: "text" }],
                         id: "claude-message",
-                        providerId: "claude-sdk",
+                        providerId: "claude",
                         requestedModelId: "anthropic/sonnet-4-6",
                         role: "agent",
                         usage: {
@@ -403,7 +403,7 @@ describe("createProtocolHttpServer", () => {
                     data: {
                         observationId: "claude-observation",
                         phase,
-                        providerId: "claude-sdk",
+                        providerId: "claude",
                         quota,
                         runId: "claude-run",
                     },
@@ -416,19 +416,19 @@ describe("createProtocolHttpServer", () => {
             const response = await client.getSessionUsage(created.session.id);
 
             expect(response.quotas).toEqual([
-                expect.objectContaining({ providerId: "claude-sdk" }),
+                expect.objectContaining({ providerId: "claude" }),
                 expect.objectContaining({ providerId: "codex" }),
             ]);
             expect(response.observedQuota).toEqual([
                 {
-                    providerId: "claude-sdk",
+                    providerId: "claude",
                     windows: {
                         fiveHour: { observedUsedPercent: 3 },
                         weekly: { observedUsedPercent: 1 },
                     },
                 },
             ]);
-            expect(getProviderQuota).toHaveBeenCalledWith("claude-sdk");
+            expect(getProviderQuota).toHaveBeenCalledWith("claude");
             expect(getProviderQuota).toHaveBeenCalledWith("codex");
         } finally {
             await close();

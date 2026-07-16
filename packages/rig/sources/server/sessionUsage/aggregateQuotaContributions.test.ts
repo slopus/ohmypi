@@ -91,15 +91,15 @@ describe("aggregateQuotaContributions", () => {
                 "claude-before",
                 "claude-run",
                 "before",
-                "claude-sdk",
-                quota("claude-sdk", 10, 20, 300),
+                "claude",
+                quota("claude", 10, 20, 300),
             ),
             observation(
                 "claude-after",
                 "claude-run",
                 "after",
-                "claude-sdk",
-                quota("claude-sdk", 14, 25, 300),
+                "claude",
+                quota("claude", 14, 25, 300),
             ),
         ];
 
@@ -112,7 +112,7 @@ describe("aggregateQuotaContributions", () => {
                 },
             },
             {
-                providerId: "claude-sdk",
+                providerId: "claude",
                 windows: {
                     fiveHour: { observedUsedPercent: 4 },
                     weekly: { observedUsedPercent: 5 },

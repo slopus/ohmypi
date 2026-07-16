@@ -39,7 +39,7 @@ describe("Claude SDK provider", () => {
 
         await expect(provider.quota?.()).resolves.toMatchObject({
             capturedAt: 1_000,
-            source: "claude-sdk",
+            source: "claude",
             windows: { fiveHour: { status: "available", usedPercent: 32 } },
         });
         await expect(provider.quota?.()).resolves.toMatchObject({
@@ -67,7 +67,7 @@ describe("Claude SDK provider", () => {
 
         await expect(provider.quota?.()).resolves.toEqual({
             capturedAt: 1_000,
-            source: "claude-sdk",
+            source: "claude",
             windows: {
                 fiveHour: { status: "unavailable" },
                 weekly: { status: "unavailable" },
@@ -671,7 +671,7 @@ describe("Claude SDK provider", () => {
                             },
                         ],
                         api: "claude-agent-sdk",
-                        provider: "claude-sdk",
+                        provider: "claude",
                         model: "anthropic/fable-5",
                         usage: emptyUsage(),
                         stopReason: "toolUse",

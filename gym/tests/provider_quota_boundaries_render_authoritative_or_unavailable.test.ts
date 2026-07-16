@@ -85,7 +85,7 @@ describe("provider quota boundaries", () => {
                 DISABLE_TELEMETRY: "1",
             },
             modelId: "anthropic/sonnet-4-6",
-            providerId: "claude-sdk",
+            providerId: "claude",
             timeoutMs: 30_000,
         });
         running.add(gym);

@@ -1,9 +1,9 @@
 import type { GrokOpenAIClient } from "./createGrokOpenAIClient.js";
 import { createGrokStream } from "./createGrokStream.js";
 import { GROK_DEFAULT_BASE_URL, GROK_PROVIDER_ID } from "./grok-constants.js";
-import { modelXaiGrokBuild } from "./models.js";
+import { modelXaiGrok45, modelXaiGrokBuild, modelXaiGrokComposer25Fast } from "./models.js";
 import { resolveGrokCredential } from "./resolveGrokCredential.js";
-import { defineProvider, type Model, type Provider } from "./types.js";
+import { defineProvider, type Provider } from "./types.js";
 
 export { GROK_API_MODEL_ID, GROK_DEFAULT_BASE_URL, GROK_PROVIDER_ID } from "./grok-constants.js";
 
@@ -14,14 +14,13 @@ export interface GrokProviderOptions {
     client?: GrokOpenAIClient;
     env?: NodeJS.ProcessEnv;
     id?: string;
-    models?: readonly Model[];
     resolveCredential?: typeof resolveGrokCredential;
     sessionId?: string;
 }
 
 export function createGrokProvider(options: GrokProviderOptions = {}): Provider {
     const providerId = options.id ?? GROK_PROVIDER_ID;
-    const models = options.models ?? [modelXaiGrokBuild];
+    const models = [modelXaiGrokBuild, modelXaiGrok45, modelXaiGrokComposer25Fast];
     return defineProvider({
         id: providerId,
         models,

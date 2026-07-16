@@ -31,7 +31,10 @@ describe("confirmDaemonRestartInTerminal", () => {
     it("does not restart from a noninteractive command", async () => {
         await expect(
             confirmDaemonRestartInTerminal(
-                { currentIdentity: { version: "1.3.0" } },
+                {
+                    currentIdentity: { version: "1.3.0" },
+                    runningIdentity: { version: "1.2.0" },
+                },
                 { input: Readable.from([]) },
             ),
         ).resolves.toBe(false);

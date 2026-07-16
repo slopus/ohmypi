@@ -94,8 +94,8 @@ fully materialized message is subsequently emitted as `agent_message`, and the
 run outcome is emitted as `run_finished` or `run_error`.
 
 Inference message stream events are not written to `session_events`. Restoring
-an older database also ignores legacy rows for these subtypes. Their canonical
-`agent_message`, transcript message, and run lifecycle records remain durable.
+uses the canonical `agent_message`, transcript message, and run lifecycle
+records as its durable history.
 
 Session event IDs are ordered UUIDv7 cursors. After a restart, a cursor that
 identified a live-only inference stream event resumes at the first later

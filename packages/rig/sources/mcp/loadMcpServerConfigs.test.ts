@@ -37,10 +37,6 @@ oauth_client_id_env_var = "CLIENT_ID"
 oauth_client_secret_env_var = "CLIENT_SECRET"
 oauth_scopes = ["tools.read"]
 
-[mcp_servers.legacy]
-url = "https://example.com/sse"
-transport = "sse"
-
 [mcp_servers.docs]
 command = "project-shadow"
 enabled = false
@@ -72,7 +68,6 @@ enabled = false
                     transport: "stdio",
                 },
                 project: { command: "project-server", transport: "stdio" },
-                legacy: { transport: "sse", url: "https://example.com/sse" },
                 remote: {
                     headers: { "X-Client": "rig" },
                     oauthClientIdEnvVar: "CLIENT_ID",
@@ -89,7 +84,6 @@ enabled = false
             expect(Object.fromEntries(entries.map((entry) => [entry.name, entry.source]))).toEqual({
                 docs: "global",
                 project: "project",
-                legacy: "project",
                 remote: "project",
             });
             expect(entries.find((entry) => entry.name === "docs")).toMatchObject({
@@ -108,7 +102,7 @@ enabled = false
             await writeFile(
                 join(cwd, ".mcp.json"),
                 JSON.stringify({
-                    mcpServers: { legacy: { type: "sse", url: "https://example.com/sse" } },
+                    mcpServers: { ignored: { type: "http", url: "https://example.com/mcp" } },
                 }),
                 "utf8",
             );

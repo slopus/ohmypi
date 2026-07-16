@@ -188,6 +188,11 @@ bearer_token_env_var = "WORK_BEDROCK_TOKEN"
         expect(() => parseConfigToml("[providers.codex]\nauth_file = 42\n")).toThrow(
             "providers.codex.auth_file must be a string.",
         );
+        expect(() =>
+            parseConfigToml(
+                '[mcp_servers.events]\nurl = "https://example.com/sse"\ntransport = "sse"\n',
+            ),
+        ).toThrow('MCP server "events" uses unsupported transport "sse".');
     });
 
     it("persists fast mode and lets runtime defaults turn it off", async () => {

@@ -7,7 +7,7 @@ describe("createProviderQuotaService", () => {
     it("keeps independent provider caches and exposes both account windows", async () => {
         let now = 1_000;
         const loadCodexQuota = vi.fn(async () => quota("codex", now, 30, 10));
-        const loadClaudeQuota = vi.fn(async () => quota("claude-sdk", now, 40, 20));
+        const loadClaudeQuota = vi.fn(async () => quota("claude", now, 40, 20));
         const service = createProviderQuotaService({
             cwd: "/tmp/quota-service",
             loadClaudeQuota,
@@ -21,7 +21,7 @@ describe("createProviderQuotaService", () => {
                 weekly: { usedPercent: 10 },
             },
         });
-        await expect(service.get("claude-sdk")).resolves.toMatchObject({
+        await expect(service.get("claude")).resolves.toMatchObject({
             windows: {
                 fiveHour: { usedPercent: 40 },
                 weekly: { usedPercent: 20 },
@@ -29,7 +29,7 @@ describe("createProviderQuotaService", () => {
         });
         now += 1;
         await service.get("codex");
-        await service.get("claude-sdk", { fresh: true });
+        await service.get("claude", { fresh: true });
 
         expect(loadCodexQuota).toHaveBeenCalledOnce();
         expect(loadClaudeQuota).toHaveBeenCalledTimes(2);

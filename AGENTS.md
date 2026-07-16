@@ -42,6 +42,16 @@ When adding or changing permission-sensitive behavior, test the real tool defini
 
 Automatically retry only low-level inference transport failures, and only before response content begins. Do not automatically replay tools, commands, or session mutations; those failures usually indicate real breakage that retrying will not fix.
 
+## Model catalogs
+
+Hardcode each provider's supported model catalog in Rig. The daemon must not discover, list, or fetch models from provider APIs during startup or session creation. Update the curated catalog in source when provider models change.
+
+Use canonical provider keys throughout the product: `claude` for Anthropic models, `codex` for OpenAI and GPT models, and `grok` for xAI and Grok models. SDK, transport, and implementation names must not leak into provider keys.
+
+## Early-stage compatibility
+
+Rig is an early-stage product. Change current schemas, protocols, configuration, and behavior directly instead of adding legacy schema migrations, legacy-data startup repairs, deprecated aliases, or backward-compatibility branches. Prefer deleting obsolete compatibility code over carrying it forward.
+
 ## Reference sources
 
 Coding-agent source trees are located at `~/Developer/coding-assistant-sources`. Use the Codex and Claude Code sources there as the implementation reference whenever adding, comparing, or updating provider-aligned behavior. Adapt their strongest ideas to rig's simpler product model instead of copying complexity that does not improve the experience.

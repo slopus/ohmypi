@@ -52,7 +52,7 @@ describe("compiled Claude SDK requests through an intercepting HTTP proxy", () =
                 },
             },
             modelId: "anthropic/sonnet-4-6",
-            providerId: "claude-sdk",
+            providerId: "claude",
             timeoutMs: 30_000,
         });
         running.add(gym);
@@ -136,7 +136,7 @@ describe("compiled Claude SDK requests through an intercepting HTTP proxy", () =
                 },
             },
             modelId: "anthropic/sonnet-4-6",
-            providerId: "claude-sdk",
+            providerId: "claude",
             timeoutMs: 30_000,
         });
         running.add(gym);

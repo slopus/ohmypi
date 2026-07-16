@@ -40,6 +40,7 @@ function workflowItem(): ActiveWorkItem {
         kind: "workflow",
         workflow: {
             agentCount: 2,
+            code: 'agent("Check the release")',
             description: "Check the release",
             logs: [],
             name: "release-checks",

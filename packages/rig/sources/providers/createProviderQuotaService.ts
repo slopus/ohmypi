@@ -56,7 +56,7 @@ export function createProviderQuotaService(
                     });
                     return fetchClaudeProviderQuota(query, { now });
                 } catch {
-                    return unavailableProviderQuota("claude-sdk", now());
+                    return unavailableProviderQuota("claude", now());
                 }
             }),
         { now },
@@ -65,7 +65,7 @@ export function createProviderQuotaService(
     return {
         get(providerId, getOptions) {
             if (providerId === "codex") return codex.get(getOptions);
-            if (providerId === "claude-sdk") return claude.get(getOptions);
+            if (providerId === "claude") return claude.get(getOptions);
             return Promise.resolve(undefined);
         },
     };

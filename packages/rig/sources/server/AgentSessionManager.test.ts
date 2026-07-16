@@ -37,7 +37,7 @@ describe("AgentSessionManager", () => {
             agentMetadata: () => ({ depth: 0, rootSessionId: "root-1", type: "primary" }),
             id: "root-1",
             hasModel: (modelId: string, providerId?: string) =>
-                modelId === "anthropic/claude-opus-4.6" && providerId === "claude-sdk",
+                modelId === "anthropic/claude-opus-4.6" && providerId === "claude",
             isSubagent: () => false,
             recordSubagentChanged: vi.fn(),
             requestForSubagent: () => ({
@@ -63,7 +63,7 @@ describe("AgentSessionManager", () => {
             background: true,
             description: "Check another model",
             modelId: "anthropic/claude-opus-4.6",
-            providerId: "claude-sdk",
+            providerId: "claude",
             prompt: "Inspect with the requested model.",
             taskName: "model_check",
         });
@@ -74,7 +74,7 @@ describe("AgentSessionManager", () => {
                 instructions: expect.stringContaining("Inherited instructions"),
                 modelId: "anthropic/claude-opus-4.6",
                 permissionMode: "auto",
-                providerId: "claude-sdk",
+                providerId: "claude",
             }),
             expect.objectContaining({ taskName: "model_check" }),
         );
@@ -82,10 +82,10 @@ describe("AgentSessionManager", () => {
             manager.spawn(parent.id, {
                 description: "Unknown model",
                 modelId: "missing/model",
-                providerId: "claude-sdk",
+                providerId: "claude",
                 prompt: "This should not start.",
             }),
-        ).rejects.toThrow("Model 'missing/model' is not available for provider 'claude-sdk'.");
+        ).rejects.toThrow("Model 'missing/model' is not available for provider 'claude'.");
         expect(createSubagent).toHaveBeenCalledOnce();
     });
 

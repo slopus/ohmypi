@@ -177,123 +177,6 @@ describe("CodingAssistantApp", () => {
         expect(applied).toContain("› Pending direction");
     });
 
-    it("replays a terminal legacy run followed by repair without pending or duplicate UI", () => {
-        const model = defineModel({
-            id: "openai/gpt-test",
-            name: "GPT Test",
-            thinkingLevels: ["off"],
-            defaultThinkingLevel: "off",
-        });
-        const provider = defineProvider({
-            id: "codex",
-            models: [model],
-            stream() {
-                return streamText("unused");
-            },
-        });
-        const harness = createJustBashToolHarness();
-        const message = {
-            blocks: [{ text: "Legacy repaired direction", type: "text" as const }],
-            id: "legacy-steer-1",
-            role: "user" as const,
-        };
-        const laterMessage = {
-            blocks: [{ text: "Later stored request", type: "text" as const }],
-            id: "later-message-1",
-            role: "user" as const,
-        };
-        const app = new CodingAssistantApp({
-            agent: new Agent({
-                provider,
-                modelId: model.id,
-                context: harness.context,
-                printToConsole: false,
-            }),
-            cwd: harness.context.fs.cwd,
-            initialSessionEvents: [
-                {
-                    createdAt: 1,
-                    data: { runId: "run-1" },
-                    id: "event-started",
-                    sessionId: "session-1",
-                    type: "run_started",
-                },
-                {
-                    createdAt: 2,
-                    data: {
-                        delivery: "steer",
-                        displayText: "Legacy repaired direction",
-                        message,
-                        runId: "run-1",
-                    },
-                    id: "event-submitted",
-                    sessionId: "session-1",
-                    type: "message_submitted",
-                },
-                {
-                    createdAt: 3,
-                    data: {
-                        agentRunId: "agent-run-1",
-                        modelLocked: true,
-                        runId: "run-1",
-                        stopReason: "aborted",
-                    },
-                    id: "event-finished",
-                    sessionId: "session-1",
-                    type: "run_finished",
-                },
-                {
-                    createdAt: 4,
-                    data: {
-                        delivery: "run",
-                        displayText: "Later stored request",
-                        message: laterMessage,
-                        runId: "run-2",
-                    },
-                    id: "event-later-submitted",
-                    sessionId: "session-1",
-                    type: "message_submitted",
-                },
-                {
-                    createdAt: 5,
-                    data: { runId: "run-2" },
-                    id: "event-later-started",
-                    sessionId: "session-1",
-                    type: "run_started",
-                },
-                {
-                    createdAt: 6,
-                    data: {
-                        agentRunId: "agent-run-2",
-                        modelLocked: true,
-                        runId: "run-2",
-                        stopReason: "stop",
-                    },
-                    id: "event-later-finished",
-                    sessionId: "session-1",
-                    type: "run_finished",
-                },
-                {
-                    createdAt: 7,
-                    data: { messageIds: [message.id], runId: "run-1" },
-                    id: "event-repaired",
-                    sessionId: "session-1",
-                    type: "steering_applied",
-                },
-            ],
-            processManager: new NativeProxessManager(),
-            sessionBacked: true,
-            tui: fakeTui(),
-        });
-
-        const rendered = stripAnsi(app.render(100).join("\n"));
-        expect(rendered).not.toContain("Messages to be submitted after next tool call");
-        expect(rendered.match(/› Legacy repaired direction/gu)).toHaveLength(1);
-        expect(rendered.indexOf("› Legacy repaired direction")).toBeLessThan(
-            rendered.indexOf("› Later stored request"),
-        );
-    });
-
     it("uses pending-aware abort without stopping the local run on Escape", async () => {
         const model = defineModel({
             id: "openai/gpt-test",
@@ -1631,6 +1514,9 @@ describe("CodingAssistantApp", () => {
             permissionMode: "workspace_write",
             mcpServers: [],
             pendingUserInputs: [],
+            projectSecretIds: [],
+            secretIds: [],
+            sessionSecretIds: [],
             tasks: [],
             snapshot,
             status: "idle",
@@ -1704,7 +1590,7 @@ describe("CodingAssistantApp", () => {
             models: [codexModel, claudeModel],
             providers: [
                 { providerId: "codex", models: [codexModel], serviceTiers: ["fast"] },
-                { providerId: "claude-sdk", models: [claudeModel] },
+                { providerId: "claude", models: [claudeModel] },
             ],
         };
         const snapshot = {
@@ -1728,6 +1614,9 @@ describe("CodingAssistantApp", () => {
             permissionMode: "workspace_write",
             mcpServers: [],
             pendingUserInputs: [],
+            projectSecretIds: [],
+            secretIds: [],
+            sessionSecretIds: [],
             providerId: "codex",
             serviceTier: "fast",
             snapshot,
@@ -1764,7 +1653,7 @@ describe("CodingAssistantApp", () => {
         app.handleInput("\r");
         app.handleInput("\r");
 
-        expect(agent.provider.id).toBe("claude-sdk");
+        expect(agent.provider.id).toBe("claude");
         expect(agent.snapshot().serviceTier).toBeUndefined();
         await vi.waitFor(() =>
             expect(stripAnsi(app.render(100).join("\n"))).toContain(
@@ -1822,6 +1711,9 @@ describe("CodingAssistantApp", () => {
             permissionMode: "workspace_write",
             mcpServers: [],
             pendingUserInputs: [],
+            projectSecretIds: [],
+            secretIds: [],
+            sessionSecretIds: [],
             providerId: "codex",
             snapshot,
             status: "idle",
@@ -2142,6 +2034,9 @@ describe("CodingAssistantApp", () => {
             permissionMode: "workspace_write",
             mcpServers: [],
             pendingUserInputs: [],
+            projectSecretIds: [],
+            secretIds: [],
+            sessionSecretIds: [],
             providerId: "codex",
             snapshot,
             status: "idle",
@@ -2547,7 +2442,7 @@ describe("CodingAssistantApp", () => {
             defaultThinkingLevel: "off",
         });
         const provider = defineProvider({
-            id: "claude-sdk",
+            id: "claude",
             models: [model],
             stream() {
                 return streamText("unused");
@@ -4425,6 +4320,7 @@ describe("CodingAssistantApp", () => {
                             kind: "attributed" as const,
                             modelId: model.id,
                             providerId: "codex",
+                            requestedModelId: model.id,
                             usage: {
                                 cacheRead: 40,
                                 cacheWrite: 30,
@@ -6677,7 +6573,7 @@ describe("CodingAssistantApp", () => {
             defaultThinkingLevel: "off",
         });
         const provider = defineProvider({
-            id: "claude-sdk",
+            id: "claude",
             models: [model],
             stream() {
                 return streamText("unused");
@@ -6945,102 +6841,6 @@ describe("CodingAssistantApp", () => {
         await delay(10);
 
         expect(unregisterSecret).toHaveBeenCalledWith("session-only");
-    });
-
-    it("refreshes the open secrets list from legacy and source-aware attachment events", async () => {
-        const model = defineModel({
-            id: "openai/gpt-test",
-            name: "GPT Test",
-            thinkingLevels: ["off"],
-            defaultThinkingLevel: "off",
-        });
-        const provider = defineProvider({
-            id: "codex",
-            models: [model],
-            stream() {
-                return streamText("unused");
-            },
-        });
-        const harness = createJustBashToolHarness();
-        const tui = fakeTui();
-        const app = new CodingAssistantApp({
-            agent: new Agent({
-                provider,
-                modelId: model.id,
-                context: harness.context,
-                printToConsole: false,
-            }),
-            attachSecret: async () => {},
-            cwd: harness.context.fs.cwd,
-            detachSecret: async () => {},
-            initialSessionEvents: [
-                {
-                    createdAt: 0,
-                    data: {
-                        projectSecretIds: [],
-                        secretIds: ["legacy"],
-                        sessionSecretIds: ["legacy"],
-                    },
-                    id: "snapshot-last-event",
-                    sessionId: "session-1",
-                    type: "secrets_changed",
-                },
-            ],
-            initialWorkflowEventId: "snapshot-last-event",
-            listSecrets: async () => [
-                {
-                    id: "legacy",
-                    description: "Legacy token",
-                    environmentVariables: ["LEGACY_TOKEN"],
-                },
-            ],
-            processManager: new NativeProxessManager(),
-            registerSecret: async () => ({
-                id: "unused",
-                description: "Unused",
-                environmentVariables: ["UNUSED"],
-            }),
-            tui,
-            unregisterSecret: async () => true,
-        });
-
-        submit(app, "/secrets");
-        await delay(10);
-        expect(stripAnsi(app.render(100).join("\n"))).toContain("Not attached");
-
-        const legacyRenderRequests = vi.mocked(tui.requestRender).mock.calls.length;
-        app.applySessionEvent({
-            createdAt: 1,
-            data: { secretIds: ["legacy"] },
-            id: "legacy-secrets-event",
-            sessionId: "session-1",
-            type: "secrets_changed",
-        } as unknown as SessionEvent);
-
-        expect(vi.mocked(tui.requestRender).mock.calls.length).toBeGreaterThan(
-            legacyRenderRequests,
-        );
-        const legacyRendered = stripAnsi(app.render(100).join("\n"));
-        expect(legacyRendered).toContain("Attached: Session");
-        expect(legacyRendered).not.toContain("Attached: Session and Project");
-
-        const sourceRenderRequests = vi.mocked(tui.requestRender).mock.calls.length;
-        app.applySessionEvent({
-            createdAt: 2,
-            data: {
-                projectSecretIds: ["legacy"],
-                secretIds: ["legacy"],
-                sessionSecretIds: [],
-            },
-            id: "source-secrets-event",
-            sessionId: "session-1",
-            type: "secrets_changed",
-        });
-
-        expect(vi.mocked(tui.requestRender).mock.calls.length).toBeGreaterThan(
-            sourceRenderRequests,
-        );
-        expect(stripAnsi(app.render(100).join("\n"))).toContain("Attached: Project");
     });
 
     it("registers multiple masked values without rendering them or exposing callback errors", async () => {

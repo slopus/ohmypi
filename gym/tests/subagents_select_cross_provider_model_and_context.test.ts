@@ -33,7 +33,7 @@ describe("subagent provider, model, and context selection", () => {
                                     context: "parent",
                                     message: "Verify inherited context and return PARENT_CHILD_OK.",
                                     model: "anthropic/sonnet-4-6",
-                                    provider: "claude-sdk",
+                                    provider: "claude",
                                     task_name: "parent_context_child",
                                 },
                                 id: "spawn-parent-context-child",
@@ -45,7 +45,7 @@ describe("subagent provider, model, and context selection", () => {
                                     context: "task",
                                     message: "Verify isolated context and return TASK_CHILD_OK.",
                                     model: "anthropic/sonnet-4-6",
-                                    provider: "claude-sdk",
+                                    provider: "claude",
                                     task_name: "task_only_child",
                                 },
                                 id: "spawn-task-only-child",
@@ -57,7 +57,7 @@ describe("subagent provider, model, and context selection", () => {
                 }
 
                 if (sessionId !== parentSessionId) {
-                    expect(request.providerId).toBe("claude-sdk");
+                    expect(request.providerId).toBe("claude");
                     expect(request.modelId).toBe("anthropic/sonnet-4-6");
                     const allText = request.context.messages.map(messageText).join("\n");
                     if (lastText.includes("Verify inherited context")) {
@@ -76,7 +76,7 @@ describe("subagent provider, model, and context selection", () => {
                 }
                 return { content: [{ text: "PARENT_SPAWNED_BOTH", type: "text" }] };
             },
-            providerOverrides: ["claude-sdk"],
+            providerOverrides: ["claude"],
             rows: 28,
         });
         running.add(gym);

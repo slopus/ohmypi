@@ -22,8 +22,4 @@ describe("daemonIdentitiesMatch", () => {
             ),
         ).toBe(false);
     });
-
-    it("treats daemons without identity metadata as stale", () => {
-        expect(daemonIdentitiesMatch({ version: "1.2.3" }, undefined)).toBe(false);
-    });
 });

@@ -46,7 +46,7 @@ import {
     type UserMessage,
 } from "./types.js";
 
-const CLAUDE_SDK_PROVIDER_ID = "claude-sdk";
+const CLAUDE_PROVIDER_ID = "claude";
 const RIG_MCP_SERVER_NAME = "rig";
 const CLAUDE_SDK_API_NAME = "claude-agent-sdk";
 
@@ -83,14 +83,14 @@ export function createClaudeSdkProvider(options: ClaudeSdkProviderOptions) {
                 });
                 return fetchClaudeProviderQuota(probe, { now });
             } catch {
-                return unavailableProviderQuota("claude-sdk", now());
+                return unavailableProviderQuota("claude", now());
             }
         },
         { now },
     );
 
     return defineProvider({
-        id: options.id ?? CLAUDE_SDK_PROVIDER_ID,
+        id: options.id ?? CLAUDE_PROVIDER_ID,
         models: [
             modelAnthropicFable5,
             modelAnthropicOpus48,
@@ -1029,7 +1029,7 @@ function createAssistantMessage(options: {
     return {
         role: "assistant",
         api: CLAUDE_SDK_API_NAME,
-        provider: CLAUDE_SDK_PROVIDER_ID,
+        provider: CLAUDE_PROVIDER_ID,
         model: options.model.id,
         content:
             options.content ??
@@ -1055,7 +1055,7 @@ function createErrorAssistantMessage(options: {
     return {
         role: "assistant",
         api: CLAUDE_SDK_API_NAME,
-        provider: CLAUDE_SDK_PROVIDER_ID,
+        provider: CLAUDE_PROVIDER_ID,
         model: options.model.id,
         content: [],
         usage: options.usage ?? zeroUsage(),

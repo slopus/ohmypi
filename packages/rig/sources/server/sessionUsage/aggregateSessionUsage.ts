@@ -2,10 +2,7 @@ import type { SessionEvent } from "../../protocol/index.js";
 import { addUsage } from "./addUsage.js";
 import { aggregateQuotaContributions } from "./aggregateQuotaContributions.js";
 import {
-    EARLIER_USAGE_LABEL,
-    MODEL_UNAVAILABLE_LABEL,
     type AttributedSessionUsageGroup,
-    type EarlierSessionUsageGroup,
     type SessionContextUsage,
     type SessionUsageGroup,
     type SessionUsageMetadata,
@@ -28,7 +25,6 @@ export function aggregateSessionUsage(
 
     let groups: SessionUsageGroup[] = [];
     let attributedGroupIndexes = new Map<string, number>();
-    let earlierGroupIndex: number | undefined;
     let activeModel: ActiveModel | undefined;
     let currentContext: SessionContextUsage | undefined;
 
@@ -36,7 +32,6 @@ export function aggregateSessionUsage(
         if (event.type === "session_reset") {
             groups = [];
             attributedGroupIndexes = new Map();
-            earlierGroupIndex = undefined;
             activeModel = {
                 modelId: event.data.snapshot.modelId,
                 providerId: event.data.snapshot.providerId,
@@ -88,26 +83,7 @@ export function aggregateSessionUsage(
             message.requestedModelId !== undefined &&
             message.requestedModelId.trim().length > 0;
         if (!hasCompleteAttribution) {
-            if (earlierGroupIndex === undefined) {
-                const earlierGroup: EarlierSessionUsageGroup = {
-                    kind: "earlier",
-                    label: EARLIER_USAGE_LABEL,
-                    modelId: null,
-                    modelLabel: MODEL_UNAVAILABLE_LABEL,
-                    providerId: null,
-                    requestedModelId: null,
-                    usage: zeroUsage(),
-                };
-                earlierGroupIndex = groups.length;
-                groups.push(earlierGroup);
-            }
-            const earlierGroup = groups[earlierGroupIndex] as EarlierSessionUsageGroup;
-            groups[earlierGroupIndex] = {
-                ...earlierGroup,
-                usage: addUsage(earlierGroup.usage, message.usage),
-            };
-            currentContext = undefined;
-            continue;
+            throw new Error("Persisted inference usage is missing provider or model attribution.");
         }
 
         const providerId = message.providerId as string;

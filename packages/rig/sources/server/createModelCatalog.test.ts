@@ -7,8 +7,10 @@ import {
     modelOpenaiGpt56Luna,
     modelOpenaiGpt56Sol,
     modelOpenaiGpt56Terra,
+    modelXaiGrok45,
     modelZaiGlm5,
     modelXaiGrokBuild,
+    modelXaiGrokComposer25Fast,
 } from "../providers/models.js";
 import { createModelCatalog } from "./createModelCatalog.js";
 
@@ -21,30 +23,11 @@ describe("createModelCatalog", () => {
             catalog.providers.find((provider) => provider.providerId === "codex")?.serviceTiers,
         ).toEqual(["fast"]);
         expect(
-            catalog.providers.find((provider) => provider.providerId === "claude-sdk")
-                ?.serviceTiers,
+            catalog.providers.find((provider) => provider.providerId === "claude")?.serviceTiers,
         ).toBeUndefined();
         expect(
             catalog.providers.find((provider) => provider.providerId === "grok")?.models,
-        ).toEqual([modelXaiGrokBuild]);
-    });
-
-    it("exposes models discovered for the configured Grok account", () => {
-        const grok45 = {
-            contextWindow: 500_000,
-            defaultThinkingLevel: "high",
-            id: "xai/grok-4.5",
-            name: "Grok 4.5",
-            thinkingLevels: ["low", "medium", "high"],
-        } as const;
-        const catalog = createModelCatalog({
-            env: {},
-            grokModelsByProviderId: { grok: [modelXaiGrokBuild, grok45] },
-        });
-
-        expect(
-            catalog.providers.find((provider) => provider.providerId === "grok")?.models,
-        ).toEqual([modelXaiGrokBuild, grok45]);
+        ).toEqual([modelXaiGrokBuild, modelXaiGrok45, modelXaiGrokComposer25Fast]);
     });
 
     it("enables Amazon Bedrock when its bearer token is present", () => {
@@ -121,7 +104,7 @@ describe("createModelCatalog", () => {
 
         expect(catalog.providers.map((provider) => provider.providerId)).toEqual([
             "codex",
-            "claude-sdk",
+            "claude",
         ]);
     });
 
@@ -150,7 +133,7 @@ describe("createModelCatalog", () => {
         expect(catalog.providers.map((provider) => provider.providerId)).toEqual([
             "codex",
             "work_codex",
-            "claude-sdk",
+            "claude",
             "work_claude",
         ]);
         expect(

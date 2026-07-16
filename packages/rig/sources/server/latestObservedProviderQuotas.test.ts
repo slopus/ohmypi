@@ -8,13 +8,13 @@ describe("latestObservedProviderQuotas", () => {
     it("keeps the newest durable quota independently for each provider", () => {
         const events = [
             observed("codex-old", "codex", quota("codex", 1, 20)),
-            observed("claude", "claude-sdk", quota("claude-sdk", 2, 30)),
+            observed("claude", "claude", quota("claude", 2, 30)),
             observed("codex-new", "codex", quota("codex", 3, 40)),
         ];
 
         expect([...latestObservedProviderQuotas(events)]).toEqual([
             ["codex", quota("codex", 3, 40)],
-            ["claude-sdk", quota("claude-sdk", 2, 30)],
+            ["claude", quota("claude", 2, 30)],
         ]);
     });
 });
@@ -35,11 +35,7 @@ function observed(id: string, providerId: string, observedQuota: ProviderQuota):
     };
 }
 
-function quota(
-    source: "codex" | "claude-sdk",
-    capturedAt: number,
-    usedPercent: number,
-): ProviderQuota {
+function quota(source: "codex" | "claude", capturedAt: number, usedPercent: number): ProviderQuota {
     return {
         capturedAt,
         source,

@@ -170,15 +170,15 @@ export class RemoteAgent implements CodingAssistantAgentBackend {
     }
 
     get projectSecretIds(): readonly string[] {
-        return [...(this.#session.projectSecretIds ?? [])];
+        return [...this.#session.projectSecretIds];
     }
 
     get secretIds(): readonly string[] {
-        return [...(this.#session.secretIds ?? [])];
+        return [...this.#session.secretIds];
     }
 
     get sessionSecretIds(): readonly string[] {
-        return [...(this.#session.sessionSecretIds ?? this.#session.secretIds ?? [])];
+        return [...this.#session.sessionSecretIds];
     }
 
     async attachSecret(secretId: string, scope: SecretAttachmentScope = "session"): Promise<void> {
@@ -617,9 +617,9 @@ export class RemoteAgent implements CodingAssistantAgentBackend {
         if (event.type === "secrets_changed") {
             this.#session = {
                 ...this.#session,
-                projectSecretIds: event.data.projectSecretIds ?? [],
+                projectSecretIds: event.data.projectSecretIds,
                 secretIds: event.data.secretIds,
-                sessionSecretIds: event.data.sessionSecretIds ?? event.data.secretIds,
+                sessionSecretIds: event.data.sessionSecretIds,
             };
             return;
         }

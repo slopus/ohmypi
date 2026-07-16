@@ -311,7 +311,7 @@ describe("createSystemPrompt", () => {
         ).resolves.toBe(KIMI_SYSTEM_PROMPT);
     });
 
-    it("preserves legacy prompt assembly for unsupported test models", async () => {
+    it("assembles explicit instructions for unsupported test models", async () => {
         const cwd = await makeTempDir();
         const model = defineModel({
             id: "openai/gpt-test",

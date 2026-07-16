@@ -19,7 +19,7 @@ export async function fetchClaudeProviderQuota(
 ): Promise<ProviderQuota> {
     const now = options.now ?? Date.now;
     const timeoutMs = options.timeoutMs ?? 5_000;
-    const unavailable = (): ProviderQuota => unavailableProviderQuota("claude-sdk", now());
+    const unavailable = (): ProviderQuota => unavailableProviderQuota("claude", now());
 
     try {
         const usageRequest = query.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET();
@@ -39,7 +39,7 @@ export async function fetchClaudeProviderQuota(
         const capturedAt = now();
         return {
             capturedAt,
-            source: "claude-sdk",
+            source: "claude",
             windows: {
                 fiveHour: parseClaudeQuotaWindow(usage.rate_limits?.five_hour, capturedAt),
                 weekly: parseClaudeQuotaWindow(usage.rate_limits?.seven_day, capturedAt),

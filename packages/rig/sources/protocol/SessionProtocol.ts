@@ -88,7 +88,7 @@ export interface HealthResponse {
     durableGlobalEventQueue: boolean;
     errorMessage?: string;
     healthy: boolean;
-    identity?: DaemonIdentity;
+    identity: DaemonIdentity;
     ready: boolean;
     status: ServerInitializationStatus;
 }
@@ -124,9 +124,9 @@ export interface ProtocolSession {
     modelId: string;
     effort?: string;
     serviceTier?: ServiceTier;
-    secretIds?: readonly string[];
-    projectSecretIds?: readonly string[];
-    sessionSecretIds?: readonly string[];
+    secretIds: readonly string[];
+    projectSecretIds: readonly string[];
+    sessionSecretIds: readonly string[];
     environment?: SessionExecutionEnvironment;
     modelLocked: boolean;
     models: readonly Model[];
@@ -275,13 +275,12 @@ export interface ListSubagentsResponse {
 }
 
 export interface SessionUsageGroup {
-    kind: "attributed" | "earlier";
-    modelId: string | null;
-    providerId: string | null;
+    kind: "attributed";
+    modelId: string;
+    providerId: string;
+    requestedModelId: string;
     usage: Usage;
-    label?: string;
-    modelLabel?: string;
-    requestedModelId?: string | null;
+    responseModel?: string;
 }
 
 export interface SessionContextUsage {

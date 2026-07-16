@@ -118,6 +118,22 @@ export const modelXaiGrokBuild = defineModel({
     contextWindow: 500_000,
 });
 
+export const modelXaiGrok45 = defineModel({
+    id: "xai/grok-4.5",
+    name: "Grok 4.5",
+    thinkingLevels: ["low", "medium", "high"],
+    defaultThinkingLevel: "high",
+    contextWindow: 500_000,
+});
+
+export const modelXaiGrokComposer25Fast = defineModel({
+    id: "xai/grok-composer-2.5-fast",
+    name: "Composer 2.5",
+    thinkingLevels: ["off"],
+    defaultThinkingLevel: "off",
+    contextWindow: 200_000,
+});
+
 export const modelMoonshotKimiK25 = defineModel({
     id: "moonshot/kimi-k2.5",
     name: "Kimi K2.5",

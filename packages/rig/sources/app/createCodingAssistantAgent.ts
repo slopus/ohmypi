@@ -31,7 +31,7 @@ import { getBedrockModelRoute } from "../providers/getBedrockModelRoute.js";
 import { modelOpenaiGpt56Sol } from "../providers/models.js";
 import { readGymContextWindow } from "../providers/readGymContextWindow.js";
 import { readConfiguredBedrockBearerToken } from "../providers/readConfiguredBedrockBearerToken.js";
-import type { Model, ServiceTier } from "../providers/types.js";
+import type { ServiceTier } from "../providers/types.js";
 import { claudeCodeTools, claudeCollaborationTools } from "../tools/claude/index.js";
 import { codexCollaborationTools, codexTools } from "../tools/codex/index.js";
 import { piTools } from "../tools/pi/index.js";
@@ -50,7 +50,6 @@ export interface CreateCodingAssistantAgentOptions {
     effort?: string;
     env?: NodeJS.ProcessEnv;
     goals?: GoalContext;
-    grokModelsByProviderId?: Readonly<Record<string, readonly Model[]>>;
     instructions?: string;
     local?: boolean;
     messages?: readonly Message[];
@@ -104,7 +103,7 @@ export function createCodingAssistantAgent(
     const providerId =
         options.providerId ??
         (modelId.startsWith("anthropic/")
-            ? "claude-sdk"
+            ? "claude"
             : modelId.startsWith("xai/")
               ? "grok"
               : modelId.startsWith("openai/")
@@ -261,9 +260,6 @@ function toGrokProviderOptions(
         ...(options.apiKey === undefined ? {} : { apiKey: options.apiKey }),
         ...(config.authFile === undefined ? {} : { authFile: config.authFile }),
         ...(baseUrl === undefined ? {} : { baseUrl }),
-        ...(options.grokModelsByProviderId?.[providerId] === undefined
-            ? {}
-            : { models: options.grokModelsByProviderId[providerId] }),
     };
 }
 

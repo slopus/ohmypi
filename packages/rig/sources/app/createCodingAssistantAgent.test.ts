@@ -6,6 +6,7 @@ import {
     modelMoonshotKimiK25,
     modelOpenaiGpt55,
     modelOpenaiGpt56Sol,
+    modelXaiGrok45,
     modelXaiGrokBuild,
 } from "../providers/models.js";
 import { createCodingAssistantAgent } from "./createCodingAssistantAgent.js";
@@ -41,7 +42,7 @@ describe("createCodingAssistantAgent", () => {
             processManager,
         });
 
-        expect(runtime.provider.id).toBe("claude-sdk");
+        expect(runtime.provider.id).toBe("claude");
         expect(runtime.agent.model.id).toBe(modelAnthropicFable5.id);
         expect(runtime.agent.tools.map((tool) => tool.name)).toEqual([
             "TaskOutput",
@@ -82,23 +83,15 @@ describe("createCodingAssistantAgent", () => {
         ]);
     });
 
-    it("creates a Grok agent for an account-discovered model", () => {
-        const grok45 = {
-            contextWindow: 500_000,
-            defaultThinkingLevel: "high",
-            id: "xai/grok-4.5",
-            name: "Grok 4.5",
-            thinkingLevels: ["low", "medium", "high"],
-        } as const;
+    it("creates a Grok agent for a curated model", () => {
         const runtime = createCodingAssistantAgent({
             cwd: "/tmp/rig-app-test",
             env: { XAI_API_KEY: "xai-test-key" },
-            grokModelsByProviderId: { grok: [modelXaiGrokBuild, grok45] },
-            modelId: grok45.id,
+            modelId: modelXaiGrok45.id,
         });
 
         expect(runtime.provider.id).toBe("grok");
-        expect(runtime.agent.model).toEqual(grok45);
+        expect(runtime.agent.model).toEqual(modelXaiGrok45);
         expect(runtime.agent.tools.map((tool) => tool.name)).toContain("run_terminal_command");
     });
 
@@ -165,24 +158,6 @@ describe("createCodingAssistantAgent", () => {
                 },
             }),
         ).toThrow("Provider 'work_codex' has no models after applying its model filters.");
-    });
-
-    it("prefers an enabled named instance over a disabled built-in compatibility alias", () => {
-        const runtime = createCodingAssistantAgent({
-            cwd: "/tmp/rig-app-test",
-            modelId: modelAnthropicFable5.id,
-            providerId: "claude-sdk",
-            providers: {
-                claude: { enabled: false, type: "claude" },
-                "claude-sdk": {
-                    configDir: "/tmp/claude-alternate",
-                    enabled: true,
-                    type: "claude",
-                },
-            },
-        });
-
-        expect(runtime.provider.id).toBe("claude-sdk");
     });
 
     it("does not fall back to the default Bedrock credential for a named instance", () => {

@@ -18,7 +18,7 @@ export interface WorkflowExecutionResult {
 
 export interface WorkflowRun {
     agentCount: number;
-    code?: string;
+    code: string;
     description: string;
     error?: string;
     finishedAt?: number;

@@ -27,10 +27,6 @@ describe("formatSessionUsageSummary", () => {
                 "    Weekly: 79% left · resets in 6d 2h",
                 "    Observed remaining: 5h -3.5% · week -1% (approx.)",
                 "",
-                "Earlier usage",
-                "  Model unavailable",
-                "    7 total · 5 input · 2 output · 0 cache read · 0 cache write",
-                "",
                 "Observed remaining may include other account activity.",
                 "Session total: 1.4k",
             ].join("\n"),
@@ -64,13 +60,14 @@ describe("formatSessionUsageSummary", () => {
 
     it("shows authoritative Claude cost and keeps provider observations separate", () => {
         const value = summary();
-        value.currentProviderId = "claude-sdk";
+        value.currentProviderId = "claude";
         value.groups = [
             ...value.groups,
             {
                 kind: "attributed",
                 modelId: "anthropic/sonnet-4-6",
-                providerId: "claude-sdk",
+                providerId: "claude",
+                requestedModelId: "anthropic/sonnet-4-6",
                 usage: {
                     ...usage(100, 20, 0, 0, 120),
                     cost: { cacheRead: 0, cacheWrite: 0, input: 0, output: 0, total: 0.1234 },
@@ -80,7 +77,7 @@ describe("formatSessionUsageSummary", () => {
         value.observedQuota = [
             ...value.observedQuota,
             {
-                providerId: "claude-sdk",
+                providerId: "claude",
                 windows: {
                     fiveHour: { observedUsedPercent: 0 },
                     weekly: { observedUsedPercent: 2 },
@@ -124,6 +121,7 @@ describe("formatSessionUsageSummary", () => {
                 kind: "attributed",
                 modelId: codex.id,
                 providerId: "codex",
+                requestedModelId: codex.id,
                 usage: usage(1_000_000, 0, 0, 0, 1_000_000),
             },
         ];
@@ -162,16 +160,8 @@ function summary(): GetSessionUsageResponse {
                 kind: "attributed",
                 modelId: codex.id,
                 providerId: "codex",
+                requestedModelId: codex.id,
                 usage: { ...usage(1_200, 100, 40, 30, 1_370), reasoning: 20 },
-            },
-            {
-                kind: "earlier",
-                label: "Earlier usage",
-                modelId: null,
-                modelLabel: "Model unavailable",
-                providerId: null,
-                requestedModelId: null,
-                usage: usage(5, 2, 0, 0, 7),
             },
         ],
         observedQuota: [

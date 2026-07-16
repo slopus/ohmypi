@@ -117,7 +117,7 @@ This file tracks known defects, verified coverage gaps, and concrete follow-up w
 - [x] Update `AGENTS.md` terminal-layout guidance.
     - It still requires an in-place mutable background polling row, but empty polling is now deliberately live-tail-only with no history row.
 
-- [ ] Document external compatibility effects of expanded public types.
+- [ ] Document external API effects of expanded public types.
     - External TypeScript consumers must implement the expanded `FileSystemContext` interface and required `RigConfig.theme` fields.
 
 ## Gym and test harness
@@ -154,11 +154,6 @@ This file tracks known defects, verified coverage gaps, and concrete follow-up w
 
 ## Backlog captured at the July 14 pause
 
-- [ ] Reclaim disk space from legacy session event logs.
-    - Existing databases can retain multiple gigabytes of redundant inference-stream events even after resume no longer loads those events into memory.
-    - Design an explicit, backward-compatible cleanup and compaction flow that preserves semantic messages, resumable context, todos, and durable lifecycle history.
-    - Do not automatically delete legacy rows, migrate the schema, or vacuum a user's database as part of ordinary startup or resume.
-
 - [ ] Expand `/usage` into a session and plan-usage dashboard.
     - Keep current provider token totals, then add session cost, API and wall duration, lines added/removed, current context usage, and provider-reported reset windows where available.
     - Show current-session, weekly all-model, and model-specific progress bars with local timezone reset labels; mark unavailable provider data clearly instead of estimating it as fact.
@@ -191,7 +186,7 @@ This file tracks known defects, verified coverage gaps, and concrete follow-up w
     - Real-PTY Gym coverage verifies both light-to-dark and dark-to-light changes during an active session, including synchronized-output settlement and stale-surface removal.
 
 - [ ] Plan and scope Podman support.
-    - Identify the Docker-specific assumptions in Gym and normal Rig workflows, then define the smallest useful compatibility target before implementation.
+    - Identify the Docker-specific assumptions in Gym and normal Rig workflows, then define the smallest useful portability target before implementation.
 
 - [x] Consolidate long-running background-terminal status.
     - Active tools, subagents, workflows, and background terminals already render as one compact count-based row per category in the live tail.

@@ -8,7 +8,6 @@ import type {
     ChangeModelRequest,
     ChangeServiceTierRequest,
     CreateSessionRequest,
-    EventId,
     ModelCatalog,
     RegisterSecretRequest,
     SecretSummary,
@@ -36,7 +35,6 @@ import { AgentSessionManager } from "./AgentSessionManager.js";
 import { createModelCatalog } from "./createModelCatalog.js";
 import type { GlobalEventQueue } from "./GlobalEventQueue.js";
 import { PersistentGlobalEventQueue } from "./PersistentGlobalEventQueue.js";
-import { repairLegacyOrphanedSteering } from "./repairLegacyOrphanedSteering.js";
 import type { SessionStore } from "./SessionStore.js";
 import type { McpToolProvider } from "../mcp/index.js";
 import type { DockerExecutionConfig } from "../execution/index.js";
@@ -101,21 +99,6 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
             ...(this.#taskDrain === undefined ? {} : { taskDrain: this.#taskDrain }),
         });
         this.#repairInterruptedTitleGenerations();
-        const repairEventIdFactories = new Map<string, () => EventId>();
-        repairLegacyOrphanedSteering(this.#database, {
-            createEventId: (sessionId, after) => {
-                let createEventId = repairEventIdFactories.get(sessionId);
-                if (createEventId === undefined) {
-                    createEventId = createEventIdFactory(after === undefined ? {} : { after });
-                    repairEventIdFactories.set(sessionId, createEventId);
-                }
-                return createEventId();
-            },
-            ...(this.#persistentGlobalEventQueue === undefined
-                ? {}
-                : { globalEventQueue: this.#persistentGlobalEventQueue }),
-            now: this.#now,
-        });
         this.repairInterruptedSessions("crash");
     }
 
@@ -976,36 +959,6 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
                 PRIMARY KEY (cwd, secret_id)
             );
         `);
-        this.#ensureSessionColumn("title", "TEXT");
-        this.#ensureSessionColumn("docker_json", "TEXT");
-        this.#ensureSessionColumn("secret_ids_json", "TEXT NOT NULL DEFAULT '[]'");
-        this.#ensureSessionColumn("title_status", "TEXT NOT NULL DEFAULT 'idle'");
-        this.#ensureSessionColumn("title_error", "TEXT");
-        this.#ensureSessionColumn("recap", "TEXT");
-        this.#ensureSessionColumn("metadata_updated_at_ms", "INTEGER");
-        this.#ensureSessionColumn("metadata_run_id", "TEXT");
-        this.#ensureSessionColumn("last_message_at_ms", "INTEGER");
-        this.#ensureSessionColumn("session_kind", "TEXT NOT NULL DEFAULT 'primary'");
-        this.#ensureSessionColumn("parent_session_id", "TEXT");
-        this.#ensureSessionColumn("root_session_id", "TEXT");
-        this.#ensureSessionColumn("depth", "INTEGER NOT NULL DEFAULT 0");
-        this.#ensureSessionColumn("parent_tool_call_id", "TEXT");
-        this.#ensureSessionColumn("task_name", "TEXT");
-        this.#ensureSessionColumn("description", "TEXT");
-        this.#ensureSessionColumn("active_since_ms", "INTEGER");
-        this.#ensureSessionColumn("elapsed_ms", "INTEGER NOT NULL DEFAULT 0");
-        this.#ensureSessionColumn("total_tokens", "INTEGER NOT NULL DEFAULT 0");
-        this.#ensureSessionColumn("context_messages_json", "TEXT");
-        this.#ensureSessionColumn("service_tier", "TEXT");
-        this.#ensureSessionColumn("permission_mode", "TEXT NOT NULL DEFAULT 'workspace_write'");
-        this.#ensureSessionColumn("tasks_json", "TEXT NOT NULL DEFAULT '[]'");
-        this.#ensureSessionColumn("workflows_json", "TEXT NOT NULL DEFAULT '[]'");
-        this.#ensureSessionColumn("workflows_enabled", "INTEGER NOT NULL DEFAULT 1");
-        this.#ensureSessionColumn("goal_json", "TEXT");
-        this.#ensureSessionColumn("next_task_id", "INTEGER NOT NULL DEFAULT 1");
-        this.#ensureQueuedRunColumn("kind", "TEXT NOT NULL DEFAULT 'user'");
-        this.#ensureQueuedRunColumn("debug", "INTEGER NOT NULL DEFAULT 0");
-        this.#ensureQueuedRunColumn("debug_directory", "TEXT");
         this.#database.exec(`
             CREATE INDEX IF NOT EXISTS sessions_parent_created
                 ON sessions(parent_session_id, created_at_ms)
@@ -1066,7 +1019,7 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
                 sessionId,
                 type: readString(row, "type") as SessionEvent["type"],
             } as SessionEvent;
-            if (!isTransientInferenceSessionEvent(event)) events.push(event);
+            events.push(event);
         }
         return events;
     }
@@ -1281,22 +1234,6 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
             this.#database.exec("ROLLBACK");
             throw error;
         }
-    }
-
-    #ensureSessionColumn(name: string, definition: string): void {
-        const columns = this.#database.prepare("PRAGMA table_info(sessions)").all();
-        if (columns.some((column) => readString(column, "name") === name)) {
-            return;
-        }
-        this.#database.exec(`ALTER TABLE sessions ADD COLUMN ${name} ${definition}`);
-    }
-
-    #ensureQueuedRunColumn(name: string, definition: string): void {
-        const columns = this.#database.prepare("PRAGMA table_info(queued_runs)").all();
-        if (columns.some((column) => readString(column, "name") === name)) {
-            return;
-        }
-        this.#database.exec(`ALTER TABLE queued_runs ADD COLUMN ${name} ${definition}`);
     }
 }
 

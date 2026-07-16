@@ -742,8 +742,8 @@ export class CodingAssistantApp implements Component, Focusable {
 
         if (event.type === "secrets_changed") {
             const refreshSecretsList = this.#secretsListVisible;
-            this.#projectSecretIds = event.data.projectSecretIds ?? [];
-            this.#sessionSecretIds = event.data.sessionSecretIds ?? event.data.secretIds;
+            this.#projectSecretIds = event.data.projectSecretIds;
+            this.#sessionSecretIds = event.data.sessionSecretIds;
             if (refreshSecretsList) this.#showSecretsMenu();
             this.#requestRender();
             return;

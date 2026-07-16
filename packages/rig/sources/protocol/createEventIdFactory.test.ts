@@ -34,7 +34,7 @@ describe("createEventIdFactory", () => {
     });
 
     it("ignores malformed persisted cursors", () => {
-        const createId = createEventIdFactory({ after: "legacy-event-id", now: () => 1 });
+        const createId = createEventIdFactory({ after: "previous-event-id", now: () => 1 });
 
         expect(createId()).toMatch(/^00000000-0001-7[0-9a-f]{3}-/u);
     });

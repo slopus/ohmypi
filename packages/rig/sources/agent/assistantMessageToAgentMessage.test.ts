@@ -17,14 +17,6 @@ describe("assistantMessageToAgentMessage", () => {
             responseModel: "gpt-5.6-2026-07-01",
         });
     });
-
-    it("keeps legacy conversion backward compatible when attribution is unavailable", () => {
-        const message = assistantMessageToAgentMessage(providerMessage(), () => "fallback");
-
-        expect(message).not.toHaveProperty("providerId");
-        expect(message).not.toHaveProperty("requestedModelId");
-        expect(message).not.toHaveProperty("responseModel");
-    });
 });
 
 function providerMessage(options: { responseModel?: string } = {}): AssistantMessage {

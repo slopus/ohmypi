@@ -193,7 +193,7 @@ async function createBlockedClaudeGym(
             },
         },
         modelId: modelCase.rigModelId,
-        providerId: "claude-sdk",
+        providerId: "claude",
         timeoutMs: 30_000,
     });
 }

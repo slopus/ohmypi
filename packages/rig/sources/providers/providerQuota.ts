@@ -1,4 +1,4 @@
-export type ProviderQuotaSource = "codex" | "claude-sdk";
+export type ProviderQuotaSource = "codex" | "claude";
 
 export type ProviderQuotaWindow =
     | {

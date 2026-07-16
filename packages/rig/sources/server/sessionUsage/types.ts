@@ -1,8 +1,5 @@
 import type { Usage } from "../../providers/types.js";
 
-export const EARLIER_USAGE_LABEL = "Earlier usage";
-export const MODEL_UNAVAILABLE_LABEL = "Model unavailable";
-
 export interface AttributedSessionUsageGroup {
     kind: "attributed";
     modelId: string;
@@ -12,17 +9,7 @@ export interface AttributedSessionUsageGroup {
     usage: Usage;
 }
 
-export interface EarlierSessionUsageGroup {
-    kind: "earlier";
-    label: typeof EARLIER_USAGE_LABEL;
-    modelId: null;
-    modelLabel: typeof MODEL_UNAVAILABLE_LABEL;
-    providerId: null;
-    requestedModelId: null;
-    usage: Usage;
-}
-
-export type SessionUsageGroup = AttributedSessionUsageGroup | EarlierSessionUsageGroup;
+export type SessionUsageGroup = AttributedSessionUsageGroup;
 
 export interface SessionContextUsage {
     approximate: boolean;

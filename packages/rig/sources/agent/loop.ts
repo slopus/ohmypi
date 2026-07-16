@@ -205,7 +205,7 @@ export async function runAgentLoop(options: RunAgentLoopOptions): Promise<AgentL
                 try {
                     const preparedProviderMessages = await prepareProviderMessageImages(
                         providerMessages,
-                        options.provider.id === "claude-sdk" ? "claude" : "codex",
+                        options.provider.id === "claude" ? "claude" : "codex",
                     );
                     const stream = options.provider.stream(
                         model,
@@ -358,6 +358,7 @@ export async function runAgentLoop(options: RunAgentLoopOptions): Promise<AgentL
         const ambiguousToolCallRejection = createAmbiguousToolCallRejection(
             assistantMessage,
             idFactory,
+            { providerId: options.provider.id, requestedModelId: model.id },
             collectToolCallIds(transcript),
         );
         if (ambiguousToolCallRejection !== undefined) {

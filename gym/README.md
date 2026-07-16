@@ -226,7 +226,7 @@ interface GymOptions {
     image?: string;
     inference?: readonly GymMockResponse[] | GymInferenceHandler;
     modelId?: string;
-    providerId?: "claude-sdk" | "codex" | "gym";
+    providerId?: "claude" | "codex" | "gym";
     rows?: number;
     startupText?: string;
     timeoutMs?: number;
@@ -246,7 +246,7 @@ interface GymOptions {
 | `image`        | `rig-gym:local`          | Docker image tag to build or run                    |
 | `inference`    | `[]`                     | Ordered gym-provider responses or a request handler |
 | `modelId`      | Provider default         | Model selected for the session                      |
-| `providerId`   | `gym`                    | `gym`, compiled `claude-sdk`, or `codex`            |
+| `providerId`   | `gym`                    | `gym`, compiled `claude`, or `codex`                |
 | `rows`         | `32`                     | Terminal height in cells                            |
 | `startupText`  | `Ask Rig to do anything` | Visible text that marks startup as complete         |
 | `timeoutMs`    | `20_000`                 | Maximum startup wait for the composer               |
@@ -429,7 +429,7 @@ so the Codex provider's `fetch` transport uses these variables.
 
 ```ts
 const gym = await createGym({
-    providerId: "claude-sdk",
+    providerId: "claude",
     modelId: "anthropic/sonnet-4-6",
     environment: {
         ANTHROPIC_API_KEY: "test-only-placeholder",

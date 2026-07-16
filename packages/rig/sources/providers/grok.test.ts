@@ -1,6 +1,6 @@
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 
 import { Type } from "@sinclair/typebox";
 import type { Response as OpenAIResponse } from "openai/resources/responses/responses.js";
@@ -9,11 +9,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createGrokOpenAIRequest } from "./createGrokOpenAIRequest.js";
 import { createGrokOpenAIClient, type GrokOpenAIClient } from "./createGrokOpenAIClient.js";
 import { createGrokRequestHeaders } from "./createGrokRequestHeaders.js";
-import { discoverGrokModels } from "./discoverGrokModels.js";
 import { GROK_OAUTH_CLIENT_ID, GROK_OAUTH_ISSUER, GROK_OAUTH_SCOPE } from "./grok-auth-types.js";
 import { createGrokProvider, GROK_API_MODEL_ID, GROK_DEFAULT_BASE_URL } from "./grok.js";
-import { modelXaiGrokBuild } from "./models.js";
-import { parseGrokModelCatalog } from "./parseGrokModelCatalog.js";
+import { modelXaiGrok45, modelXaiGrokBuild, modelXaiGrokComposer25Fast } from "./models.js";
 import { resolveGrokCredential } from "./resolveGrokCredential.js";
 import { writeGrokAuthRecord } from "./writeGrokAuthRecord.js";
 
@@ -26,11 +24,15 @@ afterEach(async () => {
 });
 
 describe("Grok Build provider", () => {
-    it("advertises the upstream Grok Build model and endpoint", () => {
+    it("advertises the curated Grok models and endpoint", () => {
         const provider = createGrokProvider();
 
         expect(provider.id).toBe("grok");
-        expect(provider.models).toEqual([modelXaiGrokBuild]);
+        expect(provider.models).toEqual([
+            modelXaiGrokBuild,
+            modelXaiGrok45,
+            modelXaiGrokComposer25Fast,
+        ]);
         expect(modelXaiGrokBuild).toMatchObject({
             contextWindow: 500_000,
             defaultThinkingLevel: "on",
@@ -78,17 +80,14 @@ describe("Grok Build provider", () => {
     });
 
     it("uses the model catalog's selectable reasoning efforts", () => {
-        const [grok45, composer] = parseGrokModelCatalog(GROK_MODEL_CATALOG);
-        if (grok45 === undefined || composer === undefined) throw new Error("Invalid test catalog");
-
-        expect(grok45).toEqual({
+        expect(modelXaiGrok45).toEqual({
             contextWindow: 500_000,
             defaultThinkingLevel: "high",
             id: "xai/grok-4.5",
             name: "Grok 4.5",
             thinkingLevels: ["low", "medium", "high"],
         });
-        expect(composer).toEqual({
+        expect(modelXaiGrokComposer25Fast).toEqual({
             contextWindow: 200_000,
             defaultThinkingLevel: "off",
             id: "xai/grok-composer-2.5-fast",
@@ -99,7 +98,7 @@ describe("Grok Build provider", () => {
             createGrokOpenAIRequest({
                 apiModelId: "grok-4.5",
                 context: { messages: [{ role: "user", content: "Hello", timestamp: 1 }] },
-                model: grok45,
+                model: modelXaiGrok45,
                 streamOptions: { thinking: "low" },
             }).reasoning,
         ).toEqual({ effort: "low", summary: "concise" });
@@ -107,71 +106,9 @@ describe("Grok Build provider", () => {
             createGrokOpenAIRequest({
                 apiModelId: "grok-composer-2.5-fast",
                 context: { messages: [{ role: "user", content: "Hello", timestamp: 1 }] },
-                model: composer,
+                model: modelXaiGrokComposer25Fast,
             }).reasoning,
         ).toEqual({ summary: "concise" });
-    });
-
-    it("discovers account models through Grok's authenticated catalog", async () => {
-        const request = vi
-            .fn<typeof fetch>()
-            .mockResolvedValue(new Response(JSON.stringify(GROK_MODEL_CATALOG)));
-
-        const models = await discoverGrokModels({
-            apiKey: "explicit-key",
-            authFile: "/missing/grok/auth.json",
-            baseUrl: "https://example.com/v1",
-            env: {},
-            fetch: request,
-        });
-
-        expect(models.map((model) => model.id)).toEqual([
-            "xai/grok-build",
-            "xai/grok-4.5",
-            "xai/grok-composer-2.5-fast",
-        ]);
-        expect(request).toHaveBeenCalledOnce();
-        expect(request.mock.calls[0]?.[0]).toBe("https://example.com/v1/models");
-        expect(request.mock.calls[0]?.[1]?.headers).toMatchObject({
-            authorization: "Bearer explicit-key",
-            "x-grok-client-version": "0.1.220-alpha.4",
-        });
-    });
-
-    it("uses only a fresh model cache created by the active authentication method", async () => {
-        const { authFile } = await createAuthHome({
-            [GROK_OAUTH_SCOPE]: {
-                auth_mode: "oidc",
-                create_time: new Date().toISOString(),
-                key: "session-token",
-            },
-        });
-        await writeFile(
-            join(dirname(authFile), "models_cache.json"),
-            JSON.stringify({
-                auth_method: "session",
-                fetched_at: new Date().toISOString(),
-                models: Object.fromEntries(
-                    GROK_MODEL_CATALOG.data.map((model) => [model.model, { info: model }]),
-                ),
-                origin: "https://example.com/v1/models",
-            }),
-        );
-        const unavailable = vi
-            .fn<typeof fetch>()
-            .mockResolvedValue(new Response("unavailable", { status: 503 }));
-
-        await expect(
-            discoverGrokModels({ authFile, baseUrl: "https://example.com/v1", fetch: unavailable }),
-        ).resolves.toHaveLength(3);
-        await expect(
-            discoverGrokModels({
-                apiKey: "explicit-key",
-                authFile,
-                baseUrl: "https://example.com/v1",
-                fetch: unavailable,
-            }),
-        ).resolves.toEqual([modelXaiGrokBuild]);
     });
 
     it("sends Grok request identity headers", () => {
@@ -378,6 +315,19 @@ describe("Grok Build authentication", () => {
         ).rejects.toThrow("Run `grok login` or set XAI_API_KEY");
     });
 
+    it("ignores authentication records outside the current Grok scopes", async () => {
+        const { authFile } = await createAuthHome({
+            "https://accounts.example.test/sign-in": {
+                auth_mode: "oidc",
+                key: "unknown-scope-token",
+            },
+        });
+
+        await expect(
+            resolveGrokCredential({ authFile, env: { XAI_API_KEY: "environment-key" } }),
+        ).resolves.toEqual({ source: "api-key", token: "environment-key" });
+    });
+
     it("does not resurrect credentials removed during a refresh", async () => {
         const { authFile } = await createAuthHome({});
 
@@ -401,30 +351,3 @@ async function createAuthHome(store: Record<string, unknown>): Promise<{ authFil
     await writeFile(authFile, JSON.stringify(store), { mode: 0o600 });
     return { authFile };
 }
-
-const GROK_MODEL_CATALOG = {
-    data: [
-        {
-            apiBackend: "responses",
-            contextWindow: 500_000,
-            id: "grok-4.5",
-            model: "grok-4.5",
-            name: "Grok 4.5",
-            reasoningEffort: "high",
-            reasoningEfforts: [
-                { default: true, value: "high" },
-                { default: false, value: "medium" },
-                { default: false, value: "low" },
-            ],
-            supportsReasoningEffort: true,
-        },
-        {
-            apiBackend: "responses",
-            contextWindow: 200_000,
-            id: "grok-composer-2.5-fast",
-            model: "grok-composer-2.5-fast",
-            name: "Composer 2.5",
-            supportsReasoningEffort: false,
-        },
-    ],
-};

@@ -1,51 +1,26 @@
 import { resolve } from "node:path";
 
 import { Type } from "@sinclair/typebox";
-import { beforeAll, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { createNodeAgentContext, runAgentLoop } from "../agent/index.js";
 import { defineTool } from "../agent/types.js";
 import { NativeProxessManager } from "../processes/index.js";
-import { discoverGrokModels } from "./discoverGrokModels.js";
 import { createGrokProvider } from "./grok.js";
-import { modelXaiGrokBuild } from "./models.js";
+import { modelXaiGrok45, modelXaiGrokBuild, modelXaiGrokComposer25Fast } from "./models.js";
 import { resolveGrokCredential } from "./resolveGrokCredential.js";
 import type { AssistantMessage, Model, StreamOptions, TextContent } from "./types.js";
 
 const LIVE = process.env.RIG_LIVE_TEST === "1";
 const describeLive = LIVE ? describe : describe.skip;
-let liveModels: readonly Model[] = [modelXaiGrokBuild];
 
 describeLive("Grok Build provider live", () => {
-    beforeAll(async () => {
-        liveModels = await discoverGrokModels();
-    });
-
-    it("discovers every model advertised to the authenticated Grok account", () => {
-        expect(liveModels.map((model) => model.id)).toEqual(
-            expect.arrayContaining([
-                "xai/grok-build",
-                "xai/grok-4.5",
-                "xai/grok-composer-2.5-fast",
-            ]),
-        );
-        expect(requireLiveModel("xai/grok-4.5")).toMatchObject({
-            defaultThinkingLevel: "high",
-            thinkingLevels: ["low", "medium", "high"],
-        });
-        expect(requireLiveModel("xai/grok-composer-2.5-fast")).toMatchObject({
-            defaultThinkingLevel: "off",
-            thinkingLevels: ["off"],
-        });
-    });
-
     it("streams inference using the local Grok authentication store", async () => {
         await expect(resolveGrokCredential()).resolves.toMatchObject({
             token: expect.any(String),
         });
 
         const stream = createGrokProvider({
-            models: liveModels,
             sessionId: `grok-live-${Date.now()}`,
         }).stream(modelXaiGrokBuild, {
             messages: [
@@ -75,18 +50,21 @@ describeLive("Grok Build provider live", () => {
     }, 120_000);
 
     it("streams Grok 4.5 with a selected reasoning effort", async () => {
-        const model = requireLiveModel("xai/grok-4.5");
-        const message = await runLivePrompt(model, "Reply with exactly: grok 4.5 low effort ok", {
-            thinking: "low",
-        });
+        const message = await runLivePrompt(
+            modelXaiGrok45,
+            "Reply with exactly: grok 4.5 low effort ok",
+            { thinking: "low" },
+        );
 
         expect(message.stopReason).not.toBe("error");
         expect(textFromAssistantMessage(message).toLowerCase()).toContain("grok 4.5 low effort ok");
     }, 120_000);
 
     it("streams Composer 2.5 without a reasoning-effort override", async () => {
-        const model = requireLiveModel("xai/grok-composer-2.5-fast");
-        const message = await runLivePrompt(model, "Reply with exactly: composer live ok");
+        const message = await runLivePrompt(
+            modelXaiGrokComposer25Fast,
+            "Reply with exactly: composer live ok",
+        );
 
         expect(message.stopReason).not.toBe("error");
         expect(textFromAssistantMessage(message).toLowerCase()).toContain("composer live ok");
@@ -117,7 +95,6 @@ describeLive("Grok Build provider live", () => {
         });
         const result = await runAgentLoop({
             provider: createGrokProvider({
-                models: liveModels,
                 sessionId: `grok-tool-live-${Date.now()}`,
             }),
             modelId: modelXaiGrokBuild.id,
@@ -187,19 +164,12 @@ function textFromAssistantMessage(message: AssistantMessage): string {
         .join("");
 }
 
-function requireLiveModel(modelId: string): Model {
-    const model = liveModels.find((candidate) => candidate.id === modelId);
-    if (model === undefined) throw new Error(`Grok did not advertise ${modelId}.`);
-    return model;
-}
-
 async function runLivePrompt(
     model: Model,
     prompt: string,
     streamOptions?: StreamOptions,
 ): Promise<AssistantMessage> {
     const stream = createGrokProvider({
-        models: liveModels,
         sessionId: `grok-model-live-${Date.now()}`,
     }).stream(
         model,

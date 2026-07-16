@@ -73,7 +73,7 @@ describe("account quota observations", () => {
             },
             inference(request, callIndex) {
                 const outputs = [100, 200, 50, 25];
-                expect(["codex", "claude-sdk"]).toContain(request.providerId);
+                expect(["codex", "claude"]).toContain(request.providerId);
                 return {
                     content: [{ text: `QUOTA_TURN_${callIndex}`, type: "text" }],
                     usage: usage(outputs[callIndex] ?? 1),
@@ -81,7 +81,7 @@ describe("account quota observations", () => {
             },
             modelId: "openai/gpt-5.6-sol",
             providerId: "codex",
-            providerOverrides: ["codex", "claude-sdk"],
+            providerOverrides: ["codex", "claude"],
             rows: 45,
         });
         running.add(gym);

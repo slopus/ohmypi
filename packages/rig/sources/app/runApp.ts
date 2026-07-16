@@ -219,9 +219,8 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
         initialMcpServers: session.session.mcpServers,
         ...(initialNotices.length === 0 ? {} : { initialNotices }),
         initialSubagents: subagents.subagents,
-        initialProjectSecretIds: session.session.projectSecretIds ?? [],
-        initialSessionSecretIds:
-            session.session.sessionSecretIds ?? session.session.secretIds ?? [],
+        initialProjectSecretIds: session.session.projectSecretIds,
+        initialSessionSecretIds: session.session.sessionSecretIds,
         initialUserInputs: session.session.pendingUserInputs,
         initialTasks: session.session.tasks,
         ...(session.session.lastEventId === undefined

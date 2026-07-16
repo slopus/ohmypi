@@ -48,7 +48,7 @@ describe("createProviderQuotaCache", () => {
         const concurrent = cache.get();
         resolvers[0]?.({
             capturedAt: Date.now(),
-            source: "claude-sdk",
+            source: "claude",
             windows: {
                 fiveHour: { status: "unavailable" },
                 weekly: { status: "unavailable" },
@@ -63,7 +63,7 @@ describe("createProviderQuotaCache", () => {
         expect(load).toHaveBeenCalledTimes(2);
         resolvers[1]?.({
             capturedAt: Date.now(),
-            source: "claude-sdk",
+            source: "claude",
             windows: {
                 fiveHour: { status: "unavailable" },
                 weekly: { status: "unavailable" },

@@ -23,7 +23,7 @@ describe("aggregateSessionUsage", () => {
                     requestedModelId: "openai/gpt-5.6",
                 }),
                 inference("event-4", usage(5), {
-                    providerId: "claude-sdk",
+                    providerId: "claude",
                     requestedModelId: "anthropic/claude-sonnet-4-6",
                 }),
             ],
@@ -53,13 +53,13 @@ describe("aggregateSessionUsage", () => {
         });
         expect(result.groups[2]).toMatchObject({
             modelId: "anthropic/claude-sonnet-4-6",
-            providerId: "claude-sdk",
+            providerId: "claude",
             usage: { input: 5 },
         });
         expect(result.currentContext).toEqual({
             approximate: false,
             modelId: "anthropic/claude-sonnet-4-6",
-            providerId: "claude-sdk",
+            providerId: "claude",
             requestedModelId: "anthropic/claude-sonnet-4-6",
             totalTokens: 50,
         });
@@ -119,9 +119,9 @@ describe("aggregateSessionUsage", () => {
                     providerId: "codex",
                     requestedModelId: "openai/old",
                 }),
-                reset("reset-1", "claude-sdk", "anthropic/claude-sonnet-4-6"),
+                reset("reset-1", "claude", "anthropic/claude-sonnet-4-6"),
                 inference("between", usage(20), {
-                    providerId: "claude-sdk",
+                    providerId: "claude",
                     requestedModelId: "anthropic/claude-sonnet-4-6",
                 }),
                 reset("reset-2", "codex", "openai/gpt-5.6"),
@@ -169,39 +169,6 @@ describe("aggregateSessionUsage", () => {
         expect(refreshed.currentContext).toMatchObject({ approximate: false, totalTokens: 40 });
     });
 
-    it("keeps incomplete legacy attribution in an explicit unavailable bucket", () => {
-        const result = aggregateSessionUsage(
-            [
-                inference("attributed", usage(4), {
-                    providerId: "codex",
-                    requestedModelId: "openai/gpt-5.6",
-                }),
-                inference("legacy", usage(8)),
-                inference("partial-attribution", usage(2), { providerId: "codex" }),
-            ],
-            primary,
-        );
-
-        expect(result.groups).toEqual([
-            expect.objectContaining({
-                kind: "attributed",
-                modelId: "openai/gpt-5.6",
-                providerId: "codex",
-                usage: usage(4),
-            }),
-            {
-                kind: "earlier",
-                label: "Earlier usage",
-                modelId: null,
-                modelLabel: "Model unavailable",
-                providerId: null,
-                requestedModelId: null,
-                usage: usage(10),
-            },
-        ]);
-        expect(result.currentContext).toBeUndefined();
-    });
-
     it("tracks exact inference context and approximate compaction context for the active model", () => {
         const initial = [
             created("created", "codex", "openai/gpt-5.6"),
@@ -222,7 +189,7 @@ describe("aggregateSessionUsage", () => {
 
         const changed = [
             ...initial,
-            modelChanged("changed", "claude-sdk", "anthropic/claude-sonnet-4-6"),
+            modelChanged("changed", "claude", "anthropic/claude-sonnet-4-6"),
         ];
         expect(aggregateSessionUsage(changed, primary).currentContext).toBeUndefined();
 
@@ -230,7 +197,7 @@ describe("aggregateSessionUsage", () => {
         expect(aggregateSessionUsage(compacted, primary).currentContext).toEqual({
             approximate: true,
             modelId: "anthropic/claude-sonnet-4-6",
-            providerId: "claude-sdk",
+            providerId: "claude",
             requestedModelId: "anthropic/claude-sonnet-4-6",
             totalTokens: 45,
         });
@@ -238,7 +205,7 @@ describe("aggregateSessionUsage", () => {
         const refreshed = [
             ...compacted,
             inference("claude-inference", usage(9), {
-                providerId: "claude-sdk",
+                providerId: "claude",
                 requestedModelId: "anthropic/claude-sonnet-4-6",
                 responseModel: "claude-sonnet-4-6-20260301",
             }),
@@ -246,7 +213,7 @@ describe("aggregateSessionUsage", () => {
         expect(aggregateSessionUsage(refreshed, primary).currentContext).toEqual({
             approximate: false,
             modelId: "claude-sonnet-4-6-20260301",
-            providerId: "claude-sdk",
+            providerId: "claude",
             requestedModelId: "anthropic/claude-sonnet-4-6",
             responseModel: "claude-sonnet-4-6-20260301",
             totalTokens: 90,

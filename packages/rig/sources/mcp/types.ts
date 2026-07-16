@@ -23,7 +23,7 @@ export interface McpHttpServerConfig extends McpServerConfigBase {
     oauthClientIdEnvVar?: string;
     oauthClientSecretEnvVar?: string;
     oauthScopes?: readonly string[];
-    transport: "http" | "sse";
+    transport: "http";
     url: string;
 }
 

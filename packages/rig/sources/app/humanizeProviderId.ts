@@ -5,7 +5,7 @@ export function humanizeProviderId(providerId: string): string {
     if (providerId === "codex") {
         return "Codex";
     }
-    if (providerId === "claude-sdk") {
+    if (providerId === "claude") {
         return "Claude Code";
     }
     if (providerId === "grok") {

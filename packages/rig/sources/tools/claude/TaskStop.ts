@@ -8,10 +8,7 @@ export const claudeTaskStopTool = defineTool({
     label: "TaskStop",
     description: "Stop a running background shell task or workflow by its identifier.",
     arguments: Type.Object({
-        task_id: Type.Optional(Type.String({ description: "The background task identifier." })),
-        shell_id: Type.Optional(
-            Type.String({ description: "Legacy alias for the background task identifier." }),
-        ),
+        task_id: Type.String({ description: "The background task identifier." }),
     }),
     returnType: Type.Union([
         Type.Object({
@@ -28,9 +25,7 @@ export const claudeTaskStopTool = defineTool({
         }),
     ]),
     shouldReviewInAutoMode: () => false,
-    execute: async ({ shell_id, task_id }, context) => {
-        const id = task_id ?? shell_id;
-        if (id === undefined) throw new Error("A background task identifier is required.");
+    execute: async ({ task_id: id }, context) => {
         if (id.startsWith("workflow:")) {
             const run = context.workflows?.stop(id.slice("workflow:".length));
             if (run === undefined) throw new Error("The workflow run was not found.");

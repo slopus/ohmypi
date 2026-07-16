@@ -123,12 +123,11 @@ Grok Build uses xAI's Responses API at the same first-party proxy as the
 open-source CLI. Rig reads Grok's scoped auth store on every request, prefers an
 active interactive session over `XAI_API_KEY`, proactively refreshes expiring
 OIDC credentials, persists rotated refresh tokens, and sends Grok's native
-request identity headers. At daemon startup it fetches the authenticated
-account's model catalog, falling back to Grok's local model cache and the
-built-in `grok-build` route when discovery is unavailable. Selectable reasoning
-efforts are exposed only when the catalog advertises them; `grok-build` keeps
-its always-on reasoning behavior, while models without effort support receive
-no effort override. A failed inference request is not replayed.
+request identity headers. Its curated model catalog is built into Rig, just like
+the catalogs for every other provider, so daemon startup never waits on model
+discovery. `grok-build` keeps its always-on reasoning behavior, while models
+without effort support receive no effort override. A failed inference request
+is not replayed.
 
 That separation is what makes Rig flexible: transports can stay provider-native
 while the surrounding harness remains consistent and independently evolvable.
@@ -151,7 +150,7 @@ Codex, or Claude Code. This table focuses on the local coding-agent experience.
 | Tool behavior          | Switches between model-native Codex, Claude, and Grok toolsets        | Small generic core, replaceable with extensions              | Codex-native                              | Claude Code-native                                      |
 | Subagents              | Built in, with provider-aligned controls and saved transcripts        | Intentionally extension-driven                               | Built-in multi-agent tools                | Built-in subagents and agent teams                      |
 | Permissions            | Unified Auto, Workspace write, Read only, and Full access modes       | Intentionally extension- or container-driven                 | Native approvals and sandboxing           | Native permission modes                                 |
-| MCP                    | Built-in stdio, streamable HTTP, and legacy SSE support               | Available through extensions                                 | Built in                                  | Built in                                                |
+| MCP                    | Built-in stdio and streamable HTTP                                    | Available through extensions                                 | Built in                                  | Built in                                                |
 | Long-running work      | Managed shells, workflows, persistent goals, and background subagents | Intentionally uses external tools such as tmux or extensions | Background commands and multi-agent work  | Background commands, tasks, and agents                  |
 | Headless and embedding | Text, JSON, streaming JSON, daemon protocol, and durable events       | Print, JSON, RPC, and a TypeScript SDK                       | Non-interactive mode, SDK, and app server | Print mode and Agent SDK                                |
 | Best fit               | One local harness across model families and client apps               | Building a deeply customized agent                           | The first-party OpenAI experience         | The first-party Anthropic experience                    |
@@ -351,7 +350,7 @@ Add any number of named instances when you need separate accounts. For custom
 instances, the section suffix is the provider ID shown in the model picker and
 accepted by `defaults.provider` and `RIG_PROVIDER`. Custom instances must set
 `type`; all parameters stay flat in the same section. The built-in Claude Code
-instance retains `claude-sdk` as its provider ID for compatibility:
+provider ID is `claude`:
 
 ```toml
 [providers.work_codex]
@@ -450,7 +449,7 @@ POSIX file utilities.
 <details>
 <summary><strong>MCP servers</strong></summary>
 
-Rig supports local stdio servers, streamable HTTP, and legacy SSE:
+Rig supports local stdio servers and streamable HTTP:
 
 ```toml
 [mcp_servers.docs]
@@ -461,16 +460,11 @@ tool_timeout_sec = 30
 [mcp_servers.issues]
 url = "https://example.com/mcp"
 bearer_token_env_var = "ISSUES_MCP_TOKEN"
-
-[mcp_servers.legacy]
-url = "https://example.com/sse"
-transport = "sse"
 ```
 
 MCP tools, resources, resource templates, prompts, pagination, form elicitation,
 bearer tokens, and OAuth client credentials are supported. Live tool discovery
-lets a session use tools added after startup. OAuth is available for streamable
-HTTP, but not legacy SSE.
+lets a session use tools added after startup.
 
 Only configure servers you trust. Stdio servers run as local processes, receive
 the daemon environment, and are not restricted by the session filesystem
@@ -491,9 +485,9 @@ rig
 ```
 
 By default Rig reads `$GROK_HOME/auth.json`, or `~/.grok/auth.json` when
-`GROK_HOME` is unset. It follows Grok's scoped auth format, skips deprecated
-web-login tokens, refreshes OIDC sessions five minutes before expiry, and
-atomically writes refreshed access and refresh tokens back to the same file.
+`GROK_HOME` is unset. It reads Grok's current OIDC scope, refreshes sessions
+five minutes before expiry, and atomically writes refreshed access and refresh
+tokens back to the same file.
 An explicit API key or `XAI_API_KEY` can also authenticate the provider, subject
 to xAI's model availability for that credential.
 

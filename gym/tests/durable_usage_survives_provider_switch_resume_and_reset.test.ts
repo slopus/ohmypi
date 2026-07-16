@@ -48,7 +48,7 @@ describe("durable session usage", () => {
                     },
                 };
             },
-            providerOverrides: ["claude-sdk"],
+            providerOverrides: ["claude"],
             rows: 27,
         });
         running.add(gym);

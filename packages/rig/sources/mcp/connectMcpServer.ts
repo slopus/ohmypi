@@ -4,7 +4,6 @@ import { pathToFileURL } from "node:url";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { ClientCredentialsProvider } from "@modelcontextprotocol/sdk/client/auth-extensions.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { ElicitRequestSchema, ListRootsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
@@ -80,15 +79,6 @@ function createTransport(
         headers.set("Authorization", `Bearer ${token}`);
     }
     const oauthProvider = createOAuthProvider(config, env);
-    if (config.transport === "sse") {
-        if (oauthProvider !== undefined) {
-            throw new Error("MCP OAuth is supported only with streamable HTTP servers.");
-        }
-        return new SSEClientTransport(new URL(config.url), {
-            eventSourceInit: { fetch: (url, init) => fetch(url, { ...init, headers }) },
-            requestInit: { headers },
-        }) as unknown as Transport;
-    }
     return new StreamableHTTPClientTransport(new URL(config.url), {
         ...(oauthProvider === undefined ? {} : { authProvider: oauthProvider }),
         requestInit: { headers },

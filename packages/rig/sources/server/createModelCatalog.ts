@@ -1,5 +1,4 @@
 import { createNodeAgentContext } from "../agent/index.js";
-import { configuredProviderId } from "../config/configuredProviderId.js";
 import { DEFAULT_RIG_CONFIG } from "../config/defaultConfig.js";
 import type { ConfigProviders } from "../config/types.js";
 import { NativeProxessManager } from "../processes/index.js";
@@ -17,14 +16,13 @@ import {
 } from "../providers/models.js";
 import { readConfiguredBedrockBearerToken } from "../providers/readConfiguredBedrockBearerToken.js";
 import { readGymContextWindow } from "../providers/readGymContextWindow.js";
-import type { Model, Provider } from "../providers/types.js";
+import type { Provider } from "../providers/types.js";
 import { claudeCodeTools } from "../tools/claude/index.js";
 import { uniqueModelsById } from "./uniqueModelsById.js";
 
 export interface CreateModelCatalogOptions {
     cwd?: string;
     env?: NodeJS.ProcessEnv;
-    grokModelsByProviderId?: Readonly<Record<string, readonly Model[]>>;
     providers?: ConfigProviders;
 }
 
@@ -53,7 +51,7 @@ export function createModelCatalog(options: CreateModelCatalogOptions = {}): Mod
     }
     for (const [configuredId, config] of Object.entries(providerSettings)) {
         if (!config.enabled) continue;
-        const id = configuredProviderId(configuredId, config);
+        const id = configuredId;
         if (providers.some((provider) => provider.id === id)) {
             throw new Error(`Inference provider '${id}' is configured more than once.`);
         }
@@ -84,9 +82,6 @@ export function createModelCatalog(options: CreateModelCatalogOptions = {}): Mod
             provider = createGrokProvider({
                 env,
                 id,
-                ...(options.grokModelsByProviderId?.[id] === undefined
-                    ? {}
-                    : { models: options.grokModelsByProviderId[id] }),
                 ...(config.authFile === undefined ? {} : { authFile: config.authFile }),
                 ...(baseUrl === undefined ? {} : { baseUrl }),
             });

@@ -205,110 +205,6 @@ describe("RemoteAgent", () => {
         expect(agent.snapshot().messages).toEqual([message]);
     });
 
-    it("keeps a repaired snapshot message once when replay applies steering after its terminal run", () => {
-        const model = defineModel({
-            id: "openai/test",
-            name: "Test model",
-            thinkingLevels: ["off"],
-            defaultThinkingLevel: "off",
-        });
-        const message = {
-            blocks: [{ text: "Legacy repaired direction", type: "text" as const }],
-            id: "legacy-steer-1",
-            role: "user" as const,
-        };
-        const laterMessage = {
-            blocks: [{ text: "Later stored request", type: "text" as const }],
-            id: "later-message-1",
-            role: "user" as const,
-        };
-        const session = protocolSession(model);
-        const agent = new RemoteAgent({
-            client: {} as ProtocolHttpClient,
-            context: createJustBashToolHarness().context,
-            session: {
-                ...session,
-                snapshot: { ...session.snapshot, messages: [message, laterMessage] },
-                status: "aborted",
-            },
-        });
-        const events: SessionEvent[] = [
-            {
-                createdAt: 1,
-                data: { runId: "run-1" },
-                id: "event-started",
-                sessionId: session.id,
-                type: "run_started",
-            },
-            {
-                createdAt: 2,
-                data: {
-                    delivery: "steer",
-                    displayText: "Legacy repaired direction",
-                    message,
-                    runId: "run-1",
-                },
-                id: "event-submitted",
-                sessionId: session.id,
-                type: "message_submitted",
-            },
-            {
-                createdAt: 3,
-                data: {
-                    agentRunId: "agent-run-1",
-                    modelLocked: true,
-                    runId: "run-1",
-                    stopReason: "aborted",
-                },
-                id: "event-finished",
-                sessionId: session.id,
-                type: "run_finished",
-            },
-            {
-                createdAt: 4,
-                data: {
-                    delivery: "run",
-                    displayText: "Later stored request",
-                    message: laterMessage,
-                    runId: "run-2",
-                },
-                id: "event-later-submitted",
-                sessionId: session.id,
-                type: "message_submitted",
-            },
-            {
-                createdAt: 5,
-                data: { runId: "run-2" },
-                id: "event-later-started",
-                sessionId: session.id,
-                type: "run_started",
-            },
-            {
-                createdAt: 6,
-                data: {
-                    agentRunId: "agent-run-2",
-                    modelLocked: true,
-                    runId: "run-2",
-                    stopReason: "stop",
-                },
-                id: "event-later-finished",
-                sessionId: session.id,
-                type: "run_finished",
-            },
-            {
-                createdAt: 7,
-                data: { messageIds: [message.id], runId: "run-1" },
-                id: "event-repaired",
-                sessionId: session.id,
-                type: "steering_applied",
-            },
-        ];
-
-        for (const event of events) agent.applySessionEvent(event);
-
-        expect(agent.snapshot().messages).toEqual([message, laterMessage]);
-    });
-
     it("keeps goal controls synchronized with responses and events", async () => {
         const model = defineModel({
             id: "openai/test",
@@ -828,24 +724,24 @@ describe("RemoteAgent", () => {
                         providerId: "codex",
                         serviceTiers: ["fast"],
                     },
-                    { models: [claudeModel], providerId: "claude-sdk" },
+                    { models: [claudeModel], providerId: "claude" },
                 ],
             },
             session,
         });
 
-        agent.setModel(claudeModel.id, "off", "claude-sdk");
+        agent.setModel(claudeModel.id, "off", "claude");
 
         expect(agent.snapshot()).toMatchObject({
             modelId: claudeModel.id,
-            providerId: "claude-sdk",
+            providerId: "claude",
         });
         expect(agent.snapshot().serviceTier).toBeUndefined();
         await vi.waitFor(() =>
             expect(changeModel).toHaveBeenCalledWith(session.id, {
                 effort: "off",
                 modelId: claudeModel.id,
-                providerId: "claude-sdk",
+                providerId: "claude",
             }),
         );
     });
@@ -883,15 +779,15 @@ describe("RemoteAgent", () => {
                         providerId: "codex",
                         serviceTiers: ["fast"],
                     },
-                    { models: [claudeModel], providerId: "claude-sdk" },
+                    { models: [claudeModel], providerId: "claude" },
                 ],
             },
             session,
         });
 
-        const change = agent.setModel(claudeModel.id, "off", "claude-sdk");
+        const change = agent.setModel(claudeModel.id, "off", "claude");
         expect(change).toBeDefined();
-        expect(agent.provider.id).toBe("claude-sdk");
+        expect(agent.provider.id).toBe("claude");
         expect(agent.snapshot().serviceTier).toBeUndefined();
 
         await expect(change).rejects.toThrow("model change failed");
@@ -913,6 +809,9 @@ function protocolSession(model: ReturnType<typeof defineModel>): ProtocolSession
         permissionMode: "workspace_write",
         mcpServers: [],
         pendingUserInputs: [],
+        projectSecretIds: [],
+        secretIds: [],
+        sessionSecretIds: [],
         tasks: [],
         providerId: "codex",
         snapshot: {

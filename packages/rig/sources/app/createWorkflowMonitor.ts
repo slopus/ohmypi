@@ -293,8 +293,7 @@ class WorkflowMonitor implements Component {
 
     #renderCode(workflow: WorkflowRun, width: number): string[] {
         const contentWidth = Math.max(1, width - 4);
-        const source = workflow.code ?? "Workflow code is unavailable for this older run.";
-        const content = source.split("\n").flatMap((line, index) => {
+        const content = workflow.code.split("\n").flatMap((line, index) => {
             const prefix = `${String(index + 1).padStart(4)}  `;
             const wrapped = wrapTextWithAnsi(
                 `${this.#theme.secondary}${prefix}${RESET}${sanitizeTerminalText(line)}`,

@@ -388,7 +388,7 @@ function readMcpServer(name: string, table: TomlTable): McpServerConfig {
     const command = readString(table, "command");
     const url = readString(table, "url");
     const transport = readString(table, "transport");
-    if (transport !== undefined && transport !== "http" && transport !== "sse") {
+    if (transport !== undefined && transport !== "http") {
         throw new Error(`MCP server "${name}" uses unsupported transport "${transport}".`);
     }
     if ((command === undefined) === (url === undefined)) {
@@ -419,7 +419,7 @@ function readMcpServer(name: string, table: TomlTable): McpServerConfig {
         ...readOptionalString(table, "oauth_client_id_env_var", "oauthClientIdEnvVar"),
         ...readOptionalString(table, "oauth_client_secret_env_var", "oauthClientSecretEnvVar"),
         ...readOptionalStringArray(table, "oauth_scopes", "oauthScopes"),
-        transport: transport === "sse" ? "sse" : "http",
+        transport: "http",
         url: url ?? "",
     };
 }

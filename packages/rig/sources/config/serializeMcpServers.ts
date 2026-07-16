@@ -16,7 +16,6 @@ export function serializeMcpServers(
                   }
                 : {
                       url: server.url,
-                      ...(server.transport === "sse" ? { transport: "sse" } : {}),
                       ...(server.headers !== undefined ? { http_headers: server.headers } : {}),
                       ...(server.bearerTokenEnvVar !== undefined
                           ? { bearer_token_env_var: server.bearerTokenEnvVar }

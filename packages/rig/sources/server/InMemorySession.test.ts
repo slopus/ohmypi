@@ -298,7 +298,7 @@ describe("InMemorySession", () => {
                     models: [firstCodexModel, secondCodexModel],
                     serviceTiers: ["fast"],
                 },
-                { providerId: "claude-sdk", models: [claudeModel] },
+                { providerId: "claude", models: [claudeModel] },
             ],
         };
         const store = new InMemorySessionStore({ modelCatalog: catalog });
@@ -326,7 +326,7 @@ describe("InMemorySession", () => {
             type: "service_tier_changed",
         });
 
-        session.changeModel({ modelId: claudeModel.id, providerId: "claude-sdk" });
+        session.changeModel({ modelId: claudeModel.id, providerId: "claude" });
         expect(() => session.changeServiceTier({ serviceTier: "fast" })).toThrow(
             "does not support fast inference",
         );
@@ -334,7 +334,7 @@ describe("InMemorySession", () => {
         const unsupportedDefault = store.create({
             cwd: "/tmp/rig-session-test",
             modelId: claudeModel.id,
-            providerId: "claude-sdk",
+            providerId: "claude",
             serviceTier: "fast",
         });
         expect(unsupportedDefault.snapshot().serviceTier).toBeUndefined();

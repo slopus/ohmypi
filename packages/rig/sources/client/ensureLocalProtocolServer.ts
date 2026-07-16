@@ -27,7 +27,7 @@ export interface EnsureLocalProtocolServerOptions {
 
 export interface DaemonRestartRequest {
     currentIdentity: DaemonIdentity;
-    runningIdentity?: DaemonIdentity;
+    runningIdentity: DaemonIdentity;
 }
 
 export async function ensureLocalProtocolServer(
@@ -52,28 +52,25 @@ export async function ensureLocalProtocolServer(
                 return { client, paths, token: existingToken };
             }
             if (health.ready) {
-                try {
-                    const updated = await client.updateDaemonConfig({
-                        settings: {
-                            durableGlobalEventQueue: daemonSettings.durableGlobalEventQueue,
-                        },
-                    });
-                    if (
-                        updated.config.settings.durableGlobalEventQueue ===
-                        daemonSettings.durableGlobalEventQueue
-                    ) {
-                        return { client, paths, token: existingToken };
-                    }
-                } catch {
-                    // Older daemons are restarted below when they cannot apply the setting live.
+                const updated = await client.updateDaemonConfig({
+                    settings: {
+                        durableGlobalEventQueue: daemonSettings.durableGlobalEventQueue,
+                    },
+                });
+                if (
+                    updated.config.settings.durableGlobalEventQueue !==
+                    daemonSettings.durableGlobalEventQueue
+                ) {
+                    throw new Error("The local daemon did not apply the requested configuration.");
                 }
+                return { client, paths, token: existingToken };
             }
         }
         if (health !== undefined) {
             if (!identityMatches) {
                 const request: DaemonRestartRequest = {
                     currentIdentity,
-                    ...(health.identity === undefined ? {} : { runningIdentity: health.identity }),
+                    runningIdentity: health.identity,
                 };
                 const shouldRestart = (await options.confirmRestart?.(request)) ?? false;
                 if (!shouldRestart) {
@@ -115,12 +112,8 @@ async function readHealth(
 }
 
 async function stopIncompatibleDaemon(client: ProtocolHttpClient): Promise<void> {
-    try {
-        await client.shutdown();
-        await delay(100);
-    } catch {
-        // The follow-up stale socket cleanup handles older servers that cannot shut down cleanly.
-    }
+    await client.shutdown();
+    await delay(100);
 }
 
 async function spawnLocalServer(paths: LocalServerPaths): Promise<void> {

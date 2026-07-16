@@ -8,6 +8,7 @@ export function applyWorkflowRunUpdate(
     if (index < 0) {
         if (
             update.agentCount === undefined ||
+            update.code === undefined ||
             update.description === undefined ||
             update.name === undefined ||
             update.startedAt === undefined ||
@@ -18,7 +19,7 @@ export function applyWorkflowRunUpdate(
         }
         const created: WorkflowRun = {
             agentCount: update.agentCount,
-            ...(update.code === undefined ? {} : { code: update.code }),
+            code: update.code,
             description: update.description,
             ...(update.error === undefined ? {} : { error: update.error }),
             ...(update.finishedAt === undefined ? {} : { finishedAt: update.finishedAt }),
