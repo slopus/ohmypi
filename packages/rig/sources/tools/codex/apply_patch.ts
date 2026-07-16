@@ -4,6 +4,7 @@ import { defineTool } from "../../agent/types.js";
 import { shouldReviewPatchInAutoMode } from "../../permissions/shouldReviewPatchInAutoMode.js";
 import { applyPatchText } from "../utils/index.js";
 import { resolveFileSystemPath } from "../../agent/context/resolveFileSystemPath.js";
+import { describeApplyPatchAutoPermissionAction } from "./describeApplyPatchAutoPermissionAction.js";
 
 const fileDiffLineSchema = Type.Object({
     kind: Type.Union([Type.Literal("add"), Type.Literal("context"), Type.Literal("delete")]),
@@ -46,6 +47,7 @@ export const codexApplyPatchTool = defineTool({
         ),
     }),
     returnType: applyPatchOutputSchema,
+    describeAutoPermissionAction: describeApplyPatchAutoPermissionAction,
     shouldReviewInAutoMode: shouldReviewPatchInAutoMode,
     shouldRunInFullAccessInAutoMode: shouldReviewPatchInAutoMode,
     execute: async ({ patch, workdir }, context) => {

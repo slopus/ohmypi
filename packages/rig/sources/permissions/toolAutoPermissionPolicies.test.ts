@@ -166,6 +166,34 @@ describe("tool-owned Auto permission policies", () => {
             ),
         ).resolves.toBe(true);
     });
+
+    it("lets apply_patch disclose every affected path and its full-access boundary", async () => {
+        const context = await makeContext(temporaryDirectories);
+        const outside = join(context.fs.cwd, "..", "outside.txt");
+        const renamed = join(context.fs.cwd, "..", "renamed.txt");
+        const describe = codexApplyPatchTool.describeAutoPermissionAction;
+
+        expect(describe).toBeDefined();
+        if (describe === undefined) return;
+
+        const action = describe(
+            {
+                patch: [
+                    "*** Begin Patch",
+                    "*** Update File: ../outside.txt",
+                    "*** Move to: ../renamed.txt",
+                    "*** End Patch",
+                ].join("\n"),
+            },
+            context,
+        );
+
+        expect(action).toContain(`Affected paths: "${outside}", "${renamed}"`);
+        expect(action).toContain(`Working directory: "${context.fs.cwd}"`);
+        expect(action).toContain(
+            "Access: unrestricted filesystem access outside the workspace sandbox",
+        );
+    });
 });
 
 async function makeContext(temporaryDirectories: string[]): Promise<AgentContext> {
