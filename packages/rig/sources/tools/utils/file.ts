@@ -338,6 +338,7 @@ function* candidateWindows(
 }
 
 function findAllOccurrences(haystack: string, needle: string): number[] {
+    if (needle.length === 0) return [];
     const positions: number[] = [];
     let index = haystack.indexOf(needle);
     while (index !== -1) {
@@ -449,6 +450,10 @@ export async function editTextFileBatch(
 ): Promise<BatchEditFileResult> {
     if (options.edits.length === 0) {
         throw new Error("At least one edit is required.");
+    }
+    const emptyEditIndex = options.edits.findIndex((edit) => edit.oldText.length === 0);
+    if (emptyEditIndex !== -1) {
+        throw new Error(`oldText for edit ${emptyEditIndex + 1} must not be empty.`);
     }
 
     const filePath = resolveFileSystemPath(

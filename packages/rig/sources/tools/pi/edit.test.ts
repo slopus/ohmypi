@@ -22,4 +22,19 @@ describe("pi edit tool", () => {
         expect(result).toMatchObject({ replacements: 2, fuzzy: true });
         expect(await harness.readFile("/workspace/sample.txt")).toBe("gamma\nbeta\nTHREE\n");
     });
+
+    it("rejects an empty oldText without changing the file", async () => {
+        const harness = createJustBashToolHarness({
+            files: { "/workspace/sample.txt": "unchanged\n" },
+        });
+        await harness.runTool(piReadTool, { path: "/workspace/sample.txt" });
+
+        await expect(
+            harness.runTool(piEditTool, {
+                path: "/workspace/sample.txt",
+                edits: [{ oldText: "", newText: "replacement" }],
+            }),
+        ).rejects.toThrow("oldText for edit 1 must not be empty.");
+        expect(await harness.readFile("/workspace/sample.txt")).toBe("unchanged\n");
+    });
 });
