@@ -2,7 +2,7 @@ import { Type } from "@sinclair/typebox";
 import { describe, expect, it, vi } from "vitest";
 
 import { runAgentLoop } from "./loop.js";
-import { defineTool } from "./types.js";
+import { defineTool, type UserMessage } from "./types.js";
 import { createJustBashToolHarness } from "../tools/testing/createJustBashToolHarness.js";
 import {
     defineModel,
@@ -85,6 +85,12 @@ describe("duplicate tool call identifiers", () => {
         const events: string[] = [];
         let nextId = 0;
         const harness = createJustBashToolHarness();
+        const steeringMessage: UserMessage = {
+            role: "user",
+            id: "steering-1",
+            blocks: [{ type: "text", text: "Preserve this direction after rejecting the batch." }],
+        };
+        let steeringTaken = false;
 
         const result = await runAgentLoop({
             provider,
@@ -102,14 +108,20 @@ describe("duplicate tool call identifiers", () => {
             onEvent(event) {
                 events.push(event.type);
             },
+            takeSteering() {
+                if (steeringTaken) return [];
+                steeringTaken = true;
+                return [steeringMessage];
+            },
         });
 
         expect(execute).not.toHaveBeenCalled();
         expect(contexts).toHaveLength(1);
         expect(result.stopReason).toBe("error");
         expect(events).toContain("tool_batch_rejected");
+        expect(events).toContain("steering_applied");
         expect(events).not.toContain("tool_execution_start");
-        expect(result.messages).toHaveLength(3);
+        expect(result.messages).toHaveLength(4);
         expect(result.messages[1]).toMatchObject({
             role: "agent",
             blocks: [
@@ -142,6 +154,7 @@ describe("duplicate tool call identifiers", () => {
                 },
             ],
         });
+        expect(result.messages[3]).toEqual(steeringMessage);
         const serializedTranscript = JSON.stringify(result.messages);
         expect(serializedTranscript).toContain(
             "Rig rejected this entire batch of 2 requested actions",

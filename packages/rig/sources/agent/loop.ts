@@ -378,6 +378,7 @@ export async function runAgentLoop(options: RunAgentLoopOptions): Promise<AgentL
             );
             await options.onMessage?.(ambiguousToolCallRejection.assistantMessage);
             await options.onMessage?.(ambiguousToolCallRejection.resultMessage);
+            await appendSteering(options, transcript, contextTranscript, providerMessages, now);
             return {
                 messages: transcript,
                 contextMessages: contextTranscript,
@@ -405,6 +406,7 @@ export async function runAgentLoop(options: RunAgentLoopOptions): Promise<AgentL
         }
 
         if (assistantMessage.stopReason === "error") {
+            await appendSteering(options, transcript, contextTranscript, providerMessages, now);
             return {
                 messages: transcript,
                 contextMessages: contextTranscript,
@@ -539,7 +541,7 @@ export async function runAgentLoop(options: RunAgentLoopOptions): Promise<AgentL
         );
 
         if (options.signal?.aborted) {
-            return appendInterruptedToolResults({
+            const interrupted = await appendInterruptedToolResults({
                 toolCalls,
                 transcript,
                 contextTranscript,
@@ -548,6 +550,8 @@ export async function runAgentLoop(options: RunAgentLoopOptions): Promise<AgentL
                 now,
                 onMessage: options.onMessage,
             });
+            await appendSteering(options, transcript, contextTranscript, providerMessages, now);
+            return interrupted;
         }
 
         for (const resultBlock of toolResultBlocks) {

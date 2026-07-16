@@ -991,10 +991,11 @@ describe("Agent", () => {
 
         const abortedRun = agent.send("start tool", { signal: controller.signal });
         await started.promise;
+        await agent.steer("pending tool direction");
         controller.abort();
         await abortedRun;
 
-        expect(agent.messages.at(-1)).toMatchObject({
+        expect(agent.messages.at(-2)).toMatchObject({
             role: "agent",
             blocks: [
                 {
@@ -1005,6 +1006,10 @@ describe("Agent", () => {
                     isError: true,
                 },
             ],
+        });
+        expect(agent.messages.at(-1)).toMatchObject({
+            role: "user",
+            blocks: [{ type: "text", text: "pending tool direction" }],
         });
 
         await agent.send("next message");
@@ -1028,6 +1033,7 @@ describe("Agent", () => {
                 content: [{ type: "text", text: "Interrupted by user." }],
                 isError: true,
             },
+            { role: "user", content: [{ type: "text", text: "pending tool direction" }] },
             { role: "user" },
         ]);
     });
@@ -1118,6 +1124,68 @@ describe("Agent", () => {
         );
         expect(continuedUserText?.filter((text) => text === "pending direction")).toHaveLength(1);
         expect(continuedUserText?.filter((text) => text === "continue")).toHaveLength(1);
+    });
+
+    it("commits pending steering when inference ends with an error", async () => {
+        const model = defineModel({
+            id: "openai/gpt-test",
+            name: "GPT Test",
+            thinkingLevels: ["off"],
+            defaultThinkingLevel: "off",
+        });
+        const started = deferred<void>();
+        const release = deferred<void>();
+        const errorMessage: AssistantMessage = {
+            role: "assistant",
+            content: [],
+            api: "test",
+            provider: "codex",
+            model: model.id,
+            usage: zeroUsage(),
+            stopReason: "error",
+            errorMessage: "Provider rejected the request.",
+            timestamp: 1,
+        };
+        const provider = defineProvider({
+            id: "codex",
+            models: [model],
+            stream() {
+                return {
+                    async *[Symbol.asyncIterator]() {
+                        yield { type: "start" as const, partial: errorMessage };
+                        started.resolve();
+                        await release.promise;
+                        yield {
+                            type: "error" as const,
+                            reason: "error" as const,
+                            error: errorMessage,
+                        };
+                    },
+                    async result() {
+                        await release.promise;
+                        return errorMessage;
+                    },
+                };
+            },
+        });
+        const harness = createJustBashToolHarness();
+        const agent = new Agent({
+            provider,
+            modelId: model.id,
+            context: harness.context,
+            printToConsole: false,
+        });
+
+        const run = agent.send("initial request");
+        await started.promise;
+        await agent.steer("pending error direction");
+        release.resolve();
+
+        await expect(run).resolves.toMatchObject({ stopReason: "error" });
+        expect(agent.messages.at(-1)).toMatchObject({
+            role: "user",
+            blocks: [{ type: "text", text: "pending error direction" }],
+        });
     });
 
     it("does not allow reset to start an overlapping in-flight run", async () => {
