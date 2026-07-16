@@ -36,10 +36,8 @@ import type {
     SessionEvent,
     SetGoalRequest,
     ShutdownServerResponse,
-    SteerMessageRequest,
     SteerMessageResponse,
     StopWorkflowResponse,
-    SubmitMessageRequest,
     SubmitMessageResponse,
     TrimGlobalEventsRequest,
     TrimGlobalEventsResponse,
@@ -54,6 +52,7 @@ import { createModelCatalog } from "./createModelCatalog.js";
 import { FileSearchService, type FileSearchServiceContract } from "./FileSearchService.js";
 import type { SessionEventLog } from "./SessionEventLog.js";
 import { isTransientInferenceSessionEvent } from "./isTransientInferenceSessionEvent.js";
+import { isSubmitMessageRequest } from "./isSubmitMessageRequest.js";
 import type { GlobalEventQueue } from "./GlobalEventQueue.js";
 import type { SessionStore } from "./SessionStore.js";
 import { isGlobalEventRoute } from "./isGlobalEventRoute.js";
@@ -527,7 +526,11 @@ async function handleRequest(
     }
 
     if (request.method === "POST" && route.name === "messages") {
-        const body = await readJson<SubmitMessageRequest>(request);
+        const body = await readJson<unknown>(request);
+        if (!isSubmitMessageRequest(body)) {
+            sendJson(response, 400, { error: "Message text must be text." });
+            return;
+        }
         sendJson<SubmitMessageResponse>(response, 202, session.submit(body));
         return;
     }
@@ -539,7 +542,11 @@ async function handleRequest(
     }
 
     if (request.method === "POST" && route.name === "steer") {
-        const body = await readJson<SteerMessageRequest>(request);
+        const body = await readJson<unknown>(request);
+        if (!isSubmitMessageRequest(body)) {
+            sendJson(response, 400, { error: "Message text must be text." });
+            return;
+        }
         try {
             sendJson<SteerMessageResponse>(response, 202, session.steer(body));
         } catch (error) {

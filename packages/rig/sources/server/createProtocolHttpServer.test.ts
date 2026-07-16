@@ -846,6 +846,32 @@ describe("createProtocolHttpServer", () => {
         }
     });
 
+    it("rejects message and steering requests without text", async () => {
+        const { client, close, socketPath, store } = await startServer();
+        try {
+            const created = await client.createSession({ cwd: "/tmp/rig-protocol-test" });
+            const session = store.get(created.session.id);
+            if (session === undefined) throw new Error("Expected the created session.");
+            const submit = vi.spyOn(session, "submit");
+            const steer = vi.spyOn(session, "steer");
+
+            for (const route of ["messages", "steer"]) {
+                const response = await requestRawJson(
+                    socketPath,
+                    `/sessions/${created.session.id}/${route}`,
+                    { body: "{}", method: "POST" },
+                );
+
+                expect(response.statusCode).toBe(400);
+                expect(response.body).toContain("Message text must be text.");
+            }
+            expect(submit).not.toHaveBeenCalled();
+            expect(steer).not.toHaveBeenCalled();
+        } finally {
+            await close();
+        }
+    });
+
     it("reports abort failures without dropping the protocol connection", async () => {
         const { client, close, store } = await startServer();
         try {
