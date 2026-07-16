@@ -141,8 +141,11 @@ export class ManagedProcess {
             this.#resolveWait = resolve;
         });
 
-        const shell = options.shell ?? defaultShell();
-        this.#child = spawn(shell, shellArgs(shell, options.command), {
+        const executable =
+            options.args === undefined ? (options.shell ?? defaultShell()) : options.command;
+        const args =
+            options.args === undefined ? shellArgs(executable, options.command) : [...options.args];
+        this.#child = spawn(executable, args, {
             cwd: options.cwd,
             detached: process.platform !== "win32",
             env: options.env ?? process.env,

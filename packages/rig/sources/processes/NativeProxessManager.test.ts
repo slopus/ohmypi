@@ -38,6 +38,22 @@ describe("NativeProxessManager", () => {
         expect(manager.activeCount()).toBe(0);
     });
 
+    it("passes direct process arguments without host-shell parsing", async () => {
+        const cwd = await makeTempDir();
+        const manager = new NativeProxessManager();
+        const value = `quoted & piped | redirected > untouched`;
+
+        const result = await manager.run({
+            args: ["-e", "process.stdout.write(process.argv[1])", value],
+            command: process.execPath,
+            cwd,
+            timeoutMs: 2_000,
+        });
+
+        expect(result.stdout).toBe(value);
+        expect(result.exitCode).toBe(0);
+    });
+
     it("keeps started processes tracked and writes stdin to them", async () => {
         const cwd = await makeTempDir();
         const manager = new NativeProxessManager();

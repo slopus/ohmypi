@@ -1,6 +1,7 @@
 export type ManagedProcessStatus = "running" | "exited" | "killed";
 
 export interface ProcessStartOptions {
+    args?: readonly string[];
     command: string;
     cwd: string;
     shell?: string;

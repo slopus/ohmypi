@@ -123,28 +123,33 @@ export function createNodeBashContext(options: CreateNodeBashContextOptions): Ba
         async run(runOptions) {
             assertCanUseCustomShell(options.permissions.mode, runOptions.shell);
             const cwd = runCwd(runOptions.cwd);
-            const command = await createSandboxedCommand({
+            const sandboxedCommand = await createSandboxedCommand({
                 command: runOptions.command,
                 cwd: options.cwd,
                 mode: options.permissions.mode,
             });
             const processRunOptions: Parameters<NativeProxessManager["run"]>[0] = {
-                command,
+                command: sandboxedCommand.command,
                 cwd,
                 env: createCommandEnvironment(
                     createToolEnvironment(options.permissions.mode),
                     options.secrets,
                     runOptions.secrets,
                 ),
-                ...(options.permissions.mode === "full_access" ||
-                globalThis.process.platform === "win32"
-                    ? {}
-                    : { shell: "/bin/sh" }),
                 timeoutMs: runOptions.timeoutMs ?? 120_000,
                 maxOutputBytes: runOptions.maxOutputBytes ?? 512_000,
             };
+            if (sandboxedCommand.args !== undefined) {
+                processRunOptions.args = sandboxedCommand.args;
+            } else if (runOptions.shell !== undefined) {
+                processRunOptions.shell = runOptions.shell;
+            } else if (
+                options.permissions.mode !== "full_access" &&
+                globalThis.process.platform !== "win32"
+            ) {
+                processRunOptions.shell = "/bin/sh";
+            }
             if (runOptions.signal !== undefined) processRunOptions.signal = runOptions.signal;
-            if (runOptions.shell !== undefined) processRunOptions.shell = runOptions.shell;
 
             const result = await options.processManager.run(processRunOptions);
             return {
@@ -157,14 +162,14 @@ export function createNodeBashContext(options: CreateNodeBashContextOptions): Ba
         async startSession(runOptions) {
             assertCanUseCustomShell(options.permissions.mode, runOptions.shell);
             const cwd = runCwd(runOptions.cwd);
-            const command = await createSandboxedCommand({
+            const sandboxedCommand = await createSandboxedCommand({
                 command: runOptions.command,
                 cwd: options.cwd,
                 mode: options.permissions.mode,
             });
-            const process = options.processManager.start({
+            const processStartOptions: Parameters<NativeProxessManager["start"]>[0] = {
                 cleanupProcessGroupOnExit: true,
-                command,
+                command: sandboxedCommand.command,
                 cwd,
                 env: createCommandEnvironment(
                     createToolEnvironment(options.permissions.mode),
@@ -172,13 +177,18 @@ export function createNodeBashContext(options: CreateNodeBashContextOptions): Ba
                     runOptions.secrets,
                 ),
                 maxOutputBytes: runOptions.maxOutputBytes ?? 512_000,
-                ...(runOptions.shell !== undefined
-                    ? { shell: runOptions.shell }
-                    : options.permissions.mode === "full_access" ||
-                        globalThis.process.platform === "win32"
-                      ? {}
-                      : { shell: "/bin/sh" }),
-            });
+            };
+            if (sandboxedCommand.args !== undefined) {
+                processStartOptions.args = sandboxedCommand.args;
+            } else if (runOptions.shell !== undefined) {
+                processStartOptions.shell = runOptions.shell;
+            } else if (
+                options.permissions.mode !== "full_access" &&
+                globalThis.process.platform !== "win32"
+            ) {
+                processStartOptions.shell = "/bin/sh";
+            }
+            const process = options.processManager.start(processStartOptions);
             const sessionId = nextSessionId;
             nextSessionId += 1;
             const session: NodeBashSession = {

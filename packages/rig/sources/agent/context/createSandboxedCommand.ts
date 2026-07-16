@@ -11,12 +11,17 @@ import type { PermissionMode } from "../../permissions/index.js";
 const require = createRequire(import.meta.url);
 let configDirectoryPromise: Promise<string> | undefined;
 
+export interface SandboxedCommand {
+    args?: readonly string[];
+    command: string;
+}
+
 export async function createSandboxedCommand(options: {
     command: string;
     cwd: string;
     mode: PermissionMode;
-}): Promise<string> {
-    if (options.mode === "full_access") return options.command;
+}): Promise<SandboxedCommand> {
+    if (options.mode === "full_access") return { command: options.command };
 
     configDirectoryPromise ??= mkdtemp(join(tmpdir(), "rig-sandbox-"));
     const configDirectory = await configDirectoryPromise;
@@ -39,16 +44,8 @@ export async function createSandboxedCommand(options: {
 
     const packageEntry = require.resolve("@anthropic-ai/sandbox-runtime");
     const cliPath = join(dirname(packageEntry), "cli.js");
-    return [
-        shellQuote(process.execPath),
-        shellQuote(cliPath),
-        "--settings",
-        shellQuote(configPath),
-        "-c",
-        shellQuote(options.command),
-    ].join(" ");
-}
-
-function shellQuote(value: string): string {
-    return `'${value.replaceAll("'", `'"'"'`)}'`;
+    return {
+        args: [cliPath, "--settings", configPath, "-c", options.command],
+        command: process.execPath,
+    };
 }
