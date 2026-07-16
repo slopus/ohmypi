@@ -102,7 +102,7 @@ export function createMcpProtocolTools(
             isError: isMcpErrorResult,
             toLLM: mcpResultToContentBlocks,
             toUI: (_result, args) => `Called ${humanize(args.name)} from ${humanize(args.server)}`,
-            locks: ["mcp:dynamic"],
+            locks: [(args) => `mcp:${args.server}`],
         }),
         defineTool({
             name: "list_mcp_resources",
