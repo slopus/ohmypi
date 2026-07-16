@@ -1,14 +1,33 @@
+import { delimiter } from "node:path";
+
 import type { PermissionMode } from "../../permissions/index.js";
+import { findExecutableSearchPaths } from "./findExecutableSearchPaths.js";
 import { createShellEnvironment } from "./createShellEnvironment.js";
 
-export function createToolEnvironment(
+export async function createToolEnvironment(
     mode: PermissionMode,
     environment: NodeJS.ProcessEnv = process.env,
-): NodeJS.ProcessEnv {
+    options: {
+        cwd?: string;
+        homeDirectory?: string;
+        temporaryDirectory?: string;
+    } = {},
+): Promise<NodeJS.ProcessEnv> {
     const filtered = createShellEnvironment(environment);
     if (mode === "full_access" || process.platform === "win32") return filtered;
     return {
         ...filtered,
-        PATH: "/opt/homebrew/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+        PATH: (
+            await findExecutableSearchPaths({
+                cwd: options.cwd ?? process.cwd(),
+                environment,
+                ...(options.homeDirectory === undefined
+                    ? {}
+                    : { homeDirectory: options.homeDirectory }),
+                ...(options.temporaryDirectory === undefined
+                    ? {}
+                    : { temporaryDirectory: options.temporaryDirectory }),
+            })
+        ).join(delimiter),
     };
 }

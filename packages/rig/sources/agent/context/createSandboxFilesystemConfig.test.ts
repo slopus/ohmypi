@@ -10,6 +10,7 @@ describe("createSandboxFilesystemConfig", () => {
                 AWS_SHARED_CREDENTIALS_FILE: "/secrets/aws-credentials",
                 CLAUDE_CONFIG_DIR: "/secrets/claude",
                 CODEX_HOME: "/secrets/codex",
+                PATH: "/home/tester/.cargo/bin:/home/tester/.ssh/bin:/usr/bin",
                 RIG_SERVER_DIRECTORY: "/workspace/.rig-dev",
                 RIG_SERVER_SOCKET_PATH: "/run/rig/custom-socket",
                 RIG_SERVER_TOKEN_PATH: "/run/rig/custom-token",
@@ -23,7 +24,13 @@ describe("createSandboxFilesystemConfig", () => {
             uid: 123,
         });
 
-        expect(config.allowRead).toEqual(["/home/tester/projects/rig"]);
+        expect(config.allowRead).toContain("/home/tester/projects/rig");
+        if (process.platform !== "win32") {
+            expect(config.allowRead.some((path) => path.endsWith("/home/tester/.cargo/bin"))).toBe(
+                true,
+            );
+            expect(config.allowRead).not.toContain("/home/tester/.ssh/bin");
+        }
         expect(config.allowWrite).toContain("/home/tester/projects/rig");
         expect(config.allowWrite).toContain("/temporary");
         expect(config.denyRead).toEqual(

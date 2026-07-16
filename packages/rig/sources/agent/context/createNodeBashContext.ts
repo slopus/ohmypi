@@ -132,7 +132,9 @@ export function createNodeBashContext(options: CreateNodeBashContextOptions): Ba
                 command: sandboxedCommand.command,
                 cwd,
                 env: createCommandEnvironment(
-                    createToolEnvironment(options.permissions.mode),
+                    await createToolEnvironment(options.permissions.mode, globalThis.process.env, {
+                        cwd: options.cwd,
+                    }),
                     options.secrets,
                     runOptions.secrets,
                 ),
@@ -172,7 +174,9 @@ export function createNodeBashContext(options: CreateNodeBashContextOptions): Ba
                 command: sandboxedCommand.command,
                 cwd,
                 env: createCommandEnvironment(
-                    createToolEnvironment(options.permissions.mode),
+                    await createToolEnvironment(options.permissions.mode, globalThis.process.env, {
+                        cwd: options.cwd,
+                    }),
                     options.secrets,
                     runOptions.secrets,
                 ),

@@ -1,9 +1,11 @@
 import { homedir, tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, sep } from "node:path";
 
 import type { PermissionMode } from "../../permissions/index.js";
 import { createSensitiveReadPaths } from "./createSensitiveReadPaths.js";
+import { findExecutableSearchPaths } from "./findExecutableSearchPaths.js";
 import { findGitWritablePaths } from "./findGitWritablePaths.js";
+import { resolvePotentialPath } from "./resolvePotentialPath.js";
 
 export async function createSandboxFilesystemConfig(options: {
     cwd: string;
@@ -44,10 +46,23 @@ export async function createSandboxFilesystemConfig(options: {
         (path, index, paths): path is string =>
             typeof path === "string" && path.length > 0 && paths.indexOf(path) === index,
     );
+    const canonicalHomeDirectory = await resolvePotentialPath(homeDirectory);
+    const executableSearchPaths =
+        process.platform === "win32"
+            ? []
+            : await findExecutableSearchPaths({
+                  cwd: options.cwd,
+                  environment,
+                  homeDirectory,
+                  temporaryDirectory,
+              });
+    const readableHomeToolPaths = executableSearchPaths.filter((path) =>
+        path.startsWith(`${canonicalHomeDirectory}${sep}`),
+    );
 
     return {
         denyRead,
-        allowRead: [options.cwd],
+        allowRead: [options.cwd, ...readableHomeToolPaths],
         allowWrite: writablePaths,
         denyWrite,
     };
