@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 
-import { createGym, type Gym } from "../../packages/gym/sources/index.js";
+import { createGym, waitForFile, type Gym } from "../../packages/gym/sources/index.js";
 
 const running = new Set<Gym>();
 
@@ -85,14 +85,6 @@ async function waitForReplacementDaemon(gym: Gym): Promise<void> {
             `original=$(cat /workspace/original-daemon-pid)
 while [ "$(node -e 'const fs=require("node:fs"); console.log(JSON.parse(fs.readFileSync(process.env.RIG_SERVER_DIRECTORY + "/server.json", "utf8")).pid)')" = "$original" ]; do sleep 0.05; done`,
         ],
-        { timeoutMs: 30_000 },
-    );
-}
-
-async function waitForFile(gym: Gym, path: string): Promise<void> {
-    await gym.runInContainer(
-        "sh",
-        ["-c", `while [ ! -e ${JSON.stringify(path)} ]; do sleep 0.05; done`],
         { timeoutMs: 30_000 },
     );
 }

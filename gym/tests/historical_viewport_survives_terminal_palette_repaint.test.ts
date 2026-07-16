@@ -2,7 +2,7 @@ import { resolve } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { createGym, type Gym } from "../../packages/gym/sources/index.js";
+import { createGym, waitForTerminalOutput, type Gym } from "../../packages/gym/sources/index.js";
 
 const running = new Set<Gym>();
 
@@ -138,23 +138,6 @@ function deferred<T>(): { promise: Promise<T>; resolve: (value?: T) => void } {
         promise,
         resolve: (value) => resolvePromise(value as T),
     };
-}
-
-function waitForTerminalOutput(gym: Gym, text: string, timeoutMs: number): Promise<void> {
-    return new Promise((resolvePromise, reject) => {
-        let output = "";
-        const stop = gym.terminal.onOutput((data) => {
-            output += data;
-            if (!output.includes(text)) return;
-            clearTimeout(timer);
-            stop();
-            resolvePromise();
-        });
-        const timer = setTimeout(() => {
-            stop();
-            reject(new Error(`Timed out waiting for terminal output ${JSON.stringify(text)}.`));
-        }, timeoutMs);
-    });
 }
 
 async function writeProof(gym: Gym, name: string): Promise<void> {

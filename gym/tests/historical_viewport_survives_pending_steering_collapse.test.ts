@@ -2,7 +2,12 @@ import { resolve } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { createGym, type Gym } from "../../packages/gym/sources/index.js";
+import {
+    captureScrollback,
+    createGym,
+    waitForTerminalOutput,
+    type Gym,
+} from "../../packages/gym/sources/index.js";
 
 const running = new Set<Gym>();
 
@@ -225,49 +230,10 @@ function deferred<T>(): { promise: Promise<T>; resolve: (value?: T) => void } {
     return { promise, resolve: (value) => resolvePromise(value as T) };
 }
 
-function waitForTerminalOutput(gym: Gym, text: string, timeoutMs: number): Promise<void> {
-    return new Promise((resolvePromise, reject) => {
-        let output = "";
-        const stop = gym.terminal.onOutput((data) => {
-            output += data;
-            if (!output.includes(text)) return;
-            clearTimeout(timer);
-            stop();
-            resolvePromise();
-        });
-        const timer = setTimeout(() => {
-            stop();
-            reject(new Error(`Timed out waiting for terminal output ${JSON.stringify(text)}.`));
-        }, timeoutMs);
-    });
-}
-
 async function screenshot(gym: Gym, name: string): Promise<void> {
     const directory = process.env.RIG_GYM_PROOF_DIR;
     if (directory === undefined) return;
     await gym.terminal.screenshot(resolve(directory, name));
-}
-
-async function captureScrollback(gym: Gym): Promise<string> {
-    gym.terminal.scrollToTop();
-    let snapshot = await gym.terminal.snapshot();
-    const rows = new Map<number, string>();
-    for (;;) {
-        snapshot.rows.forEach((row, index) => rows.set(snapshot.scroll.offset + index, row));
-        if (snapshot.scroll.atBottom) break;
-        const maximumOffset = snapshot.scroll.totalRows - snapshot.scroll.visibleRows;
-        const nextOffset = Math.min(
-            snapshot.scroll.offset + snapshot.scroll.visibleRows,
-            maximumOffset,
-        );
-        gym.terminal.scrollBy(nextOffset - snapshot.scroll.offset);
-        snapshot = await gym.terminal.snapshot();
-    }
-    gym.terminal.scrollToBottom();
-    return [...rows.entries()]
-        .sort(([left], [right]) => left - right)
-        .map(([, row]) => row)
-        .join("\n");
 }
 
 function countOccurrences(value: string, search: string): number {

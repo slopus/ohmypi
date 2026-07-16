@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 
-import { createGym, type Gym } from "../../packages/gym/sources/index.js";
+import { createGym, waitForFile, type Gym } from "../../packages/gym/sources/index.js";
 
 const artifacts = resolve(
     import.meta.dirname,
@@ -144,19 +144,6 @@ async function approveMcpServers(gym: Gym, count: number): Promise<void> {
         );
         outputRevision = prompt.outputRevision;
         gym.terminal.press("enter");
-    }
-}
-
-async function waitForFile(gym: Gym, path: string, timeoutMs: number): Promise<void> {
-    const deadline = Date.now() + timeoutMs;
-    for (;;) {
-        try {
-            await gym.readFile(path);
-            return;
-        } catch (error) {
-            if (Date.now() >= deadline) throw error;
-            await new Promise((resolve) => setTimeout(resolve, 50));
-        }
     }
 }
 

@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { mkdir, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
-import { createGym, type Gym } from "../../packages/gym/sources/index.js";
+import { createGym, waitForTerminalOutput, type Gym } from "../../packages/gym/sources/index.js";
 
 const running = new Set<Gym>();
 
@@ -111,23 +111,6 @@ async function collectScrollbackRows(gym: Gym): Promise<string[]> {
 
 function countExactRow(rows: readonly string[], value: string): number {
     return rows.filter((row) => row.trim() === value).length;
-}
-
-function waitForTerminalOutput(gym: Gym, text: string, timeoutMs: number): Promise<void> {
-    return new Promise((resolvePromise, reject) => {
-        let output = "";
-        const stop = gym.terminal.onOutput((data) => {
-            output += data;
-            if (!output.includes(text)) return;
-            clearTimeout(timer);
-            stop();
-            resolvePromise();
-        });
-        const timer = setTimeout(() => {
-            stop();
-            reject(new Error(`Timed out waiting for terminal output ${JSON.stringify(text)}.`));
-        }, timeoutMs);
-    });
 }
 
 async function writeProof(gym: Gym, rows: readonly string[]): Promise<void> {

@@ -1,4 +1,5 @@
 export { createGym } from "./createGym.js";
+export { captureScrollback } from "./captureScrollback.js";
 export { Gym } from "./Gym.js";
 export { GymTerminal, type GymKey } from "./GymTerminal.js";
 export {
@@ -16,6 +17,8 @@ export {
 export { MockInferenceServer } from "./MockInferenceServer.js";
 export { renderTerminalSnapshotPng } from "./renderTerminalSnapshotPng.js";
 export { terminalRowStyleRuns, type TerminalRowStyleRun } from "./terminalRowStyleRuns.js";
+export { waitForFile } from "./waitForFile.js";
+export { waitForTerminalOutput } from "./waitForTerminalOutput.js";
 export type {
     GymFixture,
     GymInferenceHandler,

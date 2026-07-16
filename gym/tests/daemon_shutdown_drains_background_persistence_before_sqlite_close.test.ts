@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { createGym, type Gym } from "../../packages/gym/sources/index.js";
+import { createGym, waitForFile, type Gym } from "../../packages/gym/sources/index.js";
 
 const running = new Set<Gym>();
 const execFileAsync = promisify(execFile);
@@ -189,14 +189,6 @@ describe("daemon shutdown persistence drain", () => {
 function submit(gym: Gym, text: string): void {
     gym.terminal.type(text);
     gym.terminal.press("enter");
-}
-
-async function waitForFile(gym: Gym, path: string): Promise<void> {
-    await gym.runInContainer(
-        "sh",
-        ["-c", `while [ ! -e ${JSON.stringify(path)} ]; do sleep 0.05; done`],
-        { timeoutMs: 30_000 },
-    );
 }
 
 async function captureProof(gym: Gym, fileName: string): Promise<void> {

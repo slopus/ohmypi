@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 
-import { createGym, type Gym } from "../../packages/gym/sources/index.js";
+import { captureScrollback, createGym, type Gym } from "../../packages/gym/sources/index.js";
 
 const running = new Set<Gym>();
 
@@ -198,32 +198,6 @@ function assertHealthyBottom(
     expect(snapshot.text).not.toContain("�");
     expect(snapshot.cursor.x).toBeLessThan(68);
     expect(snapshot.cursor.y).toBeLessThan(16);
-}
-
-async function captureScrollback(gym: Gym): Promise<string> {
-    gym.terminal.scrollToTop();
-    let snapshot = await gym.terminal.snapshot();
-    const rows = new Map<number, string>();
-
-    for (;;) {
-        snapshot.rows.forEach((row, index) => {
-            rows.set(snapshot.scroll.offset + index, row);
-        });
-        if (snapshot.scroll.atBottom) break;
-        const maximumOffset = snapshot.scroll.totalRows - snapshot.scroll.visibleRows;
-        const nextOffset = Math.min(
-            snapshot.scroll.offset + snapshot.scroll.visibleRows,
-            maximumOffset,
-        );
-        gym.terminal.scrollBy(nextOffset - snapshot.scroll.offset);
-        snapshot = await gym.terminal.snapshot();
-    }
-
-    gym.terminal.scrollToBottom();
-    return [...rows.entries()]
-        .sort(([left], [right]) => left - right)
-        .map(([, row]) => row)
-        .join("\n");
 }
 
 function countOccurrences(text: string, search: string): number {
