@@ -7,6 +7,7 @@ import { RemoteAgent } from "../client/RemoteAgent.js";
 import { createJustBashToolHarness } from "../tools/testing/createJustBashToolHarness.js";
 import { validJpeg32Base64, validPng32Base64 } from "../tools/testing/validImageFixtures.js";
 import { NativeProxessManager } from "../processes/index.js";
+import { selectToolsForModel } from "../runtime/selectToolsForModel.js";
 import { createPermissionContext } from "../permissions/index.js";
 import type {
     GetSessionUsageResponse,
@@ -47,6 +48,7 @@ describe("CodingAssistantApp", () => {
             provider,
             modelId: model.id,
             context: harness.context,
+            toolSelector: selectToolsForModel,
             printToConsole: false,
         });
         const onUserActivity = vi.fn();
@@ -4666,6 +4668,7 @@ describe("CodingAssistantApp", () => {
             provider,
             modelId: model.id,
             context: harness.context,
+            toolSelector: selectToolsForModel,
             printToConsole: false,
         });
         const app = new CodingAssistantApp({
@@ -5558,6 +5561,7 @@ describe("CodingAssistantApp", () => {
             provider,
             modelId: model.id,
             context: harness.context,
+            toolSelector: selectToolsForModel,
             printToConsole: false,
         });
         const app = new CodingAssistantApp({
@@ -5669,6 +5673,7 @@ describe("CodingAssistantApp", () => {
             provider,
             modelId: model.id,
             context: harness.context,
+            toolSelector: selectToolsForModel,
             printToConsole: false,
         });
         const app = new CodingAssistantApp({
@@ -5727,6 +5732,7 @@ describe("CodingAssistantApp", () => {
             provider,
             modelId: model.id,
             context: harness.context,
+            toolSelector: selectToolsForModel,
             printToConsole: false,
         });
         const app = new CodingAssistantApp({
@@ -5804,6 +5810,7 @@ describe("CodingAssistantApp", () => {
                 provider,
                 modelId: model.id,
                 context: harness.context,
+                toolSelector: selectToolsForModel,
                 printToConsole: false,
             }),
             cwd: harness.context.fs.cwd,
@@ -5864,6 +5871,7 @@ describe("CodingAssistantApp", () => {
                 provider,
                 modelId: model.id,
                 context: harness.context,
+                toolSelector: selectToolsForModel,
                 printToConsole: false,
             }),
             cwd: harness.context.fs.cwd,

@@ -1,5 +1,5 @@
-import type { SessionExecutionEnvironment } from "../protocol/SessionProtocol.js";
 import type { DockerExecutionConfig } from "./DockerExecutionConfig.js";
+import type { SessionExecutionEnvironment } from "./SessionExecutionEnvironment.js";
 
 export function summarizeDockerExecution(
     config: DockerExecutionConfig | undefined,

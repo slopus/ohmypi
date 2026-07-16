@@ -1,4 +1,4 @@
-import type { AnyDefinedTool } from "./types.js";
+import type { AnyDefinedTool } from "../agent/types.js";
 import type { Model, Provider } from "../providers/types.js";
 import { claudeCodeTools } from "../tools/claude/index.js";
 import { codexTools } from "../tools/codex/index.js";

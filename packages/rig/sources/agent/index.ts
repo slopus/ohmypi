@@ -1,6 +1,7 @@
 export { Agent } from "./Agent.js";
 export type {
     AgentOptions,
+    AgentToolSelector,
     AgentCompactionResult,
     AgentRunOptions,
     AgentRunResult,
@@ -25,8 +26,6 @@ export { createSubagentInstructions } from "./createSubagentInstructions.js";
 export { findLastAgentResponseText } from "./findLastAgentResponseText.js";
 export { findFirstUserRequestText } from "./findFirstUserRequestText.js";
 export { contentBlockToText } from "./contentBlockToText.js";
-export { selectToolsForModel } from "./selectToolsForModel.js";
-export type { SelectToolsForModelOptions } from "./selectToolsForModel.js";
 export type {
     AgentBlock,
     AgentMessage,

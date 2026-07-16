@@ -4,7 +4,6 @@ import {
     Agent,
     createNodeAgentContext,
     createDockerAgentContext,
-    selectToolsForModel,
     type AgentOptions,
     type GoalContext,
     type PermissionMode,
@@ -33,6 +32,7 @@ import { agentTool } from "../tools/Agent.js";
 import { goalTools } from "../tools/goals/index.js";
 import type { CodingAssistantRuntime } from "./CodingAssistantRuntime.js";
 import { createDefaultInstructions } from "./createDefaultInstructions.js";
+import { selectToolsForModel } from "./selectToolsForModel.js";
 
 export interface CreateCodingAssistantAgentOptions {
     cwd: string;

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { validPng32Base64 } from "../tools/testing/validImageFixtures.js";
-import { IMAGE_PROCESSING_ERROR_PLACEHOLDER } from "../tools/utils/index.js";
+import { IMAGE_PROCESSING_ERROR_PLACEHOLDER } from "../images/index.js";
 import { prepareProviderMessageImages } from "./prepareProviderMessageImages.js";
 
 describe("prepareProviderMessageImages", () => {

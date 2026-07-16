@@ -4,7 +4,7 @@ import {
     ImageProcessingError,
     prepareImageForClaude,
     prepareImageForPrompt,
-} from "../tools/utils/index.js";
+} from "../images/index.js";
 
 export async function prepareProviderImageContent(
     content: UserContent | ToolResultContent,

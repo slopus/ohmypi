@@ -8,7 +8,6 @@ import type { AgentContext } from "./context/AgentContext.js";
 import { runAgentLoop, type AgentLoopEvent, type AgentLoopResult } from "./loop.js";
 import { createDebugProvider, type DebugLog } from "../debug/index.js";
 import { printAgentMessageToConsole, type AgentConsole } from "./printAgentMessageToConsole.js";
-import { selectToolsForModel } from "./selectToolsForModel.js";
 import type { AnyDefinedTool, ContentBlock, Message, SystemMessage, UserMessage } from "./types.js";
 import type { Model, Provider, ServiceTier } from "../providers/types.js";
 import type { PermissionMode } from "../permissions/index.js";
@@ -19,6 +18,11 @@ export interface QueuedAgentMessage {
     id: string;
     message: Message;
 }
+
+export type AgentToolSelector = (options: {
+    model: Model;
+    provider: Provider;
+}) => readonly AnyDefinedTool[];
 
 export interface AgentSnapshot {
     id: string;
@@ -46,7 +50,10 @@ export interface AgentOptions {
     messages?: readonly Message[];
     contextMessages?: readonly Message[];
     instructions?: string;
+    /** Omit for a tool-free agent; product runtimes compose provider tools explicitly. */
     tools?: readonly AnyDefinedTool[];
+    /** Selects default tools without coupling the generic agent to provider tool registries. */
+    toolSelector?: AgentToolSelector;
     idFactory?: () => string;
     now?: () => number;
     console?: AgentConsole;
@@ -86,6 +93,7 @@ export class Agent {
     #serviceTier: ServiceTier | undefined;
     #instructions: string | undefined;
     #tools: readonly AnyDefinedTool[];
+    #toolSelector: AgentToolSelector | undefined;
     #usesExplicitTools: boolean;
     #idFactory: () => string;
     #now: () => number;
@@ -111,13 +119,12 @@ export class Agent {
         this.#effort = options.effort ?? this.#model.defaultThinkingLevel;
         this.#serviceTier = this.#validateServiceTier(options.serviceTier);
         this.#instructions = options.instructions;
+        this.#toolSelector = options.toolSelector;
         this.#usesExplicitTools = options.tools !== undefined;
         this.#tools =
             options.tools ??
-            selectToolsForModel({
-                provider: options.provider,
-                model: this.#model,
-            });
+            options.toolSelector?.({ model: this.#model, provider: options.provider }) ??
+            [];
         this.#now = options.now ?? Date.now;
         this.#console = options.console ?? console;
         this.#printToConsole = options.printToConsole ?? true;
@@ -180,11 +187,8 @@ export class Agent {
         const model = this.#findModel(modelId);
         this.#model = model;
         this.#effort = effort ?? model.defaultThinkingLevel;
-        if (!this.#usesExplicitTools) {
-            this.#tools = selectToolsForModel({
-                provider: this.provider,
-                model,
-            });
+        if (!this.#usesExplicitTools && this.#toolSelector !== undefined) {
+            this.#tools = this.#toolSelector({ model, provider: this.provider });
         }
     }
 

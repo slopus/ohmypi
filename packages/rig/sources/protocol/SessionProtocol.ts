@@ -14,7 +14,8 @@ import type { SessionTask } from "../tasks/index.js";
 import type { WorkflowRun, WorkflowRunUpdate } from "../workflows/index.js";
 import type { ChangeGoalStatusRequest, CreateGoalRequest, SessionGoal } from "../goals/index.js";
 import type { EventId } from "./EventId.js";
-import type { DockerExecutionConfig } from "../execution/index.js";
+import type { DockerExecutionConfig } from "../execution/DockerExecutionConfig.js";
+import type { SessionExecutionEnvironment } from "../execution/SessionExecutionEnvironment.js";
 import type { BashSessionActivity } from "../agent/context/BashContext.js";
 import type {
     SecretAttachmentScope,
@@ -33,14 +34,7 @@ export type SessionStatus =
 
 export type SessionTitleStatus = "idle" | "generating" | "ready" | "error";
 
-export type SessionExecutionEnvironment =
-    | { type: "local" }
-    | {
-          kind: "container" | "image";
-          reference: string;
-          type: "docker";
-          workingDirectory: string;
-      };
+export type { SessionExecutionEnvironment } from "../execution/SessionExecutionEnvironment.js";
 
 export type SessionInterruptionReason = "crash" | "shutdown";
 

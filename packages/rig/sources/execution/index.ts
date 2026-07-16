@@ -1,4 +1,5 @@
 export type { DockerExecutionConfig, DockerMountConfig } from "./DockerExecutionConfig.js";
+export type { SessionExecutionEnvironment } from "./SessionExecutionEnvironment.js";
 export { createDockerBashContext } from "./createDockerBashContext.js";
 export { createDockerFileSystemContext } from "./createDockerFileSystemContext.js";
 export { DockerEnvironment } from "./DockerEnvironment.js";

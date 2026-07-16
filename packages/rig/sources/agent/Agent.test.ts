@@ -4,7 +4,8 @@ import { describe, expect, it } from "vitest";
 import { codexViewImageTool } from "../tools/codex/view_image.js";
 import { createJustBashToolHarness } from "../tools/testing/createJustBashToolHarness.js";
 import { validPng32Base64 } from "../tools/testing/validImageFixtures.js";
-import { getImageProcessor } from "../tools/utils/getImageProcessor.js";
+import { getImageProcessor } from "../images/getImageProcessor.js";
+import { selectToolsForModel } from "../runtime/selectToolsForModel.js";
 import { Agent } from "./Agent.js";
 import { defineTool, type Message } from "./types.js";
 import {
@@ -164,7 +165,7 @@ describe("Agent", () => {
         expect(observedMessages).toEqual(["id-7"]);
     });
 
-    it("selects codex tools for GPT models and allows explicit tool overrides", () => {
+    it("uses injected default tools and accepts explicit tool configuration", () => {
         const model = defineModel({
             id: "openai/gpt-test",
             name: "GPT Test",
@@ -193,6 +194,7 @@ describe("Agent", () => {
             provider,
             modelId: "openai/gpt-test",
             context: harness.context,
+            toolSelector: selectToolsForModel,
             printToConsole: false,
         });
         expect(defaultAgent.tools.map((tool) => tool.name)).toEqual([
@@ -221,6 +223,7 @@ describe("Agent", () => {
             modelId: "openai/gpt-test",
             context: harness.context,
             tools: [noopTool],
+            toolSelector: selectToolsForModel,
             printToConsole: false,
         });
 
