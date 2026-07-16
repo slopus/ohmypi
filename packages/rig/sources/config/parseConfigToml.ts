@@ -22,26 +22,43 @@ export function parseConfigToml(source: string): PartialRigConfig {
     const settings: PartialConfigSettings = {};
     const theme: PartialConfigTheme = {};
     const table = parse(source);
+    assertKnownKeys(table, "", [
+        "defaults",
+        "docker",
+        "features",
+        "mcp_servers",
+        "providers",
+        "settings",
+        "theme",
+    ]);
     const docker = readDockerConfig(table.docker);
-    const defaultsTable = table.defaults;
+    const defaultsTable = readTable(table.defaults, "defaults");
 
-    if (isTomlTable(defaultsTable)) {
-        const modelId = readString(defaultsTable, "model");
+    if (defaultsTable !== undefined) {
+        assertKnownKeys(defaultsTable, "defaults", [
+            "effort",
+            "instructions",
+            "model",
+            "permission_mode",
+            "provider",
+            "service_tier",
+        ]);
+        const modelId = readString(defaultsTable, "model", "defaults.model");
         if (modelId !== undefined) {
             defaults.modelId = modelId;
         }
 
-        const providerId = readString(defaultsTable, "provider");
+        const providerId = readString(defaultsTable, "provider", "defaults.provider");
         if (providerId !== undefined) {
             defaults.providerId = providerId;
         }
 
-        const effort = readString(defaultsTable, "effort");
+        const effort = readString(defaultsTable, "effort", "defaults.effort");
         if (effort !== undefined) {
             defaults.effort = effort;
         }
 
-        const instructions = readString(defaultsTable, "instructions");
+        const instructions = readString(defaultsTable, "instructions", "defaults.instructions");
         if (instructions !== undefined) {
             defaults.instructions = instructions;
         }
@@ -49,7 +66,7 @@ export function parseConfigToml(source: string): PartialRigConfig {
         const permissionMode = readPermissionMode(defaultsTable, "permission_mode");
         if (permissionMode !== undefined) defaults.permissionMode = permissionMode;
 
-        const serviceTier = readString(defaultsTable, "service_tier");
+        const serviceTier = readString(defaultsTable, "service_tier", "defaults.service_tier");
         if (serviceTier === "fast") defaults.serviceTier = serviceTier;
         else if (serviceTier === "default") defaults.serviceTier = null;
         else if (serviceTier !== undefined) {
@@ -57,8 +74,17 @@ export function parseConfigToml(source: string): PartialRigConfig {
         }
     }
 
-    const themeTable = table.theme;
-    if (isTomlTable(themeTable)) {
+    const themeTable = readTable(table.theme, "theme");
+    if (themeTable !== undefined) {
+        assertKnownKeys(themeTable, "theme", [
+            "accent",
+            "brand",
+            "error",
+            "primary",
+            "secondary",
+            "success",
+            "warning",
+        ]);
         for (const role of [
             "accent",
             "brand",
@@ -68,33 +94,52 @@ export function parseConfigToml(source: string): PartialRigConfig {
             "success",
             "warning",
         ] as const) {
-            const value = readString(themeTable, role);
+            const value = readString(themeTable, role, `theme.${role}`);
             if (value !== undefined) theme[role] = value;
         }
     }
 
-    const settingsTable = table.settings;
-    if (isTomlTable(settingsTable)) {
-        const completionChime = readBoolean(settingsTable, "completion_chime");
+    const settingsTable = readTable(table.settings, "settings");
+    if (settingsTable !== undefined) {
+        assertKnownKeys(settingsTable, "settings", [
+            "completion_chime",
+            "durable_global_event_queue",
+            "show_reasoning",
+            "show_usage",
+        ]);
+        const completionChime = readBoolean(
+            settingsTable,
+            "completion_chime",
+            "settings.completion_chime",
+        );
         if (completionChime !== undefined) settings.completionChime = completionChime;
-        const durableGlobalEventQueue = readBoolean(settingsTable, "durable_global_event_queue");
+        const durableGlobalEventQueue = readBoolean(
+            settingsTable,
+            "durable_global_event_queue",
+            "settings.durable_global_event_queue",
+        );
         if (durableGlobalEventQueue !== undefined) {
             settings.durableGlobalEventQueue = durableGlobalEventQueue;
         }
-        const showReasoning = readBoolean(settingsTable, "show_reasoning");
+        const showReasoning = readBoolean(
+            settingsTable,
+            "show_reasoning",
+            "settings.show_reasoning",
+        );
         if (showReasoning !== undefined) {
             settings.showReasoning = showReasoning;
         }
-        const showUsage = readBoolean(settingsTable, "show_usage");
+        const showUsage = readBoolean(settingsTable, "show_usage", "settings.show_usage");
         if (showUsage !== undefined) settings.showUsage = showUsage;
     }
 
     const providers = readProviders(table.providers);
 
     const mcpServers = readMcpServers(table.mcp_servers);
-    const featuresTable = table.features;
-    if (isTomlTable(featuresTable)) {
-        const workflows = readBoolean(featuresTable, "workflows");
+    const featuresTable = readTable(table.features, "features");
+    if (featuresTable !== undefined) {
+        assertKnownKeys(featuresTable, "features", ["workflows"]);
+        const workflows = readBoolean(featuresTable, "workflows", "features.workflows");
         if (workflows !== undefined) features.workflows = workflows;
     }
 
@@ -129,7 +174,7 @@ function readProviders(value: TomlValue | undefined): Record<string, ConfigProvi
             ...readOptionalStringArray(rawProvider, "include_models", "includeModels"),
         };
         if (type === "codex") {
-            assertKnownKeys(id, rawProvider, [
+            assertKnownKeys(rawProvider, `providers.${id}`, [
                 "auth_file",
                 "base_url",
                 "enabled",
@@ -164,7 +209,7 @@ function readProviders(value: TomlValue | undefined): Record<string, ConfigProvi
         }
 
         if (type === "grok") {
-            assertKnownKeys(id, rawProvider, [
+            assertKnownKeys(rawProvider, `providers.${id}`, [
                 "auth_file",
                 "base_url",
                 "enabled",
@@ -184,7 +229,7 @@ function readProviders(value: TomlValue | undefined): Record<string, ConfigProvi
         }
 
         if (type === "claude") {
-            assertKnownKeys(id, rawProvider, [
+            assertKnownKeys(rawProvider, `providers.${id}`, [
                 "config_dir",
                 "enabled",
                 "exclude_models",
@@ -203,7 +248,7 @@ function readProviders(value: TomlValue | undefined): Record<string, ConfigProvi
             continue;
         }
 
-        assertKnownKeys(id, rawProvider, [
+        assertKnownKeys(rawProvider, `providers.${id}`, [
             "bearer_token_env_var",
             "enabled",
             "exclude_models",
@@ -254,10 +299,10 @@ function readProviderString(id: string, table: TomlTable, key: string): string |
     return value;
 }
 
-function assertKnownKeys(id: string, table: TomlTable, keys: readonly string[]): void {
+function assertKnownKeys(table: TomlTable, path: string, keys: readonly string[]): void {
     const unknownKey = Object.keys(table).find((key) => !keys.includes(key));
     if (unknownKey !== undefined) {
-        throw new Error(`Unknown providers.${id}.${unknownKey} setting.`);
+        throw new Error(`Unknown ${path.length === 0 ? "" : `${path}.`}${unknownKey} setting.`);
     }
 }
 
@@ -278,14 +323,10 @@ function readBedrockModelOverrides(
                 `providers.${providerId}.model_overrides.${modelId} must be a TOML table.`,
             );
         }
-        const unknownKey = Object.keys(rawOverride).find(
-            (key) => key !== "endpoint" && key !== "region",
-        );
-        if (unknownKey !== undefined) {
-            throw new Error(
-                `Unknown providers.${providerId}.model_overrides.${modelId}.${unknownKey} setting.`,
-            );
-        }
+        assertKnownKeys(rawOverride, `providers.${providerId}.model_overrides.${modelId}`, [
+            "endpoint",
+            "region",
+        ]);
         const endpoint = readBedrockModelOverrideString(
             providerId,
             modelId,
@@ -319,19 +360,33 @@ function readBedrockModelOverrideString(
 function readDockerConfig(value: TomlValue | undefined): DockerExecutionConfig | undefined {
     if (value === undefined) return undefined;
     if (!isTomlTable(value)) throw new Error("docker must be a TOML table.");
+    assertKnownKeys(value, "docker", [
+        "container",
+        "env",
+        "image",
+        "mounts",
+        "name",
+        "socket_path",
+        "workdir",
+    ]);
 
-    const container = readString(value, "container");
-    const image = readString(value, "image");
+    const container = readString(value, "container", "docker.container");
+    const image = readString(value, "image", "docker.image");
     if ((container === undefined) === (image === undefined)) {
         throw new Error('docker must configure exactly one of "container" or "image".');
     }
-    const workingDirectory = readString(value, "workdir") ?? "/workspace";
+    const workingDirectory = readString(value, "workdir", "docker.workdir") ?? "/workspace";
     if (!workingDirectory.startsWith("/")) {
         throw new Error("docker.workdir must be an absolute container path.");
     }
     const mounts = readDockerMounts(value.mounts);
-    const environment = readOptionalStringRecord(value, "env", "environment").environment;
-    const name = readString(value, "name");
+    const environment = readOptionalStringRecord(
+        value,
+        "env",
+        "environment",
+        "docker.env",
+    ).environment;
+    const name = readString(value, "name", "docker.name");
     if (
         container !== undefined &&
         (environment !== undefined || mounts !== undefined || name !== undefined)
@@ -344,7 +399,7 @@ function readDockerConfig(value: TomlValue | undefined): DockerExecutionConfig |
         ...(image === undefined ? {} : { image }),
         ...(mounts === undefined ? {} : { mounts }),
         ...(name === undefined ? {} : { name }),
-        ...readOptionalString(value, "socket_path", "socketPath"),
+        ...readOptionalString(value, "socket_path", "socketPath", "docker.socket_path"),
         workingDirectory,
     };
 }
@@ -356,24 +411,24 @@ function readDockerMounts(value: TomlValue | undefined): readonly DockerMountCon
         if (!isTomlTable(entry)) {
             throw new Error(`docker.mounts[${index}] must be a TOML table.`);
         }
-        const source = readString(entry, "source");
-        const target = readString(entry, "target");
+        const path = `docker.mounts[${index}]`;
+        assertKnownKeys(entry, path, ["read_only", "source", "target"]);
+        const source = readString(entry, "source", `${path}.source`);
+        const target = readString(entry, "target", `${path}.target`);
         if (source === undefined || target === undefined) {
             throw new Error(`docker.mounts[${index}] requires string source and target values.`);
         }
         if (!target.startsWith("/")) {
             throw new Error(`docker.mounts[${index}].target must be an absolute container path.`);
         }
-        const readOnly = entry.read_only;
-        if (readOnly !== undefined && typeof readOnly !== "boolean") {
-            throw new Error(`docker.mounts[${index}].read_only must be a boolean.`);
-        }
+        const readOnly = readBoolean(entry, "read_only", `${path}.read_only`);
         return { source, target, ...(readOnly === undefined ? {} : { readOnly }) };
     });
 }
 
 function readMcpServers(value: TomlValue | undefined): Record<string, McpServerConfig> | undefined {
-    if (!isTomlTable(value)) return undefined;
+    if (value === undefined) return undefined;
+    if (!isTomlTable(value)) throw new Error("mcp_servers must be a TOML table.");
     const servers: Record<string, McpServerConfig> = {};
     for (const [name, rawServer] of Object.entries(value)) {
         if (!isTomlTable(rawServer)) {
@@ -385,9 +440,10 @@ function readMcpServers(value: TomlValue | undefined): Record<string, McpServerC
 }
 
 function readMcpServer(name: string, table: TomlTable): McpServerConfig {
-    const command = readString(table, "command");
-    const url = readString(table, "url");
-    const transport = readString(table, "transport");
+    const path = `mcp_servers.${name}`;
+    const command = readString(table, "command", `${path}.command`);
+    const url = readString(table, "url", `${path}.url`);
+    const transport = readString(table, "transport", `${path}.transport`);
     if (transport !== undefined && transport !== "http") {
         throw new Error(`MCP server "${name}" uses unsupported transport "${transport}".`);
     }
@@ -396,48 +452,106 @@ function readMcpServer(name: string, table: TomlTable): McpServerConfig {
     }
 
     const common = {
-        ...readOptionalBoolean(table, "enabled"),
-        ...readOptionalSeconds(table, "startup_timeout_sec", "startupTimeoutMs"),
-        ...readOptionalSeconds(table, "tool_timeout_sec", "toolTimeoutMs"),
-        ...readOptionalStringArray(table, "enabled_tools", "enabledTools"),
-        ...readOptionalStringArray(table, "disabled_tools", "disabledTools"),
+        ...readOptionalBoolean(table, "enabled", `${path}.enabled`),
+        ...readOptionalSeconds(
+            table,
+            "startup_timeout_sec",
+            "startupTimeoutMs",
+            `${path}.startup_timeout_sec`,
+        ),
+        ...readOptionalSeconds(
+            table,
+            "tool_timeout_sec",
+            "toolTimeoutMs",
+            `${path}.tool_timeout_sec`,
+        ),
+        ...readOptionalStringArray(table, "enabled_tools", "enabledTools", `${path}.enabled_tools`),
+        ...readOptionalStringArray(
+            table,
+            "disabled_tools",
+            "disabledTools",
+            `${path}.disabled_tools`,
+        ),
     };
     if (command !== undefined) {
+        assertKnownKeys(table, path, [
+            "args",
+            "command",
+            "cwd",
+            "disabled_tools",
+            "enabled",
+            "enabled_tools",
+            "env",
+            "startup_timeout_sec",
+            "tool_timeout_sec",
+        ]);
         return {
             ...common,
-            ...readOptionalStringArray(table, "args", "args"),
-            ...readOptionalStringRecord(table, "env", "env"),
-            ...readOptionalString(table, "cwd", "cwd"),
+            ...readOptionalStringArray(table, "args", "args", `${path}.args`),
+            ...readOptionalStringRecord(table, "env", "env", `${path}.env`),
+            ...readOptionalString(table, "cwd", "cwd", `${path}.cwd`),
             command,
             transport: "stdio",
         };
     }
+    assertKnownKeys(table, path, [
+        "bearer_token_env_var",
+        "disabled_tools",
+        "enabled",
+        "enabled_tools",
+        "http_headers",
+        "oauth_client_id_env_var",
+        "oauth_client_secret_env_var",
+        "oauth_scopes",
+        "startup_timeout_sec",
+        "tool_timeout_sec",
+        "transport",
+        "url",
+    ]);
     return {
         ...common,
-        ...readOptionalStringRecord(table, "http_headers", "headers"),
-        ...readOptionalString(table, "bearer_token_env_var", "bearerTokenEnvVar"),
-        ...readOptionalString(table, "oauth_client_id_env_var", "oauthClientIdEnvVar"),
-        ...readOptionalString(table, "oauth_client_secret_env_var", "oauthClientSecretEnvVar"),
-        ...readOptionalStringArray(table, "oauth_scopes", "oauthScopes"),
+        ...readOptionalStringRecord(table, "http_headers", "headers", `${path}.http_headers`),
+        ...readOptionalString(
+            table,
+            "bearer_token_env_var",
+            "bearerTokenEnvVar",
+            `${path}.bearer_token_env_var`,
+        ),
+        ...readOptionalString(
+            table,
+            "oauth_client_id_env_var",
+            "oauthClientIdEnvVar",
+            `${path}.oauth_client_id_env_var`,
+        ),
+        ...readOptionalString(
+            table,
+            "oauth_client_secret_env_var",
+            "oauthClientSecretEnvVar",
+            `${path}.oauth_client_secret_env_var`,
+        ),
+        ...readOptionalStringArray(table, "oauth_scopes", "oauthScopes", `${path}.oauth_scopes`),
         transport: "http",
         url: url ?? "",
     };
 }
 
-function readOptionalBoolean(table: TomlTable, key: string): { enabled?: boolean } {
+function readOptionalBoolean(table: TomlTable, key: string, path = key): { enabled?: boolean } {
     const value = table[key];
-    return typeof value === "boolean" ? { enabled: value } : {};
+    if (value === undefined) return {};
+    if (typeof value !== "boolean") throw new Error(`${path} must be a boolean.`);
+    return { enabled: value };
 }
 
 function readOptionalSeconds<TKey extends "startupTimeoutMs" | "toolTimeoutMs">(
     table: TomlTable,
     key: string,
     outputKey: TKey,
+    path = key,
 ): Partial<Record<TKey, number>> {
     const value = table[key];
     if (value === undefined) return {};
     if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
-        throw new Error(`${key} must be a positive number.`);
+        throw new Error(`${path} must be a positive number.`);
     }
     return { [outputKey]: value * 1_000 } as Partial<Record<TKey, number>>;
 }
@@ -446,8 +560,9 @@ function readOptionalString<TKey extends string>(
     table: TomlTable,
     key: string,
     outputKey: TKey,
+    path = key,
 ): Partial<Record<TKey, string>> {
-    const value = readString(table, key);
+    const value = readString(table, key, path);
     return value === undefined ? {} : ({ [outputKey]: value } as Partial<Record<TKey, string>>);
 }
 
@@ -455,11 +570,12 @@ function readOptionalStringArray<TKey extends string>(
     table: TomlTable,
     key: string,
     outputKey: TKey,
+    path = key,
 ): Partial<Record<TKey, readonly string[]>> {
     const value = table[key];
     if (value === undefined) return {};
     if (!Array.isArray(value) || value.some((entry) => typeof entry !== "string")) {
-        throw new Error(`${key} must be an array of strings.`);
+        throw new Error(`${path} must be an array of strings.`);
     }
     return { [outputKey]: value } as unknown as Partial<Record<TKey, readonly string[]>>;
 }
@@ -468,11 +584,12 @@ function readOptionalStringRecord<TKey extends string>(
     table: TomlTable,
     key: string,
     outputKey: TKey,
+    path = key,
 ): Partial<Record<TKey, Readonly<Record<string, string>>>> {
     const value = table[key];
     if (value === undefined) return {};
     if (!isTomlTable(value) || Object.values(value).some((entry) => typeof entry !== "string")) {
-        throw new Error(`${key} must contain string values.`);
+        throw new Error(`${path} must contain string values.`);
     }
     return { [outputKey]: value as Record<string, string> } as Partial<
         Record<TKey, Readonly<Record<string, string>>>
@@ -499,12 +616,22 @@ function isTomlTable(value: TomlValue | undefined): value is TomlTable {
     );
 }
 
-function readString(table: TomlTable, key: string): string | undefined {
-    const value = table[key];
-    return typeof value === "string" ? value : undefined;
+function readTable(value: TomlValue | undefined, path: string): TomlTable | undefined {
+    if (value === undefined) return undefined;
+    if (!isTomlTable(value)) throw new Error(`${path} must be a TOML table.`);
+    return value;
 }
 
-function readBoolean(table: TomlTable, key: string): boolean | undefined {
+function readString(table: TomlTable, key: string, path = key): string | undefined {
     const value = table[key];
-    return typeof value === "boolean" ? value : undefined;
+    if (value === undefined) return undefined;
+    if (typeof value !== "string") throw new Error(`${path} must be a string.`);
+    return value;
+}
+
+function readBoolean(table: TomlTable, key: string, path = key): boolean | undefined {
+    const value = table[key];
+    if (value === undefined) return undefined;
+    if (typeof value !== "boolean") throw new Error(`${path} must be a boolean.`);
+    return value;
 }

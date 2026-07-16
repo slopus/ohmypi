@@ -237,6 +237,30 @@ bearer_token_env_var = "WORK_BEDROCK_TOKEN"
         expect(() => parseConfigToml("[defaults]\npermission_mode = 1\n")).toThrow(expectedMessage);
     });
 
+    it.each([
+        ['defaults = "invalid"\n', "defaults must be a TOML table."],
+        ['mcp_servers = "invalid"\n', "mcp_servers must be a TOML table."],
+        ["[defaults]\nmodel = 5\n", "defaults.model must be a string."],
+        ['[settings]\nshow_usage = "yes"\n', "settings.show_usage must be a boolean."],
+        ["[theme]\nprimary = 5\n", "theme.primary must be a string."],
+        ['[features]\nworkflows = "yes"\n', "features.workflows must be a boolean."],
+        ['[defaults]\nmodle = "openai/gpt-5.6"\n', "Unknown defaults.modle setting."],
+        ["[settings]\nshow_useage = true\n", "Unknown settings.show_useage setting."],
+        ['[theme]\nprimari = "bright_white"\n', "Unknown theme.primari setting."],
+        ['[docker]\nimage = "node:24"\nnetwrok = "host"\n', "Unknown docker.netwrok setting."],
+        [
+            '[mcp_servers.docs]\ncommand = "docs-server"\nargz = []\n',
+            "Unknown mcp_servers.docs.argz setting.",
+        ],
+        [
+            '[mcp_servers.docs]\ncommand = "docs-server"\ntransport = "http"\n',
+            "Unknown mcp_servers.docs.transport setting.",
+        ],
+        ['defalts = { model = "openai/gpt-5.6" }\n', "Unknown defalts setting."],
+    ] as const)("rejects invalid config: %s", (source, message) => {
+        expect(() => parseConfigToml(source)).toThrow(message);
+    });
+
     it("describes only the machine-level project settings that were ignored", () => {
         const providers = {
             codex: { enabled: false, type: "codex" as const },
