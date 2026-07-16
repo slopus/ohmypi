@@ -1,6 +1,7 @@
 import { Type } from "@sinclair/typebox";
 
 import { defineTool } from "../../agent/types.js";
+import { describeFileAutoPermissionAction } from "../../permissions/describeFileAutoPermissionAction.js";
 import { shouldReviewPathInAutoMode } from "../../permissions/shouldReviewPathInAutoMode.js";
 import { editFileReturnSchema, editTextFile } from "../utils/index.js";
 
@@ -29,6 +30,8 @@ export const claudeEditTool = defineTool({
         ),
     }),
     returnType: editFileReturnSchema,
+    describeAutoPermissionAction: ({ file_path }, context) =>
+        describeFileAutoPermissionAction(file_path, context, "editing"),
     shouldReviewInAutoMode: ({ file_path }, context) =>
         shouldReviewPathInAutoMode(file_path, context, { write: true }),
     shouldRunInFullAccessInAutoMode: ({ file_path }, context) =>

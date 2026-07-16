@@ -91,6 +91,48 @@ describe("Auto permissions", () => {
         ]);
     });
 
+    it("refuses Auto review when a tool does not own its action description", async () => {
+        const harness = createJustBashToolHarness();
+        harness.context.permissions = createPermissionContext("auto");
+        const execute = vi.fn(() => ({ ok: true }));
+        const tool = defineTool({
+            name: "exec_command",
+            label: "Deployment check",
+            description: "Checks a deployment target.",
+            arguments: Type.Object({ target: Type.String() }),
+            returnType: Type.Object({ ok: Type.Boolean() }),
+            shouldReviewInAutoMode: () => true,
+            execute,
+            toLLM: () => [{ type: "text", text: "Checked." }],
+            toUI: () => "Checked deployment target",
+            locks: [],
+        });
+        const provider = autoReviewProvider("allow");
+        const agent = new Agent({
+            context: harness.context,
+            modelId: provider.models[0]?.id ?? "",
+            printToConsole: false,
+            provider,
+            tools: [tool],
+        });
+
+        await agent.send("Run the deployment check.");
+
+        expect(execute).not.toHaveBeenCalled();
+        const resultBlock = agent.messages
+            .flatMap((message) => (message.role === "agent" ? message.blocks : []))
+            .findLast((block) => block.type === "tool_result");
+        expect(resultBlock).toMatchObject({
+            isError: true,
+            rendered: [
+                {
+                    text: "This tool cannot request Auto approval because its permission action is not defined.",
+                    type: "text",
+                },
+            ],
+        });
+    });
+
     it("asks the user for uncertain actions and honors a denial", async () => {
         const harness = createJustBashToolHarness();
         harness.context.permissions = createPermissionContext("auto");
@@ -276,6 +318,8 @@ function permissionProbeTool(observedModes: string[]) {
             sandbox_permissions: Type.Literal("require_escalated"),
         }),
         returnType: Type.Object({ ok: Type.Boolean() }),
+        describeAutoPermissionAction: ({ target }) =>
+            `checking deployment target ${JSON.stringify(target)}. Access: unrestricted filesystem and network access`,
         shouldReviewInAutoMode: () => true,
         shouldRunInFullAccessInAutoMode: () => true,
         execute: (_args, context) => {
@@ -298,6 +342,8 @@ function sessionInputProbeTool(observedInputs: string[]) {
             session_id: Type.Number(),
         }),
         returnType: Type.Object({ ok: Type.Boolean() }),
+        describeAutoPermissionAction: ({ chars, session_id }) =>
+            `sending ${JSON.stringify(chars)} to shell session ${String(session_id)}`,
         shouldReviewInAutoMode: () => true,
         execute: ({ chars }) => {
             observedInputs.push(chars);

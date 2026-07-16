@@ -3,6 +3,7 @@ import { Type } from "@sinclair/typebox";
 
 import { resolveFileSystemPath } from "../../agent/context/resolveFileSystemPath.js";
 import { defineTool } from "../../agent/types.js";
+import { describeFileAutoPermissionAction } from "../../permissions/describeFileAutoPermissionAction.js";
 import { shouldReviewPathInAutoMode } from "../../permissions/shouldReviewPathInAutoMode.js";
 import {
     countTextLines,
@@ -32,6 +33,8 @@ export const piFindTool = defineTool({
         ),
     }),
     returnType: textOutputSchema,
+    describeAutoPermissionAction: ({ path }, context) =>
+        describeFileAutoPermissionAction(path ?? ".", context, "searching"),
     shouldReviewInAutoMode: ({ path }, context) =>
         shouldReviewPathInAutoMode(path ?? ".", context, { write: false }),
     shouldRunInFullAccessInAutoMode: ({ path }, context) =>

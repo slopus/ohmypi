@@ -2,6 +2,7 @@
 import { Type } from "@sinclair/typebox";
 
 import { defineTool } from "../../agent/types.js";
+import { describeFileAutoPermissionAction } from "../../permissions/describeFileAutoPermissionAction.js";
 import { shouldReviewPathInAutoMode } from "../../permissions/shouldReviewPathInAutoMode.js";
 import { readFileReturnSchema, readTextFile } from "../utils/index.js";
 
@@ -34,6 +35,8 @@ Usage:
         ),
     }),
     returnType: readFileReturnSchema,
+    describeAutoPermissionAction: ({ target_file }, context) =>
+        describeFileAutoPermissionAction(target_file, context, "reading"),
     shouldReviewInAutoMode: ({ target_file }, context) =>
         shouldReviewPathInAutoMode(target_file, context, { write: false }),
     shouldRunInFullAccessInAutoMode: ({ target_file }, context) =>

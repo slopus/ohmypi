@@ -2,6 +2,7 @@ import { Type } from "@sinclair/typebox";
 
 import { defineTool } from "../../agent/types.js";
 import { resolveFileSystemPath } from "../../agent/context/resolveFileSystemPath.js";
+import { describeFileAutoPermissionAction } from "../../permissions/describeFileAutoPermissionAction.js";
 import { shouldReviewPathInAutoMode } from "../../permissions/shouldReviewPathInAutoMode.js";
 import {
     IMAGE_PROCESSING_ERROR_PLACEHOLDER,
@@ -30,6 +31,8 @@ export const codexViewImageTool = defineTool({
         ),
     }),
     returnType: viewImageReturnSchema,
+    describeAutoPermissionAction: ({ path }, context) =>
+        describeFileAutoPermissionAction(path, context, "viewing"),
     shouldReviewInAutoMode: ({ path }, context) =>
         shouldReviewPathInAutoMode(path, context, { write: false }),
     shouldRunInFullAccessInAutoMode: ({ path }, context) =>

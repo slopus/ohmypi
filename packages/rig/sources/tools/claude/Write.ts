@@ -1,6 +1,7 @@
 import { Type } from "@sinclair/typebox";
 
 import { defineTool } from "../../agent/types.js";
+import { describeFileAutoPermissionAction } from "../../permissions/describeFileAutoPermissionAction.js";
 import { shouldReviewPathInAutoMode } from "../../permissions/shouldReviewPathInAutoMode.js";
 import { textOutputSchema, toTextBlocks, writeTextFile } from "../utils/index.js";
 
@@ -24,6 +25,8 @@ export const claudeWriteTool = defineTool({
         content: Type.String({ description: "The content to write to the file" }),
     }),
     returnType: textOutputSchema,
+    describeAutoPermissionAction: ({ file_path }, context) =>
+        describeFileAutoPermissionAction(file_path, context, "writing"),
     shouldReviewInAutoMode: ({ file_path }, context) =>
         shouldReviewPathInAutoMode(file_path, context, { write: true }),
     shouldRunInFullAccessInAutoMode: ({ file_path }, context) =>

@@ -2,6 +2,7 @@ import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { Type } from "@sinclair/typebox";
 
 import { defineTool, type AnyDefinedTool } from "../agent/types.js";
+import { describeMcpAutoPermissionAction } from "./describeMcpAutoPermissionAction.js";
 import { humanizeMcpName } from "./humanizeMcpName.js";
 import { mcpResultToContentBlocks } from "./mcpResultToContentBlocks.js";
 import { isMcpErrorResult } from "./isMcpErrorResult.js";
@@ -28,6 +29,12 @@ export function createMcpTool(options: {
         arguments: Type.Unknown(options.tool.inputSchema),
         returnType: Type.Unknown(),
         requiresAutoOrFullAccess: true,
+        describeAutoPermissionAction: (args) =>
+            describeMcpAutoPermissionAction({
+                arguments: args,
+                server: options.serverName,
+                tool: options.tool.name,
+            }),
         // MCP annotations are server-supplied metadata, not trusted authorization evidence.
         shouldReviewInAutoMode: () => true,
         async execute(args, context, execution) {

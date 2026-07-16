@@ -1,7 +1,7 @@
 import type { AgentContext } from "../../agent/context/AgentContext.js";
 import { resolveFileSystemPath } from "../../agent/context/resolveFileSystemPath.js";
 import { parsePatchPathDirective } from "../../patch/parsePatchPathDirective.js";
-import { quoteVisibleExact } from "../../permissions/summarizePermissionAction.js";
+import { quoteVisibleExact } from "../../permissions/quoteVisibleExact.js";
 
 export function describeApplyPatchAutoPermissionAction(
     args: { patch: string; workdir?: string },

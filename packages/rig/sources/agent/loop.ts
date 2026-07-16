@@ -42,11 +42,7 @@ import type {
     Usage,
     UserContent as ProviderUserContent,
 } from "../providers/types.js";
-import {
-    requestAutoPermissionApproval,
-    reviewAutoPermission,
-    summarizePermissionAction,
-} from "../permissions/index.js";
+import { requestAutoPermissionApproval, reviewAutoPermission } from "../permissions/index.js";
 import type { DebugLog } from "../debug/index.js";
 
 export interface RunAgentLoopOptions {
@@ -900,6 +896,13 @@ async function executeToolCall(
             context.permissions?.mode === "auto" &&
             (await tool.shouldReviewInAutoMode(toolCall.arguments as never, context))
         ) {
+            if (tool.describeAutoPermissionAction === undefined) {
+                return errorToolResultBlock(
+                    toolCall,
+                    "This tool cannot request Auto approval because its permission action is not defined.",
+                );
+            }
+            const action = tool.describeAutoPermissionAction(toolCall.arguments as never, context);
             const review = await reviewAutoPermission({
                 args: toolCall.arguments,
                 messages: options.messages,
@@ -909,9 +912,6 @@ async function executeToolCall(
                 ...(options.signal === undefined ? {} : { signal: options.signal }),
                 toolName: tool.name,
             });
-            const action =
-                tool.describeAutoPermissionAction?.(toolCall.arguments as never, context) ??
-                summarizePermissionAction(tool.name, toolCall.arguments);
             await options.onPermissionReview?.({
                 action,
                 decision: review.decision,

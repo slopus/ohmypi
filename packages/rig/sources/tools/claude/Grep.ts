@@ -1,6 +1,7 @@
 import { Type } from "@sinclair/typebox";
 
 import { defineTool } from "../../agent/types.js";
+import { describeFileAutoPermissionAction } from "../../permissions/describeFileAutoPermissionAction.js";
 import { shouldReviewPathInAutoMode } from "../../permissions/shouldReviewPathInAutoMode.js";
 import { countTextLines, runRipgrep, textOutputSchema, toTextBlocks } from "../utils/index.js";
 
@@ -101,6 +102,8 @@ export const claudeGrepTool = defineTool({
         ),
     }),
     returnType: textOutputSchema,
+    describeAutoPermissionAction: ({ path }, context) =>
+        describeFileAutoPermissionAction(path ?? ".", context, "searching"),
     shouldReviewInAutoMode: ({ path }, context) =>
         shouldReviewPathInAutoMode(path ?? ".", context, { write: false }),
     shouldRunInFullAccessInAutoMode: ({ path }, context) =>

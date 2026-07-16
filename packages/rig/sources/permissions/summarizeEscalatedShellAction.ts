@@ -1,4 +1,4 @@
-import { quoteVisibleExact } from "./summarizePermissionAction.js";
+import { quoteVisibleExact } from "./quoteVisibleExact.js";
 
 export function summarizeEscalatedShellAction(options: {
     command: string;

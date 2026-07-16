@@ -1,6 +1,7 @@
 import { Type } from "@sinclair/typebox";
 
 import { defineTool } from "../../agent/types.js";
+import { describeFileAutoPermissionAction } from "../../permissions/describeFileAutoPermissionAction.js";
 import { shouldReviewPathInAutoMode } from "../../permissions/shouldReviewPathInAutoMode.js";
 import { editTextFileBatch } from "../utils/index.js";
 
@@ -41,6 +42,8 @@ export const piEditTool = defineTool({
         {},
     ),
     returnType: piEditReturnSchema,
+    describeAutoPermissionAction: ({ path }, context) =>
+        describeFileAutoPermissionAction(path, context, "editing"),
     shouldReviewInAutoMode: ({ path }, context) =>
         shouldReviewPathInAutoMode(path, context, { write: true }),
     shouldRunInFullAccessInAutoMode: ({ path }, context) =>

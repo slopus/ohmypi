@@ -2,6 +2,7 @@ import { Type } from "@sinclair/typebox";
 
 import { defineTool } from "../../agent/types.js";
 import { resolveFileSystemPath } from "../../agent/context/resolveFileSystemPath.js";
+import { describeFileAutoPermissionAction } from "../../permissions/describeFileAutoPermissionAction.js";
 import { shouldReviewPathInAutoMode } from "../../permissions/shouldReviewPathInAutoMode.js";
 import { countTextLines, textOutputSchema, toTextBlocks } from "../utils/index.js";
 import { formatDirectoryEntryName } from "../utils/formatDirectoryEntryName.js";
@@ -22,6 +23,8 @@ export const piLsTool = defineTool({
         ),
     }),
     returnType: textOutputSchema,
+    describeAutoPermissionAction: ({ path }, context) =>
+        describeFileAutoPermissionAction(path ?? ".", context, "listing"),
     shouldReviewInAutoMode: ({ path }, context) =>
         shouldReviewPathInAutoMode(path ?? ".", context, { write: false }),
     shouldRunInFullAccessInAutoMode: ({ path }, context) =>

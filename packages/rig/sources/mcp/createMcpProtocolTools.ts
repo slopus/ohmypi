@@ -2,6 +2,7 @@ import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { Type } from "@sinclair/typebox";
 
 import { defineTool, type AnyDefinedTool, type ContentBlock } from "../agent/types.js";
+import { describeMcpAutoPermissionAction } from "./describeMcpAutoPermissionAction.js";
 import { runMcpClientCall } from "./runMcpClientCall.js";
 import { mcpResultToContentBlocks } from "./mcpResultToContentBlocks.js";
 import { isMcpErrorResult } from "./isMcpErrorResult.js";
@@ -75,6 +76,12 @@ export function createMcpProtocolTools(
             }),
             returnType: Type.Unknown(),
             requiresAutoOrFullAccess: true,
+            describeAutoPermissionAction: ({ server, name, arguments: toolArguments }) =>
+                describeMcpAutoPermissionAction({
+                    arguments: toolArguments ?? {},
+                    server,
+                    tool: name,
+                }),
             shouldReviewInAutoMode: () => true,
             async execute({ server, name, arguments: toolArguments }, context, execution) {
                 const selected = connection(server);

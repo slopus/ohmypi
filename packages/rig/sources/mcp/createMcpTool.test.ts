@@ -5,6 +5,28 @@ import { createJustBashToolHarness } from "../tools/testing/createJustBashToolHa
 import { createMcpTool } from "./createMcpTool.js";
 
 describe("createMcpTool", () => {
+    it("owns the external-boundary description used for Auto approval", () => {
+        const tool = createMcpTool({
+            client: {} as Client,
+            serverName: "deployment_service",
+            tool: {
+                inputSchema: { properties: {}, type: "object" },
+                name: "publish_release",
+            },
+        });
+        const describe = tool.describeAutoPermissionAction;
+
+        expect(describe).toBeDefined();
+        expect(
+            describe?.(
+                { channel: "production", version: "1.2.3" } as never,
+                createJustBashToolHarness().context,
+            ),
+        ).toBe(
+            'calling "Publish Release" from "Deployment Service" with arguments "{\\"channel\\":\\"production\\",\\"version\\":\\"1.2.3\\"}". Access: the MCP server can perform actions outside Rig’s filesystem sandbox',
+        );
+    });
+
     it("uses readable MCP names in the user-facing result label", () => {
         const tool = createMcpTool({
             client: {} as Client,

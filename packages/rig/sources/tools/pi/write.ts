@@ -1,6 +1,7 @@
 import { Type } from "@sinclair/typebox";
 
 import { defineTool } from "../../agent/types.js";
+import { describeFileAutoPermissionAction } from "../../permissions/describeFileAutoPermissionAction.js";
 import { shouldReviewPathInAutoMode } from "../../permissions/shouldReviewPathInAutoMode.js";
 import { writeFileReturnSchema, writeTextFile } from "../utils/index.js";
 
@@ -14,6 +15,8 @@ export const piWriteTool = defineTool({
         content: Type.String({ description: "Content to write to the file" }),
     }),
     returnType: writeFileReturnSchema,
+    describeAutoPermissionAction: ({ path }, context) =>
+        describeFileAutoPermissionAction(path, context, "writing"),
     shouldReviewInAutoMode: ({ path }, context) =>
         shouldReviewPathInAutoMode(path, context, { write: true }),
     shouldRunInFullAccessInAutoMode: ({ path }, context) =>

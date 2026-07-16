@@ -1,6 +1,7 @@
 import { Type } from "@sinclair/typebox";
 
 import { defineTool } from "../../agent/types.js";
+import { quoteVisibleExact } from "../../permissions/quoteVisibleExact.js";
 import { formatWebSearchOutput } from "./webSearch/formatWebSearchOutput.js";
 import { performWebSearch } from "./webSearch/performWebSearch.js";
 import type { WebSearchInput, WebSearchOutput } from "./webSearch/types.js";
@@ -49,6 +50,8 @@ export function createClaudeWebSearchTool(dependencies: ClaudeWebSearchDependenc
             ),
         }),
         returnType: claudeWebSearchReturnSchema,
+        describeAutoPermissionAction: ({ query }) =>
+            `searching the web for ${quoteVisibleExact(query)}. Access: network access outside Rig’s shell sandbox`,
         shouldReviewInAutoMode: () => true,
         execute: async ({ query, allowed_domains, blocked_domains }, _context, execution) => {
             if (query.trim().length < 2) {

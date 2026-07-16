@@ -3,6 +3,7 @@ import { Type } from "@sinclair/typebox";
 
 import { defineTool } from "../../agent/types.js";
 import { resolveFileSystemPath } from "../../agent/context/resolveFileSystemPath.js";
+import { describeFileAutoPermissionAction } from "../../permissions/describeFileAutoPermissionAction.js";
 import { shouldReviewPathInAutoMode } from "../../permissions/shouldReviewPathInAutoMode.js";
 import { countTextLines, textOutputSchema, toTextBlocks } from "../utils/index.js";
 import { formatDirectoryEntryName } from "../utils/formatDirectoryEntryName.js";
@@ -24,6 +25,8 @@ Other details:
         }),
     }),
     returnType: textOutputSchema,
+    describeAutoPermissionAction: ({ target_directory }, context) =>
+        describeFileAutoPermissionAction(target_directory, context, "listing"),
     shouldReviewInAutoMode: ({ target_directory }, context) =>
         shouldReviewPathInAutoMode(target_directory, context, { write: false }),
     shouldRunInFullAccessInAutoMode: ({ target_directory }, context) =>

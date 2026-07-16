@@ -107,6 +107,12 @@ describe("tool-owned Auto permission policies", () => {
                 context,
             ),
         ).toBe(false);
+        expect(
+            codexWriteStdinTool.describeAutoPermissionAction?.(
+                { chars: "deploy\n", session_id: 1 },
+                context,
+            ),
+        ).toBe('sending "deploy\\n" to shell session 1');
     });
 
     it("lets each file tool expose its own path while sharing boundary checks", async () => {
@@ -165,6 +171,9 @@ describe("tool-owned Auto permission policies", () => {
                 context,
             ),
         ).resolves.toBe(true);
+        expect(claudeReadTool.describeAutoPermissionAction?.({ file_path: outside }, context)).toBe(
+            `reading ${JSON.stringify(outside)}. Access: unrestricted filesystem access outside the workspace sandbox`,
+        );
     });
 
     it("lets apply_patch disclose every affected path and its full-access boundary", async () => {

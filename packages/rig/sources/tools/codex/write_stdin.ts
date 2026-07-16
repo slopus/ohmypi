@@ -1,6 +1,7 @@
 import { Type } from "@sinclair/typebox";
 
 import { defineTool } from "../../agent/types.js";
+import { quoteVisibleExact } from "../../permissions/quoteVisibleExact.js";
 import {
     createUnifiedExecOutput,
     formatUnifiedExecOutput,
@@ -35,6 +36,8 @@ export const codexWriteStdinTool = defineTool({
         ),
     }),
     returnType: unifiedExecOutputSchema,
+    describeAutoPermissionAction: ({ chars, session_id }) =>
+        `sending ${quoteVisibleExact(chars ?? "")} to shell session ${String(session_id)}`,
     shouldReviewInAutoMode: ({ chars }) => chars !== undefined && chars.length > 0,
     execute: async (
         { session_id, chars = "", yield_time_ms, max_output_tokens },

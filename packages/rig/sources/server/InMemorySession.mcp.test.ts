@@ -47,6 +47,8 @@ describe("InMemorySession MCP permissions", () => {
             description: "A test MCP tool.",
             arguments: Type.Object({}),
             returnType: Type.Unknown(),
+            describeAutoPermissionAction: () =>
+                "changing external state. Access: the MCP server can perform actions outside Rig’s filesystem sandbox",
             shouldReviewInAutoMode: () => true,
             execute: () => undefined,
             toLLM: () => [],

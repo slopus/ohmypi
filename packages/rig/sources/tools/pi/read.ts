@@ -2,6 +2,7 @@ import { Type } from "@sinclair/typebox";
 
 import { resolveFileSystemPath } from "../../agent/context/resolveFileSystemPath.js";
 import { defineTool } from "../../agent/types.js";
+import { describeFileAutoPermissionAction } from "../../permissions/describeFileAutoPermissionAction.js";
 import { shouldReviewPathInAutoMode } from "../../permissions/shouldReviewPathInAutoMode.js";
 import { mediaTypeForPath, readFileReturnSchema, readTextFile } from "../utils/index.js";
 import { boundPiReadResult } from "./boundPiReadResult.js";
@@ -30,6 +31,8 @@ export const piReadTool = defineTool({
         limit: Type.Optional(Type.Number({ description: "Maximum number of lines to read" })),
     }),
     returnType: piReadReturnSchema,
+    describeAutoPermissionAction: ({ path }, context) =>
+        describeFileAutoPermissionAction(path, context, "reading"),
     shouldReviewInAutoMode: ({ path }, context) =>
         shouldReviewPathInAutoMode(path, context, { write: false }),
     shouldRunInFullAccessInAutoMode: ({ path }, context) =>

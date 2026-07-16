@@ -1,6 +1,7 @@
 import { Type } from "@sinclair/typebox";
 
 import { defineTool } from "../../agent/types.js";
+import { quoteVisibleExact } from "../../permissions/quoteVisibleExact.js";
 import {
     applyPromptToMarkdown,
     MAX_WEB_FETCH_MARKDOWN_LENGTH,
@@ -63,6 +64,8 @@ export function createClaudeWebFetchTool(dependencies: ClaudeWebFetchDependencie
             prompt: Type.String({ description: "The prompt to run on the fetched content" }),
         }),
         returnType: claudeWebFetchReturnSchema,
+        describeAutoPermissionAction: ({ url }) =>
+            `fetching ${quoteVisibleExact(url)}. Access: network access outside Rig’s shell sandbox`,
         shouldReviewInAutoMode: () => true,
         execute: async ({ url, prompt }, _context, execution) => {
             try {
