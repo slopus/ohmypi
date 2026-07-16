@@ -15,6 +15,9 @@ import type { DockerEnvironment } from "./DockerEnvironment.js";
 import { runDockerExec } from "./runDockerExec.js";
 import { readDockerEnvironmentVariableNames } from "./readDockerEnvironmentVariableNames.js";
 import { createDockerCommandEnvironment, type SessionSecretContext } from "../secrets/index.js";
+import { createDockerSandboxCommand } from "./createDockerSandboxCommand.js";
+import { prepareDockerSandbox, type PreparedDockerSandbox } from "./prepareDockerSandbox.js";
+import { resolveDockerPath } from "./resolveDockerPath.js";
 
 interface DockerBashSession {
     command: string;
@@ -49,11 +52,14 @@ export function createDockerBashContext(
     let nextSessionId = 1;
     let onActiveSessionCountChange: ((count: number) => void) | undefined;
     let ambientEnvironmentVariables: Promise<readonly string[]> | undefined;
+    let canonicalWorkspace: Promise<string> | undefined;
+    let sandboxRuntime: Promise<PreparedDockerSandbox> | undefined;
     const activeSessionCount = () =>
         [...sessions.values()].filter((session) => !session.finished).length;
 
     const start = async (options: Omit<BashRunOptions, "signal">): Promise<DockerBashSession> => {
-        assertCanUseCustomShell(permissions.mode, options.shell);
+        const permissionMode = permissions.mode;
+        assertCanUseCustomShell(permissionMode, options.shell);
         const sessionId = nextSessionId++;
         const runCwd = options.cwd === undefined ? cwd : posix.resolve(cwd, options.cwd);
         const shell = options.shell ?? "/bin/sh";
@@ -70,6 +76,17 @@ export function createDockerBashContext(
             options.secrets,
             await ambientEnvironmentVariables,
         );
+        const invokedCommand =
+            permissionMode === "full_access"
+                ? [shell, "-lc", options.command]
+                : createDockerSandboxCommand({
+                      command: options.command,
+                      commandCwd: runCwd,
+                      mode: permissionMode,
+                      runtime: await loadSandboxRuntime(container),
+                      shell,
+                      workspaceCwd: await loadCanonicalWorkspace(),
+                  });
         const exec = await container.exec({
             AttachStdin: true,
             AttachStderr: true,
@@ -77,11 +94,10 @@ export function createDockerBashContext(
             Cmd: [
                 "/bin/sh",
                 "-c",
-                'echo $$ > "$3"; exec "$1" -lc "$2"',
+                'echo $$ > "$1"; shift; exec "$@"',
                 "rig",
-                shell,
-                options.command,
                 pidFile,
+                ...invokedCommand,
             ],
             ...(Object.keys(secretEnvironment).length === 0
                 ? {}
@@ -166,6 +182,27 @@ export function createDockerBashContext(
             if (completed !== undefined) sessions.delete(completed.sessionId);
         }
         return session;
+    };
+
+    const loadSandboxRuntime = async (
+        container: Dockerode.Container,
+    ): Promise<PreparedDockerSandbox> => {
+        if (sandboxRuntime === undefined) {
+            const pending = prepareDockerSandbox(container, contextId);
+            sandboxRuntime = pending;
+            void pending.catch(() => {
+                if (sandboxRuntime === pending) sandboxRuntime = undefined;
+            });
+        }
+        return sandboxRuntime;
+    };
+
+    const loadCanonicalWorkspace = (): Promise<string> => {
+        canonicalWorkspace ??= resolveDockerPath(environment, cwd).catch((error: unknown) => {
+            canonicalWorkspace = undefined;
+            throw error;
+        });
+        return canonicalWorkspace;
     };
 
     const kill = async (session: DockerBashSession): Promise<void> => {

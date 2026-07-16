@@ -449,7 +449,11 @@ Image-backed containers are created on the first message and keep a stable,
 session-derived name so their files survive daemon restarts. Rig never pulls an
 image implicitly and leaves managed containers in place for you to remove with
 Docker. Images and connected containers need `/bin/sh`, `readlink`, and common
-POSIX file utilities.
+POSIX file utilities. Restricted permission modes also need `bubblewrap` in the
+container. Rig configures image-backed containers for Bubblewrap automatically;
+start a container that Rig will connect to with
+`--security-opt seccomp=unconfined` so restricted shell commands can create their
+nested filesystem, process, and network boundary.
 
 </details>
 

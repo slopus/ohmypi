@@ -106,6 +106,8 @@ describe("Docker-backed sessions", () => {
             "--detach",
             "--name",
             containerName,
+            "--security-opt",
+            "seccomp=unconfined",
             "--entrypoint",
             "/bin/sh",
             "rig-gym:local",
@@ -130,6 +132,7 @@ describe("Docker-backed sessions", () => {
                 },
                 { content: [{ text: "Existing container verified.", type: "text" }] },
             ],
+            permissionMode: "workspace_write",
         });
         running.add(gym);
 
@@ -145,6 +148,49 @@ describe("Docker-backed sessions", () => {
         ]);
         expect(stdout).toBe("connected to existing container\n");
         await expect(gym.readFile("result.txt")).rejects.toThrow();
+    }, 60_000);
+
+    it("fails closed when an existing container cannot create the command sandbox", async () => {
+        baselineManagedContainers = new Set(await listManagedContainers());
+        const containerName = `rig-existing-${randomUUID()}`;
+        managedContainers.add(containerName);
+        await execFileAsync("docker", [
+            "run",
+            "--detach",
+            "--name",
+            containerName,
+            "--entrypoint",
+            "/bin/sh",
+            "rig-gym:local",
+            "-c",
+            "while :; do sleep 3600; done",
+        ]);
+        const gym = await createGym({
+            args: ["--docker-container", containerName, "--docker-workdir", "/workspace"],
+            dockerSocket: true,
+            inference: [
+                {
+                    content: [
+                        {
+                            arguments: { cmd: "printf 'escaped sandbox\n' > result.txt" },
+                            id: "call-unsupported-sandbox",
+                            name: "exec_command",
+                            type: "toolCall",
+                        },
+                    ],
+                },
+                { content: [{ text: "Unsupported sandbox handled.", type: "text" }] },
+            ],
+            permissionMode: "workspace_write",
+        });
+        running.add(gym);
+
+        gym.terminal.type("Try the command without Docker namespace support.");
+        gym.terminal.press("enter");
+        const screen = await gym.terminal.waitForText("Unsupported sandbox handled.", 40_000);
+
+        expect(screen.text).toContain("nested user namespaces");
+        await expect(pathExists(containerName, "/workspace/result.txt")).resolves.toBe(false);
     }, 60_000);
 
     it("blocks direct file writes through workspace symlinks that escape the container workspace", async () => {
@@ -210,4 +256,11 @@ async function listManagedContainers(): Promise<string[]> {
         "{{.Names}}",
     ]);
     return stdout.split("\n").filter(Boolean);
+}
+
+async function pathExists(container: string, path: string): Promise<boolean> {
+    return execFileAsync("docker", ["exec", container, "test", "-e", path]).then(
+        () => true,
+        () => false,
+    );
 }

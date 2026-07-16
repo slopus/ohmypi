@@ -89,6 +89,11 @@ export class DockerEnvironment {
                         Target: mount.target,
                         ReadOnly: mount.readOnly ?? false,
                     })),
+                    // Restricted commands create their own user, PID, mount, and network
+                    // namespaces with Bubblewrap. Docker's default seccomp profile blocks
+                    // those unprivileged namespace operations before Bubblewrap can apply
+                    // the narrower command boundary.
+                    SecurityOpt: ["seccomp=unconfined"],
                 },
             })
             .catch((error: unknown) => {

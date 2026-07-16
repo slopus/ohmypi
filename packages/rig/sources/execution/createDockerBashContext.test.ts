@@ -23,7 +23,7 @@ describe("createDockerBashContext", () => {
         await first.startSession({ command: "sleep 10" });
         await second.startSession({ command: "sleep 10" });
 
-        const pidFiles = fake.foregroundCommands.map((command) => command.at(-1));
+        const pidFiles = fake.foregroundCommands.map((command) => command[4]);
         expect(pidFiles).toHaveLength(2);
         expect(new Set(pidFiles).size).toBe(2);
 
