@@ -2,6 +2,7 @@ import { dirname } from "node:path";
 
 import type { FileDiff } from "../../agent/ToolResultPresentation.js";
 import type { AgentContext } from "../../agent/context/AgentContext.js";
+import { areSameFileSystemEntry } from "./areSameFileSystemEntry.js";
 import { BoundedFileDiffCollector } from "./BoundedFileDiffCollector.js";
 import { decodeUtf8File } from "./decodeUtf8File.js";
 import { iterateDiffContentLines } from "./iterateDiffContentLines.js";
@@ -21,6 +22,7 @@ interface SimulatedFile {
     exists: boolean;
     initialContent: string;
     initialExists: boolean;
+    initialIsSymbolicLink: boolean;
     initialMode?: number;
     initialMtimeMs?: number;
     mode?: number;
@@ -34,12 +36,13 @@ interface UpdateSimulation {
 }
 
 interface NativeMove {
+    contentChanged: boolean;
     source: SimulatedFile;
     target: SimulatedFile;
 }
 
 interface NativeMoveCandidate extends NativeMove {
-    unchanged: boolean;
+    targetAliasesSource: boolean;
 }
 
 interface PatchReplacement {
@@ -150,7 +153,11 @@ export async function applyPatchText(
                     simulatedFiles,
                     context,
                 );
-                if (targetSimulation.exists) {
+                const targetAliasesSource =
+                    targetSimulation.exists &&
+                    !targetSimulation.initialIsSymbolicLink &&
+                    (await areSameFileSystemEntry(context.fs, source, target));
+                if (targetSimulation.exists && !targetAliasesSource) {
                     throw new Error(`Invalid patch: move target already exists: ${moveTo}`);
                 }
                 simulated.content = "";
@@ -163,9 +170,10 @@ export async function applyPatchText(
                     targetSimulation.mode = simulated.mode;
                 }
                 moveCandidates.push({
+                    contentChanged: update.content !== sourceContent,
                     source: simulated,
                     target: targetSimulation,
-                    unchanged: update.content === sourceContent,
+                    targetAliasesSource,
                 });
                 fileDiffs.addWholeFile(filename, "delete", iterateDiffContentLines(sourceContent));
                 fileDiffs.addWholeFile(destination, "add", iterateDiffContentLines(update.content));
@@ -183,8 +191,8 @@ export async function applyPatchText(
     }
 
     const nativeMoves = moveCandidates.filter(
-        ({ source, target, unchanged }) =>
-            unchanged &&
+        ({ source, target, contentChanged, targetAliasesSource }) =>
+            (!contentChanged || targetAliasesSource) &&
             pathTouchCounts.get(source.path) === 1 &&
             pathTouchCounts.get(target.path) === 1,
     );
@@ -231,6 +239,9 @@ async function commitSimulatedFiles(
             await context.fs.mkdir(dirname(nativeMove.target.path), { recursive: true });
             await context.fs.move(nativeMove.source.path, nativeMove.target.path);
             completedMoves.push(nativeMove);
+            if (nativeMove.contentChanged) {
+                await context.fs.writeFile(nativeMove.target.path, nativeMove.target.content);
+            }
         }
         for (const simulated of changed) {
             if (simulated.exists) {
@@ -276,6 +287,24 @@ async function commitSimulatedFiles(
             try {
                 await context.fs.mkdir(dirname(nativeMove.source.path), { recursive: true });
                 await context.fs.move(nativeMove.target.path, nativeMove.source.path);
+                if (nativeMove.contentChanged) {
+                    await context.fs.writeFile(
+                        nativeMove.source.path,
+                        nativeMove.source.initialContent,
+                    );
+                    if (nativeMove.source.initialMode !== undefined) {
+                        await context.fs.chmod(
+                            nativeMove.source.path,
+                            nativeMove.source.initialMode,
+                        );
+                    }
+                    if (nativeMove.source.initialMtimeMs !== undefined) {
+                        await context.fs.setModificationTime(
+                            nativeMove.source.path,
+                            nativeMove.source.initialMtimeMs,
+                        );
+                    }
+                }
             } catch (rollbackError) {
                 rollbackErrors.push(rollbackError);
             }
@@ -337,6 +366,7 @@ async function getExistingSimulatedFile(
         exists: true,
         initialContent: content,
         initialExists: true,
+        initialIsSymbolicLink: false,
         ...(metadata.mode === undefined ? {} : { initialMode: metadata.mode, mode: metadata.mode }),
         initialMtimeMs: metadata.mtimeMs,
         path,
@@ -364,6 +394,7 @@ async function getOrLoadSimulatedFile(
         exists: initialExists,
         initialContent: content,
         initialExists,
+        initialIsSymbolicLink: metadata?.isSymbolicLink ?? false,
         ...(metadata?.mode === undefined
             ? {}
             : { initialMode: metadata.mode, mode: metadata.mode }),

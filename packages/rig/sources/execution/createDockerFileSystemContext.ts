@@ -71,6 +71,10 @@ export function createDockerFileSystemContext(
             );
             await successfulExec(environment, ["mv", "--", sourceTarget, destinationTarget]);
         },
+        async realpath(path) {
+            const target = await assertDockerReadPath(cwd, path, permissions.mode, resolvePath);
+            return resolveDockerPath(environment, target);
+        },
         async readFile(path) {
             return Buffer.from(await this.readFileBuffer(path)).toString("utf8");
         },

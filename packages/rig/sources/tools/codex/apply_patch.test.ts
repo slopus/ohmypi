@@ -4,6 +4,7 @@ import {
     mkdir,
     mkdtemp,
     readFile,
+    readdir,
     readlink,
     rm,
     stat,
@@ -546,6 +547,28 @@ describe("codex apply_patch tool", () => {
         expect(await harness.readFile("/workspace/target.txt")).toBe("target\n");
     });
 
+    it("does not treat a symbolic link to the source as a case-only move target", async () => {
+        const harness = createJustBashToolHarness({
+            files: { "/workspace/source.txt": "source\n" },
+        });
+        await harness.bash.fs.symlink("source.txt", "/workspace/destination.txt");
+
+        await expect(
+            harness.runTool(codexApplyPatchTool, {
+                workdir: "/workspace",
+                patch: [
+                    "*** Begin Patch",
+                    "*** Update File: source.txt",
+                    "*** Move to: destination.txt",
+                    "*** End Patch",
+                ].join("\n"),
+            }),
+        ).rejects.toThrow("move target already exists: destination.txt");
+
+        expect(await harness.bash.fs.readlink("/workspace/destination.txt")).toBe("source.txt");
+        expect(await harness.readFile("/workspace/source.txt")).toBe("source\n");
+    });
+
     it("does not treat a dangling link as an available add or move destination", async () => {
         const directory = await mkdtemp(join(tmpdir(), "rig-patch-dangling-link-"));
         try {
@@ -818,6 +841,108 @@ describe("codex apply_patch tool", () => {
             expect(linked.ino).toBe(before.ino);
             expect(moved.nlink).toBe(2);
             await expect(stat(source)).rejects.toMatchObject({ code: "ENOENT" });
+        } finally {
+            await rm(directory, { force: true, recursive: true });
+        }
+    });
+
+    it("moves a file when only its name casing changes", async () => {
+        const directory = await mkdtemp(join(tmpdir(), "rig-patch-case-only-move-"));
+        try {
+            const source = join(directory, "Source.txt");
+            const destination = join(directory, "source.txt");
+            await writeFile(source, "preserve casing\n");
+            const fs = createNodeFileSystemContext(directory);
+            const context = { ...createJustBashToolHarness().context, fs };
+
+            await applyPatchText(
+                [
+                    "*** Begin Patch",
+                    "*** Update File: Source.txt",
+                    "*** Move to: source.txt",
+                    "*** End Patch",
+                ].join("\n"),
+                directory,
+                context,
+            );
+
+            expect(await readdir(directory)).toEqual(["source.txt"]);
+            await expect(readFile(destination, "utf8")).resolves.toBe("preserve casing\n");
+        } finally {
+            await rm(directory, { force: true, recursive: true });
+        }
+    });
+
+    it("updates a file while changing only its name casing", async () => {
+        const directory = await mkdtemp(join(tmpdir(), "rig-patch-case-only-update-"));
+        try {
+            const source = join(directory, "Source.txt");
+            const destination = join(directory, "source.txt");
+            await writeFile(source, "before\n");
+            const fs = createNodeFileSystemContext(directory);
+            const context = { ...createJustBashToolHarness().context, fs };
+
+            await applyPatchText(
+                [
+                    "*** Begin Patch",
+                    "*** Update File: Source.txt",
+                    "*** Move to: source.txt",
+                    "@@",
+                    "-before",
+                    "+after",
+                    "*** End Patch",
+                ].join("\n"),
+                directory,
+                context,
+            );
+
+            expect(await readdir(directory)).toEqual(["source.txt"]);
+            await expect(readFile(destination, "utf8")).resolves.toBe("after\n");
+        } finally {
+            await rm(directory, { force: true, recursive: true });
+        }
+    });
+
+    it("restores a case-only move when a later filesystem change fails", async () => {
+        const directory = await mkdtemp(join(tmpdir(), "rig-patch-case-only-rollback-"));
+        try {
+            const source = join(directory, "Source.txt");
+            const blocked = join(directory, "blocked.txt");
+            await writeFile(source, "before\n");
+            await writeFile(blocked, "keep\n");
+            const fs = createNodeFileSystemContext(directory);
+            const remove = fs.rm;
+            const context = {
+                ...createJustBashToolHarness().context,
+                fs: {
+                    ...fs,
+                    async rm(path: string, options?: { recursive?: boolean; force?: boolean }) {
+                        if (path === blocked) throw new Error("injected delete failure");
+                        await remove(path, options);
+                    },
+                },
+            };
+
+            await expect(
+                applyPatchText(
+                    [
+                        "*** Begin Patch",
+                        "*** Update File: Source.txt",
+                        "*** Move to: source.txt",
+                        "@@",
+                        "-before",
+                        "+after",
+                        "*** Delete File: blocked.txt",
+                        "*** End Patch",
+                    ].join("\n"),
+                    directory,
+                    context,
+                ),
+            ).rejects.toThrow("injected delete failure");
+
+            expect((await readdir(directory)).sort()).toEqual(["Source.txt", "blocked.txt"]);
+            await expect(readFile(source, "utf8")).resolves.toBe("before\n");
+            await expect(readFile(blocked, "utf8")).resolves.toBe("keep\n");
         } finally {
             await rm(directory, { force: true, recursive: true });
         }

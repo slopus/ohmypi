@@ -15,6 +15,7 @@ export interface FileSystemContext {
     lstat(path: string): Promise<FileSystemStat>;
     mkdir(path: string, options?: { recursive?: boolean }): Promise<void>;
     move(source: string, destination: string): Promise<void>;
+    realpath(path: string): Promise<string>;
     readFile(path: string): Promise<string>;
     readFileBuffer(path: string): Promise<Uint8Array>;
     readdir(path: string): Promise<readonly string[]>;

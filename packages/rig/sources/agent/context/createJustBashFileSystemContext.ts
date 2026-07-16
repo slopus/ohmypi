@@ -32,6 +32,9 @@ export function createJustBashFileSystemContext(bash: Bash, cwd: string): FileSy
         async move(source, destination) {
             await bash.fs.mv(source, destination);
         },
+        async realpath(path) {
+            return bash.fs.realpath(path);
+        },
         async readFile(path) {
             return bash.fs.readFile(path);
         },

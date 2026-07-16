@@ -4,6 +4,7 @@ import {
     mkdir,
     readFile,
     readdir,
+    realpath,
     rename,
     rm,
     stat,
@@ -72,6 +73,11 @@ export function createNodeFileSystemContext(
             await assertCanWritePath(cwd, sourceTarget, permissionMode());
             await assertCanWritePath(cwd, destinationTarget, permissionMode());
             await rename(sourceTarget, destinationTarget);
+        },
+        async realpath(path) {
+            const target = resolvePath(path);
+            await assertCanReadPath(cwd, target, permissionMode(), readPathOptions);
+            return realpath(target);
         },
         async readFile(path) {
             const target = resolvePath(path);
