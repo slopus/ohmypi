@@ -90,6 +90,7 @@ export function createCodexProvider(options: CodexProviderOptions = {}): Provide
     return defineProvider({
         id: options.id ?? "codex",
         imageProfile: () => "codex",
+        toolProfile: () => "codex",
         models: codexModels,
         serviceTiers: ["fast"],
         quota: (quotaOptions) => quota.get(quotaOptions),

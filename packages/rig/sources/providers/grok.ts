@@ -24,6 +24,7 @@ export function createGrokProvider(options: GrokProviderOptions = {}): Provider 
     return defineProvider({
         id: providerId,
         imageProfile: () => "codex",
+        toolProfile: () => "grok",
         models,
         stream(model, context, streamOptions) {
             const availableModel = models.find((candidate) => candidate.id === model.id);

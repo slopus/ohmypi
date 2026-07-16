@@ -13,27 +13,14 @@ export interface SelectToolsForModelOptions {
 export function selectToolsForModel(
     options: SelectToolsForModelOptions,
 ): readonly AnyDefinedTool[] {
-    const identity = [options.provider.id, options.model.id, options.model.name]
-        .join(" ")
-        .toLowerCase();
-
-    if (options.model.id.toLowerCase().startsWith("xai/") || identity.includes("grok")) {
-        return grokBuildTools;
+    switch (options.provider.toolProfile(options.model)) {
+        case "claude":
+            return claudeCodeTools;
+        case "codex":
+            return codexTools;
+        case "grok":
+            return grokBuildTools;
+        case "pi":
+            return piTools;
     }
-
-    if (identity.includes("codex") || identity.includes("openai") || identity.includes("gpt")) {
-        return codexTools;
-    }
-
-    if (
-        identity.includes("anthropic") ||
-        identity.includes("claude") ||
-        identity.includes("sonnet") ||
-        identity.includes("opus") ||
-        identity.includes("haiku")
-    ) {
-        return claudeCodeTools;
-    }
-
-    return piTools;
 }

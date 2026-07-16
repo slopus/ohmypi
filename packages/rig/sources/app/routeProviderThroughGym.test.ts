@@ -24,6 +24,7 @@ describe("routeProviderThroughGym", () => {
             imageProfile: () => "claude",
             models: [model],
             quota,
+            toolProfile: () => "grok",
             stream: () => {
                 throw new Error("Native inference should be replaced.");
             },
@@ -38,6 +39,7 @@ describe("routeProviderThroughGym", () => {
         expect(quota).toHaveBeenCalledWith({ fresh: true });
         expect(routed.id).toBe("codex");
         expect(routed.imageProfile(model)).toBe("claude");
+        expect(routed.toolProfile(model)).toBe("grok");
         expect(routed.models).toEqual([model]);
     });
 });

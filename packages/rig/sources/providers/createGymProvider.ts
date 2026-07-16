@@ -28,6 +28,7 @@ export interface CreateGymProviderOptions {
     models?: readonly Model[];
     providerId?: string;
     serviceTiers?: readonly ServiceTier[];
+    toolProfile?: Provider["toolProfile"];
     token?: string;
 }
 
@@ -41,6 +42,7 @@ export function createGymProvider(options: CreateGymProviderOptions) {
     return defineProvider({
         id: providerId,
         ...(options.imageProfile === undefined ? {} : { imageProfile: options.imageProfile }),
+        toolProfile: options.toolProfile ?? (() => "codex"),
         models: configuredModels,
         ...(options.providerId === undefined
             ? { serviceTiers: ["fast"] as const }

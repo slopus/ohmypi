@@ -22,6 +22,7 @@ export function routeProviderThroughGym(provider: Provider, env: NodeJS.ProcessE
         imageProfile: (model) => provider.imageProfile(model),
         models: provider.models,
         providerId: provider.id,
+        toolProfile: (model) => provider.toolProfile(model),
         ...(provider.serviceTiers === undefined ? {} : { serviceTiers: provider.serviceTiers }),
         ...(env.RIG_GYM_TOKEN === undefined ? {} : { token: env.RIG_GYM_TOKEN }),
     });

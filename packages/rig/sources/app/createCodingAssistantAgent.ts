@@ -4,8 +4,8 @@ import {
     Agent,
     createNodeAgentContext,
     createDockerAgentContext,
+    selectToolsForModel,
     type AgentOptions,
-    type AnyDefinedTool,
     type GoalContext,
     type PermissionMode,
     type SessionSecretContext,
@@ -32,10 +32,9 @@ import { modelOpenaiGpt56Sol } from "../providers/models.js";
 import { readGymContextWindow } from "../providers/readGymContextWindow.js";
 import { readConfiguredBedrockBearerToken } from "../providers/readConfiguredBedrockBearerToken.js";
 import type { ServiceTier } from "../providers/types.js";
-import { claudeCodeTools, claudeCollaborationTools } from "../tools/claude/index.js";
-import { codexCollaborationTools, codexTools } from "../tools/codex/index.js";
-import { piTools } from "../tools/pi/index.js";
-import { grokBuildTools, grokCollaborationTools } from "../tools/grok/index.js";
+import { claudeCollaborationTools } from "../tools/claude/index.js";
+import { codexCollaborationTools } from "../tools/codex/index.js";
+import { grokCollaborationTools } from "../tools/grok/index.js";
 import { agentTool } from "../tools/Agent.js";
 import { goalTools } from "../tools/goals/index.js";
 import type { CodingAssistantRuntime } from "./CodingAssistantRuntime.js";
@@ -119,44 +118,6 @@ export function createCodingAssistantAgent(
         throw new Error(`Unknown or disabled inference provider '${providerId}'.`);
     }
     const providerType = providerId === "gym" ? "gym" : providerConfig?.type;
-    const bedrockRoute = providerType === "bedrock" ? getBedrockModelRoute(modelId) : undefined;
-    const usesClaudeTools = providerType === "claude" || bedrockRoute?.provider === "anthropic";
-    const usesCodexTools =
-        providerType === "codex" || providerType === "gym" || bedrockRoute?.provider === "openai";
-    const usesGrokTools = providerType === "grok";
-    const baseTools: readonly AnyDefinedTool[] = usesClaudeTools
-        ? claudeCodeTools
-        : usesGrokTools
-          ? grokBuildTools
-          : usesCodexTools
-            ? codexTools
-            : piTools;
-    const collaborationTools = (
-        usesCodexTools
-            ? codexCollaborationTools
-            : usesGrokTools
-              ? grokCollaborationTools
-              : usesClaudeTools
-                ? [agentTool, ...claudeCollaborationTools]
-                : [agentTool]
-    ).filter(
-        (tool) =>
-            workflowsEnabled ||
-            ![
-                "workflow",
-                "wait_for_workflow",
-                "workflow_status",
-                "stop_workflow",
-                "Workflow",
-                "WaitForWorkflow",
-            ].includes(tool.name),
-    );
-    const toolsWithoutGoals =
-        options.subagents?.canSpawn !== true
-            ? [...baseTools]
-            : [...baseTools, ...collaborationTools];
-    const tools =
-        options.goals === undefined ? toolsWithoutGoals : [...toolsWithoutGoals, ...goalTools];
     const env = options.env ?? process.env;
     const nativeProvider = (() => {
         if (providerType === "gym") return createGymProviderFromEnvironment(env);
@@ -194,7 +155,6 @@ export function createCodingAssistantAgent(
                     id: providerId,
                     ...(executable === undefined ? {} : { pathToClaudeCodeExecutable: executable }),
                     sessionId: createClaudeSessionId(agentId),
-                    tools,
                 }),
                 providerConfig,
             );
@@ -216,6 +176,41 @@ export function createCodingAssistantAgent(
         throw new Error(`Unknown inference provider '${providerId}'.`);
     })();
     const provider = routeProviderThroughGym(nativeProvider, env);
+    const model = provider.models.find((candidate) => candidate.id === modelId);
+    if (model === undefined) {
+        throw new Error(`Unknown model '${modelId}' for provider '${provider.id}'`);
+    }
+    const toolProfile = provider.toolProfile(model);
+    const usesClaudeTools = toolProfile === "claude";
+    const usesCodexTools = toolProfile === "codex";
+    const usesGrokTools = toolProfile === "grok";
+    const baseTools = selectToolsForModel({ model, provider });
+    const collaborationTools = (
+        usesCodexTools
+            ? codexCollaborationTools
+            : usesGrokTools
+              ? grokCollaborationTools
+              : usesClaudeTools
+                ? [agentTool, ...claudeCollaborationTools]
+                : [agentTool]
+    ).filter(
+        (tool) =>
+            workflowsEnabled ||
+            ![
+                "workflow",
+                "wait_for_workflow",
+                "workflow_status",
+                "stop_workflow",
+                "Workflow",
+                "WaitForWorkflow",
+            ].includes(tool.name),
+    );
+    const toolsWithoutGoals =
+        options.subagents?.canSpawn !== true
+            ? [...baseTools]
+            : [...baseTools, ...collaborationTools];
+    const tools =
+        options.goals === undefined ? toolsWithoutGoals : [...toolsWithoutGoals, ...goalTools];
     const agentOptions: AgentOptions = {
         provider,
         modelId,

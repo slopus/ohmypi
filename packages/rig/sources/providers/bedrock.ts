@@ -52,6 +52,12 @@ export function createBedrockProvider(options: BedrockProviderOptions = {}): Pro
         id: options.id ?? BEDROCK_PROVIDER_ID,
         imageProfile: (model) =>
             getBedrockModelRoute(model.id)?.provider === "anthropic" ? "claude" : "codex",
+        toolProfile: (model) => {
+            const provider = getBedrockModelRoute(model.id)?.provider;
+            if (provider === "anthropic") return "claude";
+            if (provider === "openai") return "codex";
+            return "pi";
+        },
         models: routes.map((route) => route.model),
         stream(model, context, streamOptions) {
             const endpoint = resolveBedrockModelEndpoint(model.id, options.modelOverrides);

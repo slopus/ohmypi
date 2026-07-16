@@ -18,6 +18,7 @@ export function createDebugProvider(
         id: provider.id,
         imageProfile: (model) => provider.imageProfile(model),
         models: provider.models,
+        toolProfile: (model) => provider.toolProfile(model),
         ...(provider.serviceTiers === undefined ? {} : { serviceTiers: provider.serviceTiers }),
         stream(model, context, streamOptions = {}) {
             const inferenceId = `${options.source}-${String(++inference).padStart(4, "0")}`;

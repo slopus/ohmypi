@@ -53,7 +53,7 @@ describe("Amazon Bedrock provider", () => {
         );
     });
 
-    it("selects image constraints from each model's native provider", () => {
+    it("selects image and tool profiles from each model's native provider", () => {
         const provider = createBedrockProvider({
             bearerToken: "bedrock-token",
             region: "us-east-1",
@@ -61,6 +61,9 @@ describe("Amazon Bedrock provider", () => {
 
         expect(provider.imageProfile(modelAnthropicOpus48)).toBe("claude");
         expect(provider.imageProfile(modelOpenaiGpt56Sol)).toBe("codex");
+        expect(provider.toolProfile(modelAnthropicOpus48)).toBe("claude");
+        expect(provider.toolProfile(modelOpenaiGpt56Sol)).toBe("codex");
+        expect(provider.toolProfile(modelMoonshotKimiK25)).toBe("pi");
     });
 
     it("routes Anthropic models through Bedrock Runtime with adaptive thinking", async () => {
