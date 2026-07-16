@@ -83,11 +83,11 @@ export const claudeReadTool = defineTool({
         }
 
         const options: Parameters<typeof readTextFile>[0] = {
+            limit: limit ?? MAX_LINES_TO_READ,
             path: resolvedPath,
             numbered: true,
         };
         if (offset !== undefined) options.offset = offset;
-        if (limit !== undefined) options.limit = limit;
         return readTextFile(options, context);
     },
     toLLM: (result) => {
