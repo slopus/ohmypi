@@ -1,9 +1,10 @@
-import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdir, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+import { runClipboardCommand } from "./runClipboardCommand.js";
 
 export interface ClipboardImage {
     data: string;
@@ -35,14 +36,14 @@ export async function readClipboardImage(
 ): Promise<ClipboardImage | undefined> {
     const rawImage =
         process.platform === "linux" && isWaylandSession()
-            ? (readClipboardImageViaWlPaste() ?? readClipboardImageViaXclip())
+            ? ((await readClipboardImageViaWlPaste()) ?? (await readClipboardImageViaXclip()))
             : await readClipboardImageViaNativeClipboard();
 
     if (rawImage === undefined) {
         return undefined;
     }
 
-    const path = writeClipboardImageFile(rawImage, options.outputDirectory);
+    const path = await writeClipboardImageFile(rawImage, options.outputDirectory);
     return {
         data: rawImage.bytes.toString("base64"),
         mediaType: rawImage.mediaType,
@@ -50,8 +51,9 @@ export async function readClipboardImage(
     };
 }
 
-function readClipboardImageViaWlPaste(): RawClipboardImage | undefined {
-    const list = runCommand("wl-paste", ["--list-types"], {
+async function readClipboardImageViaWlPaste(): Promise<RawClipboardImage | undefined> {
+    const list = await runClipboardCommand("wl-paste", ["--list-types"], {
+        maxBufferBytes: DEFAULT_MAX_BUFFER_BYTES,
         timeoutMs: DEFAULT_LIST_TIMEOUT_MS,
     });
     if (!list.ok) {
@@ -63,7 +65,10 @@ function readClipboardImageViaWlPaste(): RawClipboardImage | undefined {
         return undefined;
     }
 
-    const data = runCommand("wl-paste", ["--type", selectedType, "--no-newline"]);
+    const data = await runClipboardCommand("wl-paste", ["--type", selectedType, "--no-newline"], {
+        maxBufferBytes: DEFAULT_MAX_BUFFER_BYTES,
+        timeoutMs: DEFAULT_READ_TIMEOUT_MS,
+    });
     if (!data.ok || data.stdout.length === 0) {
         return undefined;
     }
@@ -71,10 +76,15 @@ function readClipboardImageViaWlPaste(): RawClipboardImage | undefined {
     return { bytes: data.stdout, mediaType: baseMimeType(selectedType) };
 }
 
-function readClipboardImageViaXclip(): RawClipboardImage | undefined {
-    const targets = runCommand("xclip", ["-selection", "clipboard", "-t", "TARGETS", "-o"], {
-        timeoutMs: DEFAULT_LIST_TIMEOUT_MS,
-    });
+async function readClipboardImageViaXclip(): Promise<RawClipboardImage | undefined> {
+    const targets = await runClipboardCommand(
+        "xclip",
+        ["-selection", "clipboard", "-t", "TARGETS", "-o"],
+        {
+            maxBufferBytes: DEFAULT_MAX_BUFFER_BYTES,
+            timeoutMs: DEFAULT_LIST_TIMEOUT_MS,
+        },
+    );
     const preferred = targets.ok ? selectPreferredImageMimeType(lines(targets.stdout)) : undefined;
     const tryTypes =
         preferred === undefined
@@ -82,7 +92,11 @@ function readClipboardImageViaXclip(): RawClipboardImage | undefined {
             : [preferred, ...SUPPORTED_IMAGE_MIME_TYPES];
 
     for (const mimeType of tryTypes) {
-        const data = runCommand("xclip", ["-selection", "clipboard", "-t", mimeType, "-o"]);
+        const data = await runClipboardCommand(
+            "xclip",
+            ["-selection", "clipboard", "-t", mimeType, "-o"],
+            { maxBufferBytes: DEFAULT_MAX_BUFFER_BYTES, timeoutMs: DEFAULT_READ_TIMEOUT_MS },
+        );
         if (data.ok && data.stdout.length > 0) {
             return { bytes: data.stdout, mediaType: baseMimeType(mimeType) };
         }
@@ -114,17 +128,17 @@ function loadClipboardModule(): ClipboardModule | undefined {
     }
 }
 
-function writeClipboardImageFile(
+async function writeClipboardImageFile(
     image: RawClipboardImage,
     outputDirectory: string | undefined,
-): string {
+): Promise<string> {
     const directory = outputDirectory ?? join(tmpdir(), "rig-clipboard-images");
-    mkdirSync(directory, { recursive: true });
+    await mkdir(directory, { recursive: true });
     const path = join(
         directory,
         `rig-clipboard-${randomUUID()}.${extensionForMimeType(image.mediaType)}`,
     );
-    writeFileSync(path, image.bytes);
+    await writeFile(path, image.bytes);
     return path;
 }
 
@@ -170,24 +184,4 @@ function lines(buffer: Buffer): string[] {
         .split(/\r?\n/u)
         .map((line) => line.trim())
         .filter((line) => line.length > 0);
-}
-
-function runCommand(
-    command: string,
-    args: readonly string[],
-    options: { maxBufferBytes?: number; timeoutMs?: number } = {},
-): { ok: boolean; stdout: Buffer } {
-    const result = spawnSync(command, [...args], {
-        maxBuffer: options.maxBufferBytes ?? DEFAULT_MAX_BUFFER_BYTES,
-        timeout: options.timeoutMs ?? DEFAULT_READ_TIMEOUT_MS,
-    });
-
-    if (result.error !== undefined || result.status !== 0) {
-        return { ok: false, stdout: Buffer.alloc(0) };
-    }
-
-    return {
-        ok: true,
-        stdout: Buffer.isBuffer(result.stdout) ? result.stdout : Buffer.from(result.stdout ?? ""),
-    };
 }
