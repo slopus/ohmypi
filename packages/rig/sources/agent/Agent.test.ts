@@ -1219,14 +1219,22 @@ describe("Agent", () => {
                         timestamp: 1,
                     };
                     return {
-                        async *[Symbol.asyncIterator]() {
-                            started.resolve();
-                            await new Promise<void>((resolve) => {
-                                options?.signal?.addEventListener("abort", () => resolve(), {
-                                    once: true,
-                                });
-                            });
-                            throw new Error("aborted");
+                        [Symbol.asyncIterator]() {
+                            return {
+                                async next() {
+                                    started.resolve();
+                                    await new Promise<void>((resolve) => {
+                                        options?.signal?.addEventListener(
+                                            "abort",
+                                            () => resolve(),
+                                            {
+                                                once: true,
+                                            },
+                                        );
+                                    });
+                                    throw new Error("aborted");
+                                },
+                            };
                         },
                         async result() {
                             return message;
