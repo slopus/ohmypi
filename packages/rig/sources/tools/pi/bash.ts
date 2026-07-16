@@ -7,6 +7,7 @@ import {
     summarizeTextOutput,
     textOutputSchema,
     toTextBlocks,
+    truncateTextTail,
 } from "../utils/index.js";
 
 const DEFAULT_MAX_LINES = 2000;
@@ -15,7 +16,7 @@ const DEFAULT_MAX_BYTES = 50 * 1024;
 export const piBashTool = defineTool({
     name: "bash",
     label: "bash",
-    description: `Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last ${DEFAULT_MAX_LINES} lines or ${DEFAULT_MAX_BYTES / 1024}KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.`,
+    description: `Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to the last ${DEFAULT_MAX_LINES} lines or ${DEFAULT_MAX_BYTES / 1024}KB (whichever is hit first). Optionally provide a timeout in seconds.`,
     arguments: Type.Object({
         command: Type.String({ description: "Bash command to execute" }),
         timeout: Type.Optional(
@@ -56,7 +57,14 @@ export const piBashTool = defineTool({
         if (execution.onProgress !== undefined) options.onProgress = execution.onProgress;
         if (execution.signal !== undefined) options.signal = execution.signal;
         const result = await runShellCommand(command, options, context);
-        const text = [result.stdout, result.stderr].filter(Boolean).join("\n") || "(no output)";
+        const fullText = [result.stdout, result.stderr].filter(Boolean).join("\n") || "(no output)";
+        const truncated = truncateTextTail(fullText, {
+            maxBytes: DEFAULT_MAX_BYTES,
+            maxLines: DEFAULT_MAX_LINES,
+        });
+        const text = truncated.truncated
+            ? `${truncated.content}\n\n[Earlier output was truncated; showing the last ${truncated.outputLines} lines (${(truncated.outputBytes / 1024).toFixed(1)}KB).]`
+            : truncated.content;
         if (result.exitCode !== 0 && result.exitCode !== null) {
             throw new Error(`${text}\n\nCommand exited with code ${result.exitCode}`);
         }

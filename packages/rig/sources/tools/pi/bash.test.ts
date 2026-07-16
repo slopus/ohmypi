@@ -25,4 +25,45 @@ describe("pi bash tool", () => {
         expect(progress).toContain("pi");
         expect(observedTimeout).toBe(120_000);
     });
+
+    it("returns only the bounded output tail and does not promise a missing spill file", async () => {
+        const harness = createJustBashToolHarness();
+        const outputs = [
+            [
+                "old-head",
+                ...Array.from({ length: 2_001 }, (_, index) => `line-${index + 1}`),
+                "new-tail",
+            ].join("\n"),
+            `old-head-${"x".repeat(60_000)}-new-tail`,
+        ];
+        harness.context.bash.run = async () => ({
+            exitCode: 0,
+            stderr: "",
+            stdout: outputs.shift() ?? "",
+            timedOut: false,
+        });
+        const lineResult = await piBashTool.execute(
+            { command: "produce many lines" },
+            harness.context,
+            {},
+        );
+
+        expect(lineResult.text.includes("old-head")).toBe(false);
+        expect(lineResult.text.includes("\nline-2\n")).toBe(false);
+        expect(lineResult.text.startsWith("line-3\n")).toBe(true);
+        expect(lineResult.text).toContain("new-tail");
+        expect(lineResult.text).toContain("Earlier output was truncated");
+
+        const byteResult = await piBashTool.execute(
+            { command: "produce many bytes" },
+            harness.context,
+            {},
+        );
+
+        expect(Buffer.byteLength(byteResult.text, "utf8")).toBeLessThan(52_000);
+        expect(byteResult.text.includes("old-head")).toBe(false);
+        expect(byteResult.text).toContain("new-tail");
+        expect(byteResult.text).toContain("Earlier output was truncated");
+        expect(piBashTool.description).not.toContain("full output is saved to a temp file");
+    });
 });

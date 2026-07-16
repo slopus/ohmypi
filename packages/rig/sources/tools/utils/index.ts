@@ -14,3 +14,4 @@ export * from "./shell.js";
 export * from "./singleLineText.js";
 export * from "./summarizeShellOutput.js";
 export * from "./summarizeTextOutput.js";
+export * from "./truncateTextTail.js";
