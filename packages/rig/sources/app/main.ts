@@ -8,6 +8,8 @@ import { parseExecCommand } from "./parseExecCommand.js";
 import { parseSessionCommand } from "./parseSessionCommand.js";
 import { resolveSessionCommand } from "./resolveSessionCommand.js";
 import { parseSessionEnvironmentOptions } from "./parseSessionEnvironmentOptions.js";
+import { formatCliHelp } from "./formatCliHelp.js";
+import { readPackageVersion } from "./readPackageVersion.js";
 
 export async function main(argv: readonly string[] = process.argv.slice(2)): Promise<void> {
     if (argv.length === 1 && argv[0] === "--server") {
@@ -24,12 +26,20 @@ export async function main(argv: readonly string[] = process.argv.slice(2)): Pro
 
     const parsedEnvironment = parseSessionEnvironmentOptions(argv);
     argv = parsedEnvironment.remaining;
+    const [command, ...commandArgs] = argv;
+    if (command === "--help" || command === "-h") {
+        console.log(formatCliHelp());
+        return;
+    }
+    if (command === "--version" || command === "-v") {
+        console.log(`Rig ${readPackageVersion()}`);
+        return;
+    }
     const options: RunAppOptions = {
         cwd: process.cwd(),
         ...(parsedEnvironment.debug === true ? { debug: true } : {}),
         ...(parsedEnvironment.docker === undefined ? {} : { docker: parsedEnvironment.docker }),
     };
-    const [command, ...commandArgs] = argv;
     if (command === "exec") {
         await runExec({
             ...parseExecCommand(commandArgs),
@@ -61,6 +71,10 @@ export async function main(argv: readonly string[] = process.argv.slice(2)): Pro
     if (command === "monit") {
         await runMonit();
         return;
+    }
+    if (command !== undefined && command !== "resume" && command !== "fork") {
+        const kind = command.startsWith("-") ? "option" : "command";
+        throw new Error(`Unknown rig ${kind} '${command}'. Run 'rig --help' for usage.`);
     }
     if (process.env.OPENAI_API_KEY !== undefined) {
         options.apiKey = process.env.OPENAI_API_KEY;
