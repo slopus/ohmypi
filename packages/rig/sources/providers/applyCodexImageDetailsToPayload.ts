@@ -1,6 +1,6 @@
 export function applyCodexImageDetailsToPayload(
     payload: unknown,
-    details: readonly ("high" | "original")[],
+    originalImageUrls: ReadonlySet<string>,
 ): unknown {
     if (typeof payload !== "object" || payload === null || !("input" in payload)) {
         return payload;
@@ -10,7 +10,6 @@ export function applyCodexImageDetailsToPayload(
         return payload;
     }
 
-    let detailIndex = 0;
     for (const item of input) {
         if (typeof item !== "object" || item === null) {
             continue;
@@ -26,13 +25,12 @@ export function applyCodexImageDetailsToPayload(
                 typeof block === "object" &&
                 block !== null &&
                 "type" in block &&
-                block.type === "input_image"
+                block.type === "input_image" &&
+                "image_url" in block &&
+                typeof block.image_url === "string" &&
+                originalImageUrls.has(block.image_url)
             ) {
-                const detail = details[detailIndex];
-                detailIndex += 1;
-                if (detail === "original") {
-                    (block as { detail: string }).detail = "original";
-                }
+                (block as { detail: string }).detail = "original";
             }
         }
     }

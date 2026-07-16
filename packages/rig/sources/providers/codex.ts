@@ -13,7 +13,7 @@ import {
 
 import { applyCodexImageDetailsToPayload } from "./applyCodexImageDetailsToPayload.js";
 import { classifyCodexErrorCode } from "./classifyCodexErrorCode.js";
-import { collectImageDetails } from "./collectImageDetails.js";
+import { collectOriginalImageUrls } from "./collectOriginalImageUrls.js";
 import { CODEX_ULTRA_INSTRUCTIONS } from "./codexUltraInstructions.js";
 import {
     modelOpenaiGpt54,
@@ -116,7 +116,7 @@ export function createCodexProvider(options: CodexProviderOptions = {}): Provide
                         streamOptions,
                         resolveApiKey(),
                         options.transport,
-                        collectImageDetails(context),
+                        collectOriginalImageUrls(context),
                     ),
                 ),
                 { classifyError: classifyCodexErrorCode },
@@ -191,7 +191,7 @@ function toPiStreamOptions(
     options: StreamOptions | undefined,
     apiKey: string | undefined,
     transport: SimpleStreamOptions["transport"],
-    imageDetails: readonly ("high" | "original")[],
+    originalImageUrls: ReadonlySet<string>,
 ): OpenAICodexResponsesOptions {
     const piOptions: OpenAICodexResponsesOptions = {
         ...(options?.signal !== undefined ? { signal: options.signal } : {}),
@@ -199,10 +199,10 @@ function toPiStreamOptions(
         ...(options?.serviceTier === "fast" ? { serviceTier: "priority" as const } : {}),
         ...(apiKey !== undefined ? { apiKey } : {}),
         ...(transport !== undefined ? { transport } : {}),
-        ...(imageDetails.includes("original")
+        ...(originalImageUrls.size > 0
             ? {
                   onPayload: (payload: unknown) =>
-                      applyCodexImageDetailsToPayload(payload, imageDetails),
+                      applyCodexImageDetailsToPayload(payload, originalImageUrls),
               }
             : {}),
     };
