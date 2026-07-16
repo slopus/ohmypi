@@ -14,6 +14,7 @@ import { isRetryableInferenceError } from "./isRetryableInferenceError.js";
 import { prepareProviderMessageImages } from "./prepareProviderMessageImages.js";
 import { replaceLastTurnToolResultImages } from "./replaceLastTurnToolResultImages.js";
 import { createSystemPrompt } from "./createSystemPrompt.js";
+import { ToolLockManager } from "./ToolLockManager.js";
 import type {
     AgentBlock,
     AgentMessage,
@@ -174,6 +175,7 @@ export async function runAgentLoop(options: RunAgentLoopOptions): Promise<AgentL
     const providerTools = options.tools.map(toProviderTool);
     const toolsByName = new Map(options.tools.map((tool) => [tool.name, tool]));
     const toolContext = options.context;
+    const toolLocks = new ToolLockManager();
 
     let iteration = 0;
     let contextOverflowRecoveryAttempted = false;
@@ -461,76 +463,79 @@ export async function runAgentLoop(options: RunAgentLoopOptions): Promise<AgentL
         }
 
         const toolResultBlocks = await Promise.all(
-            toolCalls.map(async (toolCall) => {
-                await options.debug?.record("tool-call", {
-                    iteration,
-                    toolCall,
-                });
-                await options.onEvent?.({ type: "tool_execution_start", toolCall });
-                const result = await executeToolCall(toolCall, toolsByName, toolContext, {
-                    messages: transcript,
-                    model,
-                    now,
-                    onProgress: (display) => {
-                        void options.onEvent?.({
-                            type: "tool_execution_progress",
-                            display,
-                            toolCallId: toolCall.id,
-                        });
-                    },
-                    onStatus: (status) => {
-                        void options.onEvent?.({
-                            type: "tool_execution_status",
-                            status,
-                            toolCallId: toolCall.id,
-                        });
-                    },
-                    onPermissionReview: (review) =>
-                        options.onEvent?.({
-                            type: "permission_review",
-                            toolCallId: toolCall.id,
-                            ...review,
-                        }),
-                    onRawResult: (rawResult) =>
-                        options.debug?.record("tool-raw-result", {
-                            iteration,
-                            rawResult,
-                            toolCall,
-                        }),
-                    onError: (error) =>
-                        options.debug?.record("tool-error", {
-                            error,
-                            iteration,
-                            toolCall,
-                        }),
-                    provider: options.provider,
-                    ...(options.signal === undefined ? {} : { signal: options.signal }),
-                });
-                await options.debug?.record("tool-result", {
-                    iteration,
-                    result,
-                    toolCall,
-                });
-                await options.onEvent?.({
-                    type: "tool_execution_end",
-                    result: {
-                        type: "tool_result",
-                        toolCallId: result.toolCallId,
-                        toolName: result.toolName,
-                        display: result.display,
-                        ...(result.isError === undefined ? {} : { isError: result.isError }),
-                        ...(result.presentation === undefined
-                            ? {}
-                            : { presentation: result.presentation }),
-                    },
-                });
-                await options.onEvent?.({
-                    type: "background_processes_changed",
-                    processes: toolContext.bash.activeSessions?.() ?? [],
-                    running: toolContext.bash.activeSessionCount?.() ?? 0,
-                });
-                return result;
-            }),
+            toolCalls.map((toolCall) =>
+                toolLocks.run(resolveToolLockKeys(toolCall, toolsByName), async () => {
+                    if (options.signal?.aborted) return interruptedToolResultBlock(toolCall);
+                    await options.debug?.record("tool-call", {
+                        iteration,
+                        toolCall,
+                    });
+                    await options.onEvent?.({ type: "tool_execution_start", toolCall });
+                    const result = await executeToolCall(toolCall, toolsByName, toolContext, {
+                        messages: transcript,
+                        model,
+                        now,
+                        onProgress: (display) => {
+                            void options.onEvent?.({
+                                type: "tool_execution_progress",
+                                display,
+                                toolCallId: toolCall.id,
+                            });
+                        },
+                        onStatus: (status) => {
+                            void options.onEvent?.({
+                                type: "tool_execution_status",
+                                status,
+                                toolCallId: toolCall.id,
+                            });
+                        },
+                        onPermissionReview: (review) =>
+                            options.onEvent?.({
+                                type: "permission_review",
+                                toolCallId: toolCall.id,
+                                ...review,
+                            }),
+                        onRawResult: (rawResult) =>
+                            options.debug?.record("tool-raw-result", {
+                                iteration,
+                                rawResult,
+                                toolCall,
+                            }),
+                        onError: (error) =>
+                            options.debug?.record("tool-error", {
+                                error,
+                                iteration,
+                                toolCall,
+                            }),
+                        provider: options.provider,
+                        ...(options.signal === undefined ? {} : { signal: options.signal }),
+                    });
+                    await options.debug?.record("tool-result", {
+                        iteration,
+                        result,
+                        toolCall,
+                    });
+                    await options.onEvent?.({
+                        type: "tool_execution_end",
+                        result: {
+                            type: "tool_result",
+                            toolCallId: result.toolCallId,
+                            toolName: result.toolName,
+                            display: result.display,
+                            ...(result.isError === undefined ? {} : { isError: result.isError }),
+                            ...(result.presentation === undefined
+                                ? {}
+                                : { presentation: result.presentation }),
+                        },
+                    });
+                    await options.onEvent?.({
+                        type: "background_processes_changed",
+                        processes: toolContext.bash.activeSessions?.() ?? [],
+                        running: toolContext.bash.activeSessionCount?.() ?? 0,
+                    });
+                    return result;
+                }),
+            ),
         );
 
         if (options.signal?.aborted) {
@@ -806,6 +811,17 @@ function toProviderAssistantContent(
     }
 
     throw new Error("Assistant image blocks are not supported by providers");
+}
+
+function resolveToolLockKeys(
+    toolCall: ProviderToolCall,
+    toolsByName: ReadonlyMap<string, AnyDefinedTool>,
+): readonly string[] {
+    const tool = toolsByName.get(toolCall.name);
+    if (tool === undefined || !Value.Check(tool.arguments, toolCall.arguments)) return [];
+    return tool.locks.map((lock) =>
+        typeof lock === "string" ? lock : lock(toolCall.arguments as never),
+    );
 }
 
 function toProviderTool(tool: AnyDefinedTool): ProviderTool {

@@ -398,6 +398,79 @@ describe("agent loop live", () => {
         });
     });
 
+    it("serializes provider tool calls that share a declared lock", async () => {
+        const model = defineModel({
+            id: "mock/model",
+            name: "Mock Model",
+            thinkingLevels: ["off"],
+            defaultThinkingLevel: "off",
+        });
+        let inferenceCount = 0;
+        const provider = defineProvider({
+            id: "mock",
+            models: [model],
+            stream() {
+                inferenceCount++;
+                return inferenceCount === 1
+                    ? streamFor(
+                          assistantMessage(
+                              [
+                                  {
+                                      type: "toolCall",
+                                      id: "call-first",
+                                      name: "locked",
+                                      arguments: { key: "shared", value: "first" },
+                                  },
+                                  {
+                                      type: "toolCall",
+                                      id: "call-second",
+                                      name: "locked",
+                                      arguments: { key: "shared", value: "second" },
+                                  },
+                              ],
+                              "toolUse",
+                          ),
+                      )
+                    : streamFor(assistantMessage([{ type: "text", text: "done" }], "stop"));
+            },
+        });
+        const events: string[] = [];
+        const lockedTool = defineTool({
+            name: "locked",
+            label: "Locked",
+            description: "Runs under an argument-derived lock.",
+            arguments: Type.Object({ key: Type.String(), value: Type.String() }),
+            returnType: Type.Object({ value: Type.String() }),
+            shouldReviewInAutoMode: () => false,
+            async execute(args: { key: string; value: string }) {
+                events.push(`${args.value}-start`);
+                await delay(args.value === "first" ? 40 : 1);
+                events.push(`${args.value}-end`);
+                return { value: args.value };
+            },
+            toLLM: (result: { value: string }) => [{ type: "text", text: result.value }],
+            toUI: (result: { value: string }) => result.value,
+            locks: [(args) => args.key],
+        });
+
+        const harness = createJustBashToolHarness();
+        await runAgentLoop({
+            provider,
+            modelId: "mock/model",
+            tools: [lockedTool],
+            messages: [
+                {
+                    role: "user",
+                    id: "user-1",
+                    blocks: [{ type: "text", text: "Run both locked calls." }],
+                },
+            ],
+            context: harness.context,
+        });
+
+        expect(events).toEqual(["first-start", "first-end", "second-start", "second-end"]);
+    });
+
     it("propagates an optional tool result failure predicate", async () => {
         const model = defineModel({
             id: "mock/model",
