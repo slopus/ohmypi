@@ -344,7 +344,13 @@ export class ProtocolHttpClient {
         let after = options.after;
         while (options.signal?.aborted !== true) {
             try {
-                after = await this.#watchGlobalEventsOnce(after, options);
+                after = await this.#watchGlobalEventsOnce(after, {
+                    ...options,
+                    onEvent: async (entry) => {
+                        await options.onEvent(entry);
+                        after = entry.cursor;
+                    },
+                });
             } catch (error) {
                 if (options.signal?.aborted) return;
                 if (
@@ -513,6 +519,17 @@ export class ProtocolHttpClient {
         options: WatchGlobalEventsOptions,
     ): Promise<number | undefined> {
         return new Promise<number | undefined>((resolve, reject) => {
+            let application = Promise.resolve();
+            let cursor = after;
+            let terminalScheduled = false;
+            const settle = (error?: unknown) => {
+                if (terminalScheduled) return;
+                terminalScheduled = true;
+                void application.then(
+                    () => (error === undefined ? resolve(cursor) : reject(error)),
+                    reject,
+                );
+            };
             const requestPath =
                 after === undefined ? "/events/stream" : `/events/stream?after=${after}`;
             const request = httpRequest(
@@ -532,10 +549,10 @@ export class ProtocolHttpClient {
                         return;
                     }
 
-                    let cursor = after;
                     let buffer = "";
                     response.setEncoding("utf8");
                     response.on("data", (chunk: string) => {
+                        if (terminalScheduled) return;
                         buffer += chunk;
                         for (;;) {
                             const boundary = buffer.indexOf("\n\n");
@@ -544,20 +561,26 @@ export class ProtocolHttpClient {
                             buffer = buffer.slice(boundary + 2);
                             const entry = parseGlobalSseEvent(rawEvent);
                             if (entry === undefined) continue;
-                            cursor = entry.cursor;
-                            Promise.resolve(options.onEvent(entry)).catch(reject);
+                            application = application.then(async () => {
+                                await options.onEvent(entry);
+                                cursor = entry.cursor;
+                            });
+                            void application.catch((error: unknown) => {
+                                response.destroy();
+                                settle(error);
+                            });
                         }
                     });
-                    response.on("end", () => resolve(cursor));
-                    response.on("error", reject);
+                    response.on("end", () => settle());
+                    response.on("error", settle);
                 },
             );
             const abort = () => {
+                settle();
                 request.destroy();
-                resolve(after);
             };
             options.signal?.addEventListener("abort", abort, { once: true });
-            request.on("error", reject);
+            request.on("error", settle);
             request.end();
         });
     }

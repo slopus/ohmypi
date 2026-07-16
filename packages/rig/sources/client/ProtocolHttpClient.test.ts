@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 
 import { describe, expect, it, vi } from "vitest";
 
-import type { SessionEvent } from "../protocol/index.js";
+import type { GlobalEventQueueEntry, SessionEvent } from "../protocol/index.js";
 import { ProtocolHttpClient } from "./ProtocolHttpClient.js";
 
 describe("ProtocolHttpClient", () => {
@@ -273,6 +273,113 @@ describe("ProtocolHttpClient", () => {
             await rm(directory, { recursive: true, force: true });
         }
     });
+
+    it("serializes async global event application and reconnects after the last successful apply", async () => {
+        const directory = await mkdtemp(join(tmpdir(), "rig-client-test-"));
+        const socketPath = join(directory, "server.sock");
+        const prior = globalEvent(1);
+        const first = globalEvent(2);
+        const second = globalEvent(3);
+        const requestedAfterValues: Array<string | null> = [];
+        let streamRequests = 0;
+        const server = createServer((request, response) => {
+            const url = new URL(request.url ?? "/", "http://unix");
+            requestedAfterValues.push(url.searchParams.get("after"));
+            streamRequests += 1;
+            response.writeHead(200, { "content-type": "text/event-stream; charset=utf-8" });
+            if (streamRequests === 1) {
+                writeGlobalSseEvent(response, prior);
+                writeGlobalSseEvent(response, first);
+                writeGlobalSseEvent(response, second);
+                return;
+            }
+            writeGlobalSseEvent(response, first);
+            writeGlobalSseEvent(response, second);
+        });
+
+        try {
+            await new Promise<void>((resolve) => server.listen(socketPath, resolve));
+            const client = new ProtocolHttpClient({ socketPath, token: "test-token" });
+            const controller = new AbortController();
+            const firstGate = deferred<void>();
+            const applied: number[] = [];
+            const attempted: number[] = [];
+            let failFirstOnce = true;
+
+            const watching = client.watchGlobalEvents({
+                signal: controller.signal,
+                async onEvent(entry) {
+                    attempted.push(entry.cursor);
+                    if (entry.cursor === first.cursor && failFirstOnce) {
+                        await firstGate.promise;
+                        failFirstOnce = false;
+                        throw new Error("simulated apply failure");
+                    }
+                    applied.push(entry.cursor);
+                    if (entry.cursor === second.cursor) controller.abort();
+                },
+            });
+
+            await vi.waitFor(() => expect(streamRequests).toBe(1));
+            await vi.waitFor(() => expect(attempted).toEqual([prior.cursor, first.cursor]));
+            expect(applied).toEqual([prior.cursor]);
+            firstGate.resolve(undefined);
+            await watching;
+
+            expect(attempted).toEqual([prior.cursor, first.cursor, first.cursor, second.cursor]);
+            expect(applied).toEqual([prior.cursor, first.cursor, second.cursor]);
+            expect(requestedAfterValues).toEqual([null, String(prior.cursor)]);
+        } finally {
+            await new Promise<void>((resolve) => server.close(() => resolve()));
+            await rm(directory, { recursive: true, force: true });
+        }
+    });
+
+    it("waits for the current global event application before an abort completes the stream", async () => {
+        const directory = await mkdtemp(join(tmpdir(), "rig-client-test-"));
+        const socketPath = join(directory, "server.sock");
+        const entry = globalEvent(1);
+        const server = createServer((_request, response) => {
+            response.writeHead(200, { "content-type": "text/event-stream; charset=utf-8" });
+            writeGlobalSseEvent(response, entry);
+        });
+
+        try {
+            await new Promise<void>((resolve) => server.listen(socketPath, resolve));
+            const client = new ProtocolHttpClient({ socketPath, token: "test-token" });
+            const controller = new AbortController();
+            const applicationStarted = deferred<void>();
+            const releaseApplication = deferred<void>();
+            const applied: number[] = [];
+            let watchingCompleted = false;
+
+            const watching = client.watchGlobalEvents({
+                signal: controller.signal,
+                async onEvent(received) {
+                    applicationStarted.resolve(undefined);
+                    controller.abort();
+                    await releaseApplication.promise;
+                    applied.push(received.cursor);
+                },
+            });
+            void watching.then(() => {
+                watchingCompleted = true;
+            });
+
+            await applicationStarted.promise;
+            await Promise.resolve();
+            expect(watchingCompleted).toBe(false);
+            expect(applied).toEqual([]);
+
+            releaseApplication.resolve(undefined);
+            await watching;
+            expect(watchingCompleted).toBe(true);
+            expect(applied).toEqual([entry.cursor]);
+        } finally {
+            await new Promise<void>((resolve) => server.close(() => resolve()));
+            await rm(directory, { recursive: true, force: true });
+        }
+    });
 });
 
 function sessionResetEvent(id: string): SessionEvent {
@@ -299,6 +406,22 @@ function writeSseEvent(response: { write(data: string): void }, event: SessionEv
     response.write(`id: ${event.id}\n`);
     response.write(`event: ${event.type}\n`);
     response.write(`data: ${JSON.stringify(event)}\n\n`);
+}
+
+function globalEvent(cursor: number): GlobalEventQueueEntry {
+    return {
+        cursor,
+        event: sessionResetEvent(`018bcfe5-6800-700${cursor}-8000-00000000000${cursor}`),
+    };
+}
+
+function writeGlobalSseEvent(
+    response: { write(data: string): void },
+    entry: GlobalEventQueueEntry,
+): void {
+    response.write(`id: ${entry.cursor}\n`);
+    response.write(`event: ${entry.event.type}\n`);
+    response.write(`data: ${JSON.stringify(entry.event)}\n\n`);
 }
 
 function deferred<T>(): {
