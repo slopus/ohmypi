@@ -50,7 +50,7 @@ export async function runRipgrep(options: GrepOptions, context: AgentContext): P
     if (options.context !== undefined) args.push("--context", String(options.context));
     if (options.before !== undefined) args.push("--before-context", String(options.before));
     if (options.after !== undefined) args.push("--after-context", String(options.after));
-    args.push(options.pattern, target);
+    args.push("--regexp", options.pattern, target);
 
     const commandOptions: Parameters<typeof runCommand>[0] = {
         command: "rg",

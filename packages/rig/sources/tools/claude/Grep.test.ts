@@ -18,4 +18,18 @@ describe("Claude Code Grep tool", () => {
 
         expect(result.text).toBe("/workspace/a.txt");
     });
+
+    it("treats a dash-prefixed pattern as search text", async () => {
+        const harness = createJustBashToolHarness({
+            files: { "/workspace/arrows.txt": "left -> right\n" },
+        });
+
+        const result = await harness.runTool(claudeGrepTool, {
+            output_mode: "content",
+            path: "/workspace",
+            pattern: "->",
+        });
+
+        expect(result.text).toContain("left -> right");
+    });
 });
