@@ -3,7 +3,9 @@ import type { ResponseOutputItem } from "openai/resources/responses/responses.js
 import { parseOpenAIToolArguments } from "./parseOpenAIToolArguments.js";
 import type { AssistantContent } from "./types.js";
 
-export function toBedrockAssistantContent(item: ResponseOutputItem): AssistantContent | undefined {
+export function toOpenAIResponsesAssistantContent(
+    item: ResponseOutputItem,
+): AssistantContent | undefined {
     if (item.type === "reasoning") {
         return { type: "thinking", thinking: "" };
     }

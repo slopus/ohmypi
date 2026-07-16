@@ -2,7 +2,7 @@ import type { Response } from "openai/resources/responses/responses.js";
 
 import type { AssistantMessage } from "./types.js";
 
-export function applyBedrockOpenAIResponse(
+export function applyOpenAIResponsesResponse(
     partial: AssistantMessage,
     response: Response,
 ): Extract<AssistantMessage["stopReason"], "stop" | "toolUse"> {
@@ -26,9 +26,8 @@ export function applyBedrockOpenAIResponse(
             total: 0,
         },
     };
-    partial.stopReason = "stop";
-    if (partial.content.some((content) => content.type === "toolCall")) {
-        partial.stopReason = "toolUse";
-    }
+    partial.stopReason = partial.content.some((content) => content.type === "toolCall")
+        ? "toolUse"
+        : "stop";
     return partial.stopReason;
 }

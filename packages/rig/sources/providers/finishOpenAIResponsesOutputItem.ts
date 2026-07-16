@@ -1,6 +1,6 @@
 import type { ResponseOutputItem } from "openai/resources/responses/responses.js";
 
-import type { ActiveBedrockOpenAIOutputItem } from "./bedrock-openai-types.js";
+import type { ActiveOpenAIResponsesOutputItem } from "./openai-responses-types.js";
 import { parseOpenAIToolArguments } from "./parseOpenAIToolArguments.js";
 import { replaceAssistantContent } from "./replaceAssistantContent.js";
 import type {
@@ -11,9 +11,9 @@ import type {
     ToolCall,
 } from "./types.js";
 
-export function finishBedrockOpenAIOutputItem(
+export function finishOpenAIResponsesOutputItem(
     partial: AssistantMessage,
-    activeItem: ActiveBedrockOpenAIOutputItem,
+    activeItem: ActiveOpenAIResponsesOutputItem,
     item: ResponseOutputItem,
 ): AssistantMessageEvent | undefined {
     const content = partial.content[activeItem.contentIndex];
