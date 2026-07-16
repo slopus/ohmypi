@@ -59,6 +59,7 @@ export function createModelCatalog(options: CreateModelCatalogOptions = {}): Mod
         let provider: Provider;
         if (config.type === "codex") {
             provider = createCodexProvider({
+                env,
                 id,
                 ...(config.authFile === undefined ? {} : { codexAuthPath: config.authFile }),
                 ...(config.baseUrl === undefined ? {} : { baseUrl: config.baseUrl }),

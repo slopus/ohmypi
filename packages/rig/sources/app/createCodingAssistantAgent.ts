@@ -281,8 +281,8 @@ function toCodexProviderOptions(
     providerId: string,
     config: ConfigCodexProvider,
 ): CodexProviderOptions {
-    const providerOptions: CodexProviderOptions = { id: providerId };
     const env = options.env ?? process.env;
+    const providerOptions: CodexProviderOptions = { env, id: providerId };
     if (options.apiKey !== undefined) {
         providerOptions.apiKey = options.apiKey;
     }

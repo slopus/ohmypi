@@ -15,6 +15,29 @@ afterEach(async () => {
 });
 
 describe("fetchCodexProviderQuota", () => {
+    it("loads local authentication from CODEX_HOME", async () => {
+        const authPath = await writeAuthFile({ access_token: "codex-home-token" });
+        const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+            Response.json({
+                rate_limit: {
+                    primary_window: {
+                        limit_window_seconds: 18_000,
+                        used_percent: 1,
+                        reset_at: 10,
+                    },
+                },
+            }),
+        );
+
+        await fetchCodexProviderQuota({
+            env: { CODEX_HOME: path.dirname(authPath) },
+            fetch: fetchMock,
+        });
+
+        const init = fetchMock.mock.calls[0]?.[1];
+        expect(new Headers(init?.headers).get("authorization")).toBe("Bearer codex-home-token");
+    });
+
     it("fetches authoritative five-hour and weekly windows with local auth headers", async () => {
         const authPath = await writeAuthFile({
             access_token: "access-token",

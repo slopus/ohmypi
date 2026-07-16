@@ -1,4 +1,7 @@
 import { zstdDecompressSync } from "node:zlib";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -13,6 +16,41 @@ afterEach(() => {
 });
 
 describe("codex provider", () => {
+    it("loads local authentication from CODEX_HOME", async () => {
+        const codexHome = await mkdtemp(join(tmpdir(), "rig-codex-home-"));
+        const accessToken =
+            "e30.eyJodHRwczovL2FwaS5vcGVuYWkuY29tL2F1dGgiOnsiY2hhdGdwdF9hY2NvdW50X2lkIjoiYWNjb3VudC10ZXN0In19.x";
+        try {
+            await writeFile(
+                join(codexHome, "auth.json"),
+                JSON.stringify({ tokens: { access_token: accessToken } }),
+            );
+            let authorization: string | null = null;
+            vi.stubGlobal(
+                "fetch",
+                vi.fn<typeof fetch>().mockImplementation(async (_input, init) => {
+                    authorization = new Headers(init?.headers).get("authorization");
+                    return new Response("data: [DONE]\n\n", {
+                        status: 200,
+                        headers: { "content-type": "text/event-stream" },
+                    });
+                }),
+            );
+            const provider = createCodexProvider({
+                env: { CODEX_HOME: codexHome },
+                transport: "sse",
+            });
+
+            for await (const _event of provider.stream(modelOpenaiGpt55, emptyContext())) {
+                // Drain the stream so the provider sends the request.
+            }
+
+            expect(authorization).toBe(`Bearer ${accessToken}`);
+        } finally {
+            await rm(codexHome, { recursive: true });
+        }
+    });
+
     it("advertises fast inference and maps it to the Responses priority tier", async () => {
         let requestBody: unknown;
         vi.stubGlobal(

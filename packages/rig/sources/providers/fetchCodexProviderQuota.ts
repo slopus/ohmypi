@@ -1,7 +1,6 @@
 import { readFile } from "node:fs/promises";
-import { homedir } from "node:os";
-import path from "node:path";
 
+import { getCodexAuthPath } from "./getCodexAuthPath.js";
 import type { ProviderQuota, ProviderQuotaWindow } from "./providerQuota.js";
 import { readCodexQuotaAuth } from "./readCodexQuotaAuth.js";
 import { unavailableProviderQuota } from "./unavailableProviderQuota.js";
@@ -12,6 +11,7 @@ const DEFAULT_CODEX_QUOTA_TIMEOUT_MS = 5_000;
 export interface FetchCodexProviderQuotaOptions {
     authPath?: string;
     baseUrl?: string;
+    env?: NodeJS.ProcessEnv;
     fetch?: typeof fetch;
     now?: () => number;
     timeoutMs?: number;
@@ -24,7 +24,10 @@ export async function fetchCodexProviderQuota(
     const unavailable = (): ProviderQuota => unavailableProviderQuota("codex", now());
 
     try {
-        const authFile = options.authPath ?? path.join(homedir(), ".codex", "auth.json");
+        const authFile = getCodexAuthPath({
+            ...(options.authPath === undefined ? {} : { authFile: options.authPath }),
+            ...(options.env === undefined ? {} : { env: options.env }),
+        });
         const auth = readCodexQuotaAuth(await readFile(authFile, "utf8"));
         if (auth === undefined) {
             return unavailable();

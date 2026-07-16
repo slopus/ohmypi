@@ -35,6 +35,7 @@ export function createProviderQuotaService(
                         ? {}
                         : { baseUrl: env.RIG_CODEX_BASE_URL }),
                     now,
+                    env,
                 })),
         { now },
     );

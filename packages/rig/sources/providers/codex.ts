@@ -1,6 +1,4 @@
 import { existsSync, readFileSync } from "node:fs";
-import { homedir } from "node:os";
-import path from "node:path";
 
 import {
     clampThinkingLevel,
@@ -29,6 +27,7 @@ import { toPiContext, wrapPiStream } from "./pi-bridge.js";
 import { defineProvider, type Model, type Provider, type StreamOptions } from "./types.js";
 import { createProviderQuotaCache } from "./createProviderQuotaCache.js";
 import { fetchCodexProviderQuota } from "./fetchCodexProviderQuota.js";
+import { getCodexAuthPath } from "./getCodexAuthPath.js";
 import { unavailableProviderQuota } from "./unavailableProviderQuota.js";
 
 const CODEX_PROVIDER_ID = "openai-codex";
@@ -43,6 +42,7 @@ export interface CodexProviderOptions {
     resolveApiKey?: () => string | undefined;
     useLocalCodexAuth?: boolean;
     codexAuthPath?: string;
+    env?: NodeJS.ProcessEnv;
     id?: string;
     transport?: SimpleStreamOptions["transport"];
 }
@@ -57,6 +57,10 @@ const codexModels = [
 const codexThinkingLevels = ["minimal", "low", "medium", "high", "xhigh", "max", "ultra"];
 
 export function createCodexProvider(options: CodexProviderOptions = {}): Provider {
+    const authPath = getCodexAuthPath({
+        ...(options.codexAuthPath === undefined ? {} : { authFile: options.codexAuthPath }),
+        ...(options.env === undefined ? {} : { env: options.env }),
+    });
     const piModelById = new Map(
         getBuiltinModels(CODEX_PROVIDER_ID).map((model) => [model.id, model]),
     );
@@ -71,7 +75,7 @@ export function createCodexProvider(options: CodexProviderOptions = {}): Provide
             piModelById.set(modelId, { ...model, baseUrl: options.baseUrl });
         }
     }
-    const resolveApiKey = buildApiKeyResolver(options);
+    const resolveApiKey = buildApiKeyResolver(options, authPath);
     const quota = createProviderQuotaCache(() =>
         options.apiKey !== undefined ||
         options.resolveApiKey !== undefined ||
@@ -79,9 +83,7 @@ export function createCodexProvider(options: CodexProviderOptions = {}): Provide
             ? Promise.resolve(unavailableProviderQuota("codex", Date.now()))
             : fetchCodexProviderQuota({
                   ...(options.baseUrl === undefined ? {} : { baseUrl: options.baseUrl }),
-                  ...(options.codexAuthPath === undefined
-                      ? {}
-                      : { authPath: options.codexAuthPath }),
+                  authPath,
               }),
     );
 
@@ -122,7 +124,10 @@ export function createCodexProvider(options: CodexProviderOptions = {}): Provide
     });
 }
 
-function buildApiKeyResolver(options: CodexProviderOptions): () => string | undefined {
+function buildApiKeyResolver(
+    options: CodexProviderOptions,
+    authPath: string,
+): () => string | undefined {
     if (options.apiKey) {
         return () => options.apiKey;
     }
@@ -135,17 +140,16 @@ function buildApiKeyResolver(options: CodexProviderOptions): () => string | unde
         return () => undefined;
     }
 
-    return () => readLocalCodexAccessToken(options.codexAuthPath);
+    return () => readLocalCodexAccessToken(authPath);
 }
 
-function readLocalCodexAccessToken(authPath?: string): string | undefined {
-    const file = authPath ?? path.join(homedir(), ".codex", "auth.json");
-    if (!existsSync(file)) {
+function readLocalCodexAccessToken(authPath: string): string | undefined {
+    if (!existsSync(authPath)) {
         return undefined;
     }
 
     try {
-        const data = JSON.parse(readFileSync(file, "utf8")) as {
+        const data = JSON.parse(readFileSync(authPath, "utf8")) as {
             tokens?: { access_token?: unknown };
         };
         const token = data.tokens?.access_token;
