@@ -2,7 +2,7 @@ import type { TUI } from "@earendil-works/pi-tui";
 import { describe, expect, it, vi } from "vitest";
 
 import { Agent } from "../agent/Agent.js";
-import { NativeProxessManager } from "../processes/index.js";
+import { NativeProcessManager } from "../processes/index.js";
 import { defineModel, defineProvider } from "../providers/types.js";
 import { createJustBashToolHarness } from "../tools/testing/createJustBashToolHarness.js";
 import { CodingAssistantApp } from "./CodingAssistantApp.js";
@@ -550,7 +550,7 @@ function createRaceApp(options: {
     const app = new CodingAssistantApp({
         agent,
         cwd: harness.context.fs.cwd,
-        processManager: new NativeProxessManager(),
+        processManager: new NativeProcessManager(),
         sessionBacked: true,
         tui: fakeTui(),
     });

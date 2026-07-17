@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { NativeProxessManager } from "../processes/index.js";
+import { NativeProcessManager } from "../processes/index.js";
 import {
     modelAnthropicFable5,
     modelMoonshotKimiK25,
@@ -14,7 +14,7 @@ import { createCodingAssistantAgent } from "./createCodingAssistantAgent.js";
 describe("createCodingAssistantAgent", () => {
     it("creates a Codex agent with node filesystem and bash contexts", () => {
         const cwd = "/tmp/rig-app-test";
-        const processManager = new NativeProxessManager();
+        const processManager = new NativeProcessManager();
 
         const runtime = createCodingAssistantAgent({
             cwd,
@@ -34,7 +34,7 @@ describe("createCodingAssistantAgent", () => {
 
     it("creates a Claude SDK agent for Anthropic models", () => {
         const cwd = "/tmp/rig-app-test";
-        const processManager = new NativeProxessManager();
+        const processManager = new NativeProcessManager();
 
         const runtime = createCodingAssistantAgent({
             cwd,

@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 
 import { createNodeAgentContext, runAgentLoop } from "../agent/index.js";
 import { defineTool } from "../agent/types.js";
-import { NativeProxessManager } from "../processes/index.js";
+import { NativeProcessManager } from "../processes/index.js";
 import { createGrokProvider } from "./grok.js";
 import { modelXaiGrok45, modelXaiGrokBuild, modelXaiGrokComposer25Fast } from "./models.js";
 import { resolveGrokCredential } from "./resolveGrokCredential.js";
@@ -91,7 +91,7 @@ describeLive("Grok Build provider live", () => {
         });
         const context = createNodeAgentContext({
             cwd: resolve(process.cwd(), "../.."),
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
         });
         const result = await runAgentLoop({
             provider: createGrokProvider({

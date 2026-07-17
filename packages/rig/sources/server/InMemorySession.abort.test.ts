@@ -7,7 +7,7 @@ import { describe, expect, it, vi } from "vitest";
 import { Agent, createNodeAgentContext } from "../agent/index.js";
 import type { CodingAssistantRuntime } from "../runtime/CodingAssistantRuntime.js";
 import type { CreateCodingAssistantAgentOptions } from "../runtime/createCodingAssistantAgent.js";
-import { NativeProxessManager } from "../processes/index.js";
+import { NativeProcessManager } from "../processes/index.js";
 import { createEventIdFactory, type ModelCatalog } from "../protocol/index.js";
 import {
     defineModel,
@@ -58,7 +58,7 @@ describe("InMemorySession abort", () => {
                 models: [model],
                 providers: [{ providerId: provider.id, models: [model] }],
             };
-            let processManager: NativeProxessManager | undefined;
+            let processManager: NativeProcessManager | undefined;
             const session = new InMemorySession({
                 createEventId: createEventIdFactory(),
                 createRuntime(options) {
@@ -586,7 +586,7 @@ function createRuntime(
     options: CreateCodingAssistantAgentOptions,
     provider: ReturnType<typeof defineProvider>,
 ): CodingAssistantRuntime {
-    const processManager = new NativeProxessManager();
+    const processManager = new NativeProcessManager();
     const context = createNodeAgentContext({ cwd: options.cwd, processManager });
     return {
         agent: new Agent({

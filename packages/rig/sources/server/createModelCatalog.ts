@@ -1,7 +1,7 @@
 import { createNodeAgentContext } from "../agent/index.js";
 import { DEFAULT_RIG_CONFIG } from "../config/defaultConfig.js";
 import type { ConfigProviders } from "../config/types.js";
-import { NativeProxessManager } from "../processes/index.js";
+import { NativeProcessManager } from "../processes/index.js";
 import type { ModelCatalog } from "../protocol/index.js";
 import { createConfiguredProvider } from "../providers/createConfiguredProvider.js";
 import { createGymProviderFromEnvironment } from "../providers/createGymProviderFromEnvironment.js";
@@ -25,7 +25,7 @@ export function createModelCatalog(options: CreateModelCatalogOptions = {}): Mod
     const providerSettings = options.providers ?? DEFAULT_RIG_CONFIG.providers;
     const context = createNodeAgentContext({
         cwd,
-        processManager: new NativeProxessManager(),
+        processManager: new NativeProcessManager(),
     });
     const providers: Provider[] = [];
     const emptyModelProviderIds: string[] = [];

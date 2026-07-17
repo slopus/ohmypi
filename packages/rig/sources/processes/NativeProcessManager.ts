@@ -17,7 +17,7 @@ const DEFAULT_KILL_GRACE_MS = 1_000;
 const EXIT_STDIO_IDLE_GRACE_MS = 100;
 const CLEANUP_FORCE_GRACE_MS = 200;
 
-export class NativeProxessManager {
+export class NativeProcessManager {
     readonly #processes = new Map<string, ManagedProcess>();
 
     start(options: ProcessStartOptions): ManagedProcess {

@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { createNodeAgentContext } from "../../agent/index.js";
-import { NativeProxessManager } from "../../processes/index.js";
+import { NativeProcessManager } from "../../processes/index.js";
 import { createJustBashToolHarness } from "../testing/createJustBashToolHarness.js";
 import { codexExecCommandTool } from "./exec_command.js";
 import { codexWriteStdinTool } from "./write_stdin.js";
@@ -38,7 +38,7 @@ describe("codex write_stdin tool", () => {
 
     it("sends input to a yielded native shell command", async () => {
         const cwd = await mkdtemp(join(tmpdir(), "rig-unified-exec-test-"));
-        const processManager = new NativeProxessManager();
+        const processManager = new NativeProcessManager();
         try {
             const context = createNodeAgentContext({ cwd, processManager });
             context.permissions?.setMode("full_access");

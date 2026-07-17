@@ -4,11 +4,11 @@ import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { NativeProxessManager } from "./NativeProxessManager.js";
+import { NativeProcessManager } from "./NativeProcessManager.js";
 
 const tempDirs: string[] = [];
 
-describe("NativeProxessManager", () => {
+describe("NativeProcessManager", () => {
     afterEach(async () => {
         await Promise.all(
             tempDirs.splice(0).map((path) =>
@@ -22,7 +22,7 @@ describe("NativeProxessManager", () => {
 
     it("runs a command with an explicit cwd and captures stdout and stderr", async () => {
         const cwd = await makeTempDir();
-        const manager = new NativeProxessManager();
+        const manager = new NativeProcessManager();
 
         const result = await manager.run({
             command: "printf 'hello'; printf 'warn' >&2",
@@ -40,7 +40,7 @@ describe("NativeProxessManager", () => {
 
     it("passes direct process arguments without host-shell parsing", async () => {
         const cwd = await makeTempDir();
-        const manager = new NativeProxessManager();
+        const manager = new NativeProcessManager();
         const value = `quoted & piped | redirected > untouched`;
 
         const result = await manager.run({
@@ -56,7 +56,7 @@ describe("NativeProxessManager", () => {
 
     it("keeps started processes tracked and writes stdin to them", async () => {
         const cwd = await makeTempDir();
-        const manager = new NativeProxessManager();
+        const manager = new NativeProcessManager();
         const script =
             "process.stdin.setEncoding('utf8'); process.stdin.on('data', data => { process.stdout.write(`seen:${data.trim()}`); process.exit(0); });";
 
@@ -77,7 +77,7 @@ describe("NativeProxessManager", () => {
 
     it("retains the newest output when a command exceeds its byte cap", async () => {
         const cwd = await makeTempDir();
-        const manager = new NativeProxessManager();
+        const manager = new NativeProcessManager();
 
         const result = await manager.run({
             command: "printf 'oldest-newest'",
@@ -91,7 +91,7 @@ describe("NativeProxessManager", () => {
 
     it("kills timed out commands and removes them from tracking", async () => {
         const cwd = await makeTempDir();
-        const manager = new NativeProxessManager();
+        const manager = new NativeProcessManager();
 
         const result = await manager.run({
             command: `${nodeBinary()} -e ${shellQuote("setInterval(() => undefined, 1000);")}`,
@@ -108,7 +108,7 @@ describe("NativeProxessManager", () => {
 
     it("kills commands when their abort signal fires", async () => {
         const cwd = await makeTempDir();
-        const manager = new NativeProxessManager();
+        const manager = new NativeProcessManager();
         const controller = new AbortController();
         const resultPromise = manager.run({
             command: `${nodeBinary()} -e ${shellQuote("setInterval(() => undefined, 1000);")}`,
@@ -131,7 +131,7 @@ describe("NativeProxessManager", () => {
     it("kills the process group for timed out shell descendants", async () => {
         const cwd = await makeTempDir();
         const marker = join(cwd, "descendant-marker.txt");
-        const manager = new NativeProxessManager();
+        const manager = new NativeProcessManager();
         const writer = `setTimeout(() => require("node:fs").writeFileSync(${JSON.stringify(marker)}, "alive"), 500);`;
         const blocker = "setInterval(() => undefined, 1000);";
 

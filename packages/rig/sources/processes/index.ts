@@ -1,5 +1,5 @@
 export { killProcessTree } from "./killProcessTree.js";
-export { ManagedProcess, NativeProxessManager } from "./NativeProxessManager.js";
+export { ManagedProcess, NativeProcessManager } from "./NativeProcessManager.js";
 export { waitForProcessExit } from "./waitForProcessExit.js";
 export type {
     ManagedProcessStatus,

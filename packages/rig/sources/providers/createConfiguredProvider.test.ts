@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { createNodeAgentContext } from "../agent/context/createNodeAgentContext.js";
 import type { ConfigProvider } from "../config/types.js";
-import { NativeProxessManager } from "../processes/NativeProxessManager.js";
+import { NativeProcessManager } from "../processes/NativeProcessManager.js";
 import { createConfiguredProvider } from "./createConfiguredProvider.js";
 import { modelAnthropicFable5, modelOpenaiGpt56Sol, modelXaiGrokBuild } from "./models.js";
 
@@ -85,6 +85,6 @@ describe("createConfiguredProvider", () => {
 function context() {
     return createNodeAgentContext({
         cwd: "/tmp/rig-configured-provider-test",
-        processManager: new NativeProxessManager(),
+        processManager: new NativeProcessManager(),
     });
 }

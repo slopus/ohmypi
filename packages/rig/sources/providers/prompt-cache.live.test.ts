@@ -12,7 +12,7 @@ import {
     type AnyDefinedTool,
 } from "../agent/index.js";
 import { defineTool } from "../agent/types.js";
-import { NativeProxessManager } from "../processes/index.js";
+import { NativeProcessManager } from "../processes/index.js";
 import { createClaudeSdkProvider } from "./claude-sdk.js";
 import { createCodexProvider } from "./codex.js";
 import { modelAnthropicSonnet46, modelOpenaiGpt54 } from "./models.js";
@@ -217,6 +217,6 @@ function hasLocalCodexAuth(authPath: string = CODEX_AUTH_PATH): boolean {
 function createLiveAgentContext(): AgentContext {
     return createNodeAgentContext({
         cwd: process.cwd(),
-        processManager: new NativeProxessManager(),
+        processManager: new NativeProcessManager(),
     });
 }

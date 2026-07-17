@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { Agent, createNodeAgentContext } from "../agent/index.js";
 import type { CodingAssistantRuntime } from "../runtime/CodingAssistantRuntime.js";
 import type { CreateCodingAssistantAgentOptions } from "../runtime/createCodingAssistantAgent.js";
-import { NativeProxessManager } from "../processes/index.js";
+import { NativeProcessManager } from "../processes/index.js";
 import {
     createEventIdFactory,
     type ModelCatalog,
@@ -446,7 +446,7 @@ function createRuntime(
     options: CreateCodingAssistantAgentOptions,
     provider: ReturnType<typeof defineProvider>,
 ): CodingAssistantRuntime {
-    const processManager = new NativeProxessManager();
+    const processManager = new NativeProcessManager();
     const context = createNodeAgentContext({ cwd: options.cwd, processManager });
     return {
         agent: new Agent({

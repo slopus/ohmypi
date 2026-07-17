@@ -18,7 +18,7 @@ import { findConfiguredProvider } from "../config/findConfiguredProvider.js";
 import type { ConfigProviders } from "../config/types.js";
 import type { WorkflowContext } from "../workflows/index.js";
 import type { Message } from "../agent/types.js";
-import { NativeProxessManager } from "../processes/index.js";
+import { NativeProcessManager } from "../processes/index.js";
 import { createConfiguredProvider } from "../providers/createConfiguredProvider.js";
 import { createGymProviderFromEnvironment } from "../providers/createGymProviderFromEnvironment.js";
 import { getBedrockModelRoute } from "../providers/getBedrockModelRoute.js";
@@ -48,7 +48,7 @@ export interface CreateCodingAssistantAgentOptions {
     contextMessages?: readonly Message[];
     modelId?: string;
     providerId?: string;
-    processManager?: NativeProxessManager;
+    processManager?: NativeProcessManager;
     permissionMode?: PermissionMode;
     providers?: ConfigProviders;
     serviceTier?: ServiceTier;
@@ -64,7 +64,7 @@ export interface CreateCodingAssistantAgentOptions {
 export function createCodingAssistantAgent(
     options: CreateCodingAssistantAgentOptions,
 ): CodingAssistantRuntime {
-    const processManager = options.processManager ?? new NativeProxessManager();
+    const processManager = options.processManager ?? new NativeProcessManager();
     const agentId = options.agentId ?? createId();
     const workflowsEnabled = options.workflows !== undefined && options.workflowsEnabled !== false;
     const sharedContextOptions = {

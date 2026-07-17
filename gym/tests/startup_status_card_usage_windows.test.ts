@@ -112,7 +112,7 @@ async function screenshot(snapshot: TerminalSnapshot, name: string): Promise<voi
 const STATUS_CARD_USAGE_APP = String.raw`
 import { Agent, createNodeAgentContext } from "/app/packages/rig/dist/agent/index.js";
 import { CodingAssistantApp } from "/app/packages/rig/dist/app/index.js";
-import { NativeProxessManager } from "/app/packages/rig/dist/processes/index.js";
+import { NativeProcessManager } from "/app/packages/rig/dist/processes/index.js";
 import { defineModel, defineProvider } from "/app/packages/rig/dist/providers/types.js";
 import { ProcessTerminal, TUI } from "/app/packages/rig/node_modules/@earendil-works/pi-tui/dist/index.js";
 
@@ -127,7 +127,7 @@ const provider = defineProvider({
     models: [model],
     stream() { throw new Error("Inference is not used by this status-card fixture."); },
 });
-const processManager = new NativeProxessManager();
+const processManager = new NativeProcessManager();
 const context = createNodeAgentContext({
     cwd: "/workspace",
     permissionMode: "full_access",

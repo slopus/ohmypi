@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { NativeProxessManager } from "../../processes/index.js";
+import { NativeProcessManager } from "../../processes/index.js";
 import { createNodeAgentContext } from "./createNodeAgentContext.js";
 import { SecretRegistry, SessionSecretContext } from "../../secrets/index.js";
 
@@ -24,7 +24,7 @@ describe("createNodeAgentContext", () => {
 
     it("runs bash through the explicit process manager", async () => {
         const cwd = await makeTempDir();
-        const processManager = new NativeProxessManager();
+        const processManager = new NativeProcessManager();
         const context = createNodeAgentContext({
             cwd,
             processManager,
@@ -45,7 +45,7 @@ describe("createNodeAgentContext", () => {
         const cwd = await makeTempDir();
         const context = createNodeAgentContext({
             cwd,
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
         });
 
         for (const mode of ["workspace_write", "read_only", "auto"] as const) {
@@ -74,7 +74,7 @@ describe("createNodeAgentContext", () => {
             const context = createNodeAgentContext({
                 cwd,
                 permissionMode: "full_access",
-                processManager: new NativeProxessManager(),
+                processManager: new NativeProcessManager(),
             });
             const script =
                 "process.stdout.write(JSON.stringify({token:process.env.RIG_GYM_TOKEN,url:process.env.RIG_GYM_INFERENCE_URL,safe:process.env.SHELL_SAFE_TEST_VALUE}))";
@@ -118,7 +118,7 @@ describe("createNodeAgentContext", () => {
         const context = createNodeAgentContext({
             cwd,
             permissionMode: "full_access",
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
             secrets,
         });
         const script = `process.stdout.write(JSON.stringify({database:process.env.MANAGED_DATABASE_TEST_URL,region:process.env.MANAGED_SECRET_TEST_REGION,token:process.env.MANAGED_SECRET_TEST_TOKEN}))`;
@@ -156,7 +156,7 @@ describe("createNodeAgentContext", () => {
 
     it("keeps yielded shell sessions alive for polling and stdin", async () => {
         const cwd = await makeTempDir();
-        const processManager = new NativeProxessManager();
+        const processManager = new NativeProcessManager();
         const context = createNodeAgentContext({ cwd, processManager });
         const script = [
             'process.stdin.setEncoding("utf8")',
@@ -191,7 +191,7 @@ describe("createNodeAgentContext", () => {
         const cwd = await makeTempDir();
         const context = createNodeAgentContext({
             cwd,
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
         });
         const counts: number[] = [];
         context.bash.setActiveSessionCountListener?.((count) => counts.push(count));
@@ -207,7 +207,7 @@ describe("createNodeAgentContext", () => {
 
     it("enforces hard timeouts for background shell sessions", async () => {
         const cwd = await makeTempDir();
-        const processManager = new NativeProxessManager();
+        const processManager = new NativeProcessManager();
         const context = createNodeAgentContext({ cwd, processManager });
         const sessionId = await context.bash.startSession({
             command: `${JSON.stringify(process.execPath)} -e 'setInterval(() => undefined, 1000)'`,
@@ -233,7 +233,7 @@ describe("createNodeAgentContext", () => {
         await symlink(join(root, "missing-outside.txt"), join(cwd, "broken-outside-link"));
         const context = createNodeAgentContext({
             cwd,
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
         });
 
         await context.fs.writeFile(join(cwd, "inside.txt"), "inside");
@@ -267,7 +267,7 @@ describe("createNodeAgentContext", () => {
         const context = createNodeAgentContext({
             cwd,
             permissionMode: "auto",
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
         });
 
         await context.fs.writeFile("inside.txt", "inside");
@@ -295,7 +295,7 @@ describe("createNodeAgentContext", () => {
         await mkdir(cwd);
         const context = createNodeAgentContext({
             cwd,
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
         });
 
         const inside = await context.bash.run({ command: "printf inside > inside.txt" });
@@ -325,7 +325,7 @@ describe("createNodeAgentContext", () => {
         const cwd = await makeTempDir();
         const context = createNodeAgentContext({
             cwd,
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
         });
         const server = createServer((socket) => {
             socket.on("error", () => undefined);

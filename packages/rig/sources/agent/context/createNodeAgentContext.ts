@@ -1,4 +1,4 @@
-import type { NativeProxessManager } from "../../processes/index.js";
+import type { NativeProcessManager } from "../../processes/index.js";
 import type { AgentContext } from "./AgentContext.js";
 import type { GoalContext } from "./GoalContext.js";
 import { createFileReadState } from "./FileReadState.js";
@@ -17,7 +17,7 @@ import type { SessionSecretContext } from "../../secrets/index.js";
 export interface CreateNodeAgentContextOptions {
     cwd: string;
     goals?: GoalContext;
-    processManager: NativeProxessManager;
+    processManager: NativeProcessManager;
     permissionMode?: PermissionMode;
     secrets?: SessionSecretContext;
     tasks?: TaskContext;

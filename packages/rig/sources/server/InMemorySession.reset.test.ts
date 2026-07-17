@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { Agent, createNodeAgentContext } from "../agent/index.js";
 import type { CodingAssistantRuntime } from "../runtime/CodingAssistantRuntime.js";
 import type { CreateCodingAssistantAgentOptions } from "../runtime/createCodingAssistantAgent.js";
-import { NativeProxessManager } from "../processes/index.js";
+import { NativeProcessManager } from "../processes/index.js";
 import { createEventIdFactory } from "../protocol/index.js";
 import { defineModel, defineProvider, type InferenceStream } from "../providers/types.js";
 import { InMemorySession } from "./InMemorySession.js";
@@ -78,7 +78,7 @@ function createRuntime(
     options: CreateCodingAssistantAgentOptions,
     provider: ReturnType<typeof defineProvider>,
 ): CodingAssistantRuntime {
-    const processManager = new NativeProxessManager();
+    const processManager = new NativeProcessManager();
     const context = createNodeAgentContext({
         cwd: options.cwd,
         permissionMode: "full_access",

@@ -6,7 +6,7 @@ import { defineTool } from "../agent/types.js";
 import type { CodingAssistantRuntime } from "../runtime/CodingAssistantRuntime.js";
 import type { CreateCodingAssistantAgentOptions } from "../runtime/createCodingAssistantAgent.js";
 import type { McpToolProvider } from "../mcp/index.js";
-import { NativeProxessManager } from "../processes/index.js";
+import { NativeProcessManager } from "../processes/index.js";
 import { createEventIdFactory, type ModelCatalog } from "../protocol/index.js";
 import {
     defineModel,
@@ -136,7 +136,7 @@ function createRuntime(
     options: CreateCodingAssistantAgentOptions,
     provider: ReturnType<typeof defineProvider>,
 ): CodingAssistantRuntime {
-    const processManager = new NativeProxessManager();
+    const processManager = new NativeProcessManager();
     const context = createNodeAgentContext({
         cwd: options.cwd,
         ...(options.permissionMode === undefined ? {} : { permissionMode: options.permissionMode }),

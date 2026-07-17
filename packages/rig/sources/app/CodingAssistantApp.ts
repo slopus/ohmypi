@@ -29,7 +29,7 @@ import type { BashSessionActivity } from "../agent/context/BashContext.js";
 import { parseSkillFrontmatter } from "../agent/skills/parseSkillFrontmatter.js";
 import type { FileDiff } from "../agent/ToolResultPresentation.js";
 import { errorToMessage } from "../errorToMessage.js";
-import type { NativeProxessManager } from "../processes/index.js";
+import type { NativeProcessManager } from "../processes/index.js";
 import { humanizeMcpName } from "../mcp/humanizeMcpName.js";
 import type { ServiceTier, Usage } from "../providers/types.js";
 import type {
@@ -159,7 +159,7 @@ export interface CodingAssistantAppOptions {
     initialUserInputs?: readonly UserInputRequest[];
     modelLocked?: boolean;
     listSecrets?: () => readonly SecretSummary[] | Promise<readonly SecretSummary[]>;
-    processManager: NativeProxessManager;
+    processManager: NativeProcessManager;
     sessionBacked?: boolean;
     tui: TUI;
     idFactory?: () => string;
@@ -300,7 +300,7 @@ export class CodingAssistantApp implements Component, Focusable {
     readonly #respondUserInput:
         | ((requestId: string, response: UserInputResponse) => void | Promise<void>)
         | undefined;
-    readonly #processManager: NativeProxessManager;
+    readonly #processManager: NativeProcessManager;
     readonly #readClipboardImage: (
         options?: ReadClipboardImageOptions,
     ) => Promise<ClipboardImage | undefined>;

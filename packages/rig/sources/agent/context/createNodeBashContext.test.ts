@@ -7,7 +7,7 @@ import { createNodeBashContext } from "./createNodeBashContext.js";
 import { createPermissionContext } from "../../permissions/index.js";
 import {
     type ManagedProcess,
-    NativeProxessManager,
+    NativeProcessManager,
     type ProcessRunResult,
 } from "../../processes/index.js";
 
@@ -64,7 +64,7 @@ describe("createNodeBashContext", () => {
             start() {
                 return process;
             },
-        } as unknown as NativeProxessManager;
+        } as unknown as NativeProcessManager;
         const context = createNodeBashContext({
             cwd,
             permissions: createPermissionContext("full_access"),
@@ -83,7 +83,7 @@ describe("createNodeBashContext", () => {
 
     it("continues returning background output after the retained buffer fills", async () => {
         const cwd = await makeTempDir();
-        const processManager = new NativeProxessManager();
+        const processManager = new NativeProcessManager();
         const context = createNodeBashContext({
             cwd,
             permissions: createPermissionContext("full_access"),
@@ -118,7 +118,7 @@ describe("createNodeBashContext", () => {
 
     it("interrupts a running process without ending its shell session", async () => {
         const cwd = await makeTempDir();
-        const processManager = new NativeProxessManager();
+        const processManager = new NativeProcessManager();
         const context = createNodeBashContext({
             cwd,
             permissions: createPermissionContext("full_access"),

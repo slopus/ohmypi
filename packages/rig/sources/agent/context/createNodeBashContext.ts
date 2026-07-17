@@ -2,7 +2,7 @@ import { isAbsolute, resolve } from "node:path";
 
 import type {
     ManagedProcess,
-    NativeProxessManager,
+    NativeProcessManager,
     ProcessRunResult,
 } from "../../processes/index.js";
 import type { PermissionContext } from "../../permissions/index.js";
@@ -15,7 +15,7 @@ import { createCommandEnvironment, type SessionSecretContext } from "../../secre
 
 export interface CreateNodeBashContextOptions {
     cwd: string;
-    processManager: NativeProxessManager;
+    processManager: NativeProcessManager;
     permissions: PermissionContext;
     secrets?: SessionSecretContext;
 }
@@ -124,7 +124,7 @@ export function createNodeBashContext(options: CreateNodeBashContextOptions): Ba
                 cwd: options.cwd,
                 mode: options.permissions.mode,
             });
-            const processRunOptions: Parameters<NativeProxessManager["run"]>[0] = {
+            const processRunOptions: Parameters<NativeProcessManager["run"]>[0] = {
                 command: sandboxedCommand.command,
                 cwd,
                 env: createCommandEnvironment(
@@ -165,7 +165,7 @@ export function createNodeBashContext(options: CreateNodeBashContextOptions): Ba
                 cwd: options.cwd,
                 mode: options.permissions.mode,
             });
-            const processStartOptions: Parameters<NativeProxessManager["start"]>[0] = {
+            const processStartOptions: Parameters<NativeProcessManager["start"]>[0] = {
                 cleanupProcessGroupOnExit: true,
                 command: sandboxedCommand.command,
                 cwd,

@@ -9,7 +9,7 @@ import {
     writeRuntimeConfig,
 } from "../config/index.js";
 import { createProjectMcpSecurityNotice, loadMcpServerConfigEntries } from "../mcp/index.js";
-import { NativeProxessManager } from "../processes/index.js";
+import { NativeProcessManager } from "../processes/index.js";
 import type { PermissionMode } from "../permissions/index.js";
 import type { SessionEvent } from "../protocol/index.js";
 import { resolveDockerExecutionConfig } from "../execution/index.js";
@@ -148,7 +148,7 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
             throw error;
         }
     })();
-    const processManager = new NativeProxessManager();
+    const processManager = new NativeProcessManager();
     const theme = resolveTerminalTheme(loadedConfig.config.theme, await terminalBackground);
     const sessionCwd = session.session.cwd;
     if (session.session.title !== undefined) {

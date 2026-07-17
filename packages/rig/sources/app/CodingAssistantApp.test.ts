@@ -6,7 +6,7 @@ import type { ProtocolHttpClient } from "../client/ProtocolHttpClient.js";
 import { RemoteAgent } from "../client/RemoteAgent.js";
 import { createJustBashToolHarness } from "../tools/testing/createJustBashToolHarness.js";
 import { validJpeg32Base64, validPng32Base64 } from "../tools/testing/validImageFixtures.js";
-import { NativeProxessManager } from "../processes/index.js";
+import { NativeProcessManager } from "../processes/index.js";
 import { selectToolsForModel } from "../runtime/selectToolsForModel.js";
 import { createPermissionContext } from "../permissions/index.js";
 import type {
@@ -56,7 +56,7 @@ describe("CodingAssistantApp", () => {
             agent,
             cwd: harness.context.fs.cwd,
             onUserActivity,
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
             tui: fakeTui(),
             version: "1.2.3",
         });
@@ -141,7 +141,7 @@ describe("CodingAssistantApp", () => {
                 printToConsole: false,
             }),
             cwd: harness.context.fs.cwd,
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
             sessionBacked: true,
             tui: fakeTui(),
         });
@@ -225,7 +225,7 @@ describe("CodingAssistantApp", () => {
             agent,
             cwd: harness.context.fs.cwd,
             now: () => 100,
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
             sessionBacked: true,
             tui: fakeTui(),
         });
@@ -299,7 +299,7 @@ describe("CodingAssistantApp", () => {
                 { abort },
             ),
             cwd: harness.context.fs.cwd,
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
             sessionBacked: true,
             tui: fakeTui(),
         });
@@ -379,7 +379,7 @@ describe("CodingAssistantApp", () => {
                 { abort },
             ),
             cwd: harness.context.fs.cwd,
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
             sessionBacked: true,
             tui: fakeTui(),
         });
@@ -428,7 +428,7 @@ describe("CodingAssistantApp", () => {
             agent,
             cwd: harness.context.fs.cwd,
             now: () => 100,
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
             sessionBacked: true,
             tui: fakeTui(),
         });
@@ -485,7 +485,7 @@ describe("CodingAssistantApp", () => {
         const app = new CodingAssistantApp({
             agent,
             cwd: harness.context.fs.cwd,
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
             sessionBacked: true,
             tui: fakeTui(),
         });
@@ -554,7 +554,7 @@ describe("CodingAssistantApp", () => {
             }),
             cwd: harness.context.fs.cwd,
             now: () => 100,
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
             tui: fakeTui(),
         });
 
@@ -614,7 +614,7 @@ describe("CodingAssistantApp", () => {
             ),
             cwd: harness.context.fs.cwd,
             now: () => 100,
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
             sessionBacked: true,
             tui: fakeTui(),
         });
@@ -677,7 +677,7 @@ describe("CodingAssistantApp", () => {
             agent,
             cwd: harness.context.fs.cwd,
             now: () => 100,
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
             tui: fakeTui(),
         });
 
@@ -745,7 +745,7 @@ describe("CodingAssistantApp", () => {
             const app = new CodingAssistantApp({
                 agent,
                 cwd: harness.context.fs.cwd,
-                processManager: new NativeProxessManager(),
+                processManager: new NativeProcessManager(),
                 sessionBacked: true,
                 tui: fakeTui(),
             });
@@ -854,7 +854,7 @@ describe("CodingAssistantApp", () => {
             }),
             cwd: harness.context.fs.cwd,
             now: () => 100,
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
             tui: fakeTui(),
         });
 
@@ -892,7 +892,7 @@ describe("CodingAssistantApp", () => {
             }),
             cwd: harness.context.fs.cwd,
             now: () => 100,
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
             tui: fakeTui(),
         });
 
@@ -930,7 +930,7 @@ describe("CodingAssistantApp", () => {
             }),
             cwd: harness.context.fs.cwd,
             now: () => 100,
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
             tui: fakeTui(),
         });
         app.applySessionEvent({
@@ -995,7 +995,7 @@ describe("CodingAssistantApp", () => {
             }),
             cwd: harness.context.fs.cwd,
             now: () => 100,
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
             tui: fakeTui(),
         });
 
@@ -1040,7 +1040,7 @@ describe("CodingAssistantApp", () => {
         const app = new CodingAssistantApp({
             agent,
             cwd: harness.context.fs.cwd,
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
             sessionBacked: true,
             tui: fakeTui(),
         });
@@ -1075,7 +1075,7 @@ describe("CodingAssistantApp", () => {
                 printToConsole: false,
             }),
             cwd: harness.context.fs.cwd,
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
             theme: DEFAULT_TERMINAL_THEME,
             tui,
         });
@@ -1150,7 +1150,7 @@ describe("CodingAssistantApp", () => {
             agent,
             cwd: harness.context.fs.cwd,
             initialSessionEvents: [submitted(first, "event-1"), submitted(second, "event-2")],
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
             sessionBacked: true,
             tui: fakeTui(),
         });
@@ -1189,7 +1189,7 @@ describe("CodingAssistantApp", () => {
         const codexApp = new CodingAssistantApp({
             agent: codexAgent,
             cwd: codexHarness.context.fs.cwd,
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
             tui: fakeTui(),
         });
 
@@ -1221,7 +1221,7 @@ describe("CodingAssistantApp", () => {
         const claudeApp = new CodingAssistantApp({
             agent: claudeAgent,
             cwd: claudeHarness.context.fs.cwd,
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
             tui: fakeTui(),
         });
 
@@ -1254,7 +1254,7 @@ describe("CodingAssistantApp", () => {
                 printToConsole: false,
             }),
             cwd: harness.context.fs.cwd,
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
             tui: fakeTui(),
         });
 
@@ -1271,7 +1271,7 @@ describe("CodingAssistantApp", () => {
                 provider,
             }),
             cwd: harness.context.fs.cwd,
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
             tui: fakeTui(),
         });
         const constrainedFooter =
@@ -1309,7 +1309,7 @@ describe("CodingAssistantApp", () => {
         const app = new CodingAssistantApp({
             agent,
             cwd: harness.context.fs.cwd,
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
             showReasoning: true,
             tui: fakeTui(),
         });
@@ -1356,7 +1356,7 @@ describe("CodingAssistantApp", () => {
             onDefaultModelChange: (preference) => {
                 defaultModelChanges.push(preference);
             },
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
             showReasoning: true,
             tui: fakeTui(),
         });
@@ -1425,7 +1425,7 @@ describe("CodingAssistantApp", () => {
             onDefaultModelChange: (preference) => {
                 defaultModelChanges.push(preference);
             },
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
             tui: fakeTui(),
         });
 
@@ -1565,7 +1565,7 @@ describe("CodingAssistantApp", () => {
         const app = new CodingAssistantApp({
             agent,
             cwd: harness.context.fs.cwd,
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
             tui: fakeTui(),
         });
 
@@ -1663,7 +1663,7 @@ describe("CodingAssistantApp", () => {
             onDefaultModelChange: (preference) => {
                 defaultModelChanges.push(preference);
             },
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
             sessionBacked: true,
             tui: fakeTui(),
         });
@@ -1769,7 +1769,7 @@ describe("CodingAssistantApp", () => {
             onDefaultModelChange: (preference) => {
                 defaultModelChanges.push(preference);
             },
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
             sessionBacked: true,
             tui: fakeTui(),
         });
@@ -1834,7 +1834,7 @@ describe("CodingAssistantApp", () => {
             agent,
             cwd: harness.context.fs.cwd,
             modelLocked: true,
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
             tui: fakeTui(),
         });
 
@@ -1890,7 +1890,7 @@ describe("CodingAssistantApp", () => {
             onDefaultModelChange: (preference) => {
                 defaultModelChanges.push(preference);
             },
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
             tui: fakeTui(),
         });
 
@@ -1951,7 +1951,7 @@ describe("CodingAssistantApp", () => {
             onDefaultModelChange: (preference) => {
                 defaultModelChanges.push(preference);
             },
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
             tui: fakeTui(),
         });
 
@@ -2033,7 +2033,7 @@ describe("CodingAssistantApp", () => {
                     }
                     writes.push(preference.serviceTier);
                 }),
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
             tui: fakeTui(),
         });
 
@@ -2106,7 +2106,7 @@ describe("CodingAssistantApp", () => {
             onDefaultModelChange: (preference) => {
                 defaultModelChanges.push(preference);
             },
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
             sessionBacked: true,
             tui: fakeTui(),
         });
@@ -2150,7 +2150,7 @@ describe("CodingAssistantApp", () => {
         const app = new CodingAssistantApp({
             agent,
             cwd: harness.context.fs.cwd,
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
             tui: fakeTui(),
         });
 
@@ -2192,7 +2192,7 @@ describe("CodingAssistantApp", () => {
                 printToConsole: false,
             }),
             cwd: harness.context.fs.cwd,
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
             tui: fakeTui(),
         });
 
@@ -2230,7 +2230,7 @@ describe("CodingAssistantApp", () => {
         const app = new CodingAssistantApp({
             agent,
             cwd: harness.context.fs.cwd,
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
             sessionBacked: true,
             tui: fakeTui(),
         });
@@ -2276,7 +2276,7 @@ describe("CodingAssistantApp", () => {
         const app = new CodingAssistantApp({
             agent,
             cwd: harness.context.fs.cwd,
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
             showReasoning: true,
             tui: fakeTui(),
         });
@@ -2312,7 +2312,7 @@ describe("CodingAssistantApp", () => {
         const app = new CodingAssistantApp({
             agent,
             cwd: harness.context.fs.cwd,
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
             showReasoning: true,
             tui: fakeTui(),
         });
@@ -2386,7 +2386,7 @@ describe("CodingAssistantApp", () => {
                     toolCount: 0,
                 },
             ],
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
             tui: fakeTui(),
         });
 
@@ -2514,7 +2514,7 @@ describe("CodingAssistantApp", () => {
                     subject: "Verify the feature",
                 },
             ],
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
             tui: fakeTui(),
         });
 
@@ -2564,7 +2564,7 @@ describe("CodingAssistantApp", () => {
                     updatedAt: 1,
                 },
             ],
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
             tui: fakeTui(),
         });
         app.applySessionEvent({
@@ -2681,7 +2681,7 @@ describe("CodingAssistantApp", () => {
         const app = new CodingAssistantApp({
             agent,
             cwd: harness.context.fs.cwd,
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
             tui: fakeTui(),
         });
 
@@ -2734,7 +2734,7 @@ describe("CodingAssistantApp", () => {
         const app = new CodingAssistantApp({
             agent,
             cwd: harness.context.fs.cwd,
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
             tui: fakeTui(),
         });
         const compact = vi.spyOn(agent, "compact");
@@ -2797,7 +2797,7 @@ describe("CodingAssistantApp", () => {
         const app = new CodingAssistantApp({
             agent,
             cwd: harness.context.fs.cwd,
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
             tui: fakeTui(),
         });
         const compact = vi.spyOn(agent, "compact");
@@ -2856,7 +2856,7 @@ describe("CodingAssistantApp", () => {
         const app = new CodingAssistantApp({
             agent,
             cwd: harness.context.fs.cwd,
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
             searchFiles,
             tui: fakeTui(),
         });
@@ -2928,7 +2928,7 @@ describe("CodingAssistantApp", () => {
         const app = new CodingAssistantApp({
             agent,
             cwd: harness.context.fs.cwd,
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
             tui: fakeTui(),
         });
 
@@ -2980,7 +2980,7 @@ describe("CodingAssistantApp", () => {
         const app = new CodingAssistantApp({
             agent,
             cwd: harness.context.fs.cwd,
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
             tui: fakeTui(),
         });
 
@@ -3045,7 +3045,7 @@ describe("CodingAssistantApp", () => {
         const app = new CodingAssistantApp({
             agent,
             cwd: harness.context.fs.cwd,
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
             tui,
         });
 
@@ -3111,7 +3111,7 @@ describe("CodingAssistantApp", () => {
         const app = new CodingAssistantApp({
             agent,
             cwd: harness.context.fs.cwd,
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
             tui: fakeTui({ rows: 8 }),
         });
 
@@ -3174,7 +3174,7 @@ describe("CodingAssistantApp", () => {
         const app = new CodingAssistantApp({
             agent,
             cwd: harness.context.fs.cwd,
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
             tui,
         });
 
@@ -3234,7 +3234,7 @@ describe("CodingAssistantApp", () => {
         const app = new CodingAssistantApp({
             agent,
             cwd: harness.context.fs.cwd,
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
             tui: fakeTui(),
         });
 
@@ -3332,7 +3332,7 @@ describe("CodingAssistantApp", () => {
             agent,
             cwd: harness.context.fs.cwd,
             initialSessionEvents,
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
             tui: fakeTui(),
         });
 
@@ -3365,7 +3365,7 @@ describe("CodingAssistantApp", () => {
         const app = new CodingAssistantApp({
             agent,
             cwd: harness.context.fs.cwd,
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
             showReasoning: true,
             tui: fakeTui(),
         });
@@ -3413,7 +3413,7 @@ describe("CodingAssistantApp", () => {
         const app = new CodingAssistantApp({
             agent,
             cwd: harness.context.fs.cwd,
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
             tui,
         });
 
@@ -3457,7 +3457,7 @@ describe("CodingAssistantApp", () => {
         const app = new CodingAssistantApp({
             agent,
             cwd: harness.context.fs.cwd,
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
             showReasoning: true,
             tui: fakeTui(),
         });
@@ -3507,7 +3507,7 @@ describe("CodingAssistantApp", () => {
                 printToConsole: false,
             }),
             cwd: harness.context.fs.cwd,
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
             tui: fakeTui(),
         });
 
@@ -3561,7 +3561,7 @@ describe("CodingAssistantApp", () => {
                 printToConsole: false,
             }),
             cwd: harness.context.fs.cwd,
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
             tui: fakeTui(),
         });
 
@@ -3607,7 +3607,7 @@ describe("CodingAssistantApp", () => {
             const app = new CodingAssistantApp({
                 agent,
                 cwd: harness.context.fs.cwd,
-                processManager: new NativeProxessManager(),
+                processManager: new NativeProcessManager(),
                 tui,
             });
 
@@ -3650,7 +3650,7 @@ describe("CodingAssistantApp", () => {
         const app = new CodingAssistantApp({
             agent,
             cwd: harness.context.fs.cwd,
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
             tui: fakeTui(),
         });
 
@@ -3686,7 +3686,7 @@ describe("CodingAssistantApp", () => {
         const app = new CodingAssistantApp({
             agent,
             cwd: harness.context.fs.cwd,
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
             tui: fakeTui(),
         });
 
@@ -3719,7 +3719,7 @@ describe("CodingAssistantApp", () => {
         const app = new CodingAssistantApp({
             agent,
             cwd: harness.context.fs.cwd,
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
             tui: fakeTui(),
         });
 
@@ -3756,7 +3756,7 @@ describe("CodingAssistantApp", () => {
         const app = new CodingAssistantApp({
             agent,
             cwd: harness.context.fs.cwd,
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
             readClipboardImage: async () => ({
                 data: validPng32Base64,
                 mediaType: "image/png",
@@ -3808,7 +3808,7 @@ describe("CodingAssistantApp", () => {
             }),
             cwd: harness.context.fs.cwd,
             now: () => 100,
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
             readClipboardImage: async () => ({
                 data: validPng32Base64,
                 mediaType: "image/png",
@@ -3883,7 +3883,7 @@ describe("CodingAssistantApp", () => {
         const app = new CodingAssistantApp({
             agent,
             cwd: harness.context.fs.cwd,
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
             readClipboardImage: async () => images.shift(),
             tui: fakeTui(),
         });
@@ -3934,7 +3934,7 @@ describe("CodingAssistantApp", () => {
                 printToConsole: false,
             }),
             cwd: harness.context.fs.cwd,
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
             tui: fakeTui({ rows: 10 }),
         });
 
@@ -3969,7 +3969,7 @@ describe("CodingAssistantApp", () => {
                 printToConsole: false,
             }),
             cwd: harness.context.fs.cwd,
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
             tui: fakeTui(),
         });
 
@@ -4005,7 +4005,7 @@ describe("CodingAssistantApp", () => {
         const app = new CodingAssistantApp({
             agent,
             cwd: harness.context.fs.cwd,
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
             tui: fakeTui(),
         });
 
@@ -4040,7 +4040,7 @@ describe("CodingAssistantApp", () => {
         const app = new CodingAssistantApp({
             agent,
             cwd: harness.context.fs.cwd,
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
             tui: fakeTui(),
         });
 
@@ -4130,7 +4130,7 @@ describe("CodingAssistantApp", () => {
         const app = new CodingAssistantApp({
             agent,
             cwd: harness.context.fs.cwd,
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
             tui,
         });
 
@@ -4167,7 +4167,7 @@ describe("CodingAssistantApp", () => {
         const app = new CodingAssistantApp({
             agent,
             cwd: harness.context.fs.cwd,
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
             tui: fakeTui(),
         });
 
@@ -4214,7 +4214,7 @@ describe("CodingAssistantApp", () => {
         const app = new CodingAssistantApp({
             agent,
             cwd: harness.context.fs.cwd,
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
             tui: fakeTui(),
         });
 
@@ -4276,7 +4276,7 @@ describe("CodingAssistantApp", () => {
         const app = new CodingAssistantApp({
             agent,
             cwd: harness.context.fs.cwd,
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
             showUsage: true,
             tui: fakeTui(),
         });
@@ -4403,7 +4403,7 @@ describe("CodingAssistantApp", () => {
             agent,
             cwd: harness.context.fs.cwd,
             now: () => 1_000,
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
             tui: fakeTui(),
         });
 
@@ -4457,7 +4457,7 @@ describe("CodingAssistantApp", () => {
         const app = new CodingAssistantApp({
             agent,
             cwd: harness.context.fs.cwd,
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
             tui: fakeTui(),
         });
 
@@ -4508,7 +4508,7 @@ describe("CodingAssistantApp", () => {
             const app = new CodingAssistantApp({
                 agent,
                 cwd: harness.context.fs.cwd,
-                processManager: new NativeProxessManager(),
+                processManager: new NativeProcessManager(),
                 tui,
             });
 
@@ -4560,7 +4560,7 @@ describe("CodingAssistantApp", () => {
             agent,
             cwd: harness.context.fs.cwd,
             idFactory: createDeterministicIds(),
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
             tui: fakeTui(),
         });
 
@@ -4606,7 +4606,7 @@ describe("CodingAssistantApp", () => {
         const app = new CodingAssistantApp({
             agent,
             cwd: harness.context.fs.cwd,
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
             tui: fakeTui(),
         });
 
@@ -4678,7 +4678,7 @@ describe("CodingAssistantApp", () => {
         const app = new CodingAssistantApp({
             agent,
             cwd: harness.context.fs.cwd,
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
             tui: fakeTui(),
         });
 
@@ -4732,7 +4732,7 @@ describe("CodingAssistantApp", () => {
                 printToConsole: false,
             }),
             cwd: harness.context.fs.cwd,
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
             tui: fakeTui(),
         });
 
@@ -4883,7 +4883,7 @@ describe("CodingAssistantApp", () => {
                 provider,
             }),
             cwd: harness.context.fs.cwd,
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
             tui: fakeTui(),
         });
         const calls = [
@@ -5001,7 +5001,7 @@ describe("CodingAssistantApp", () => {
                 printToConsole: false,
             }),
             cwd: harness.context.fs.cwd,
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
             tui: fakeTui(),
         });
         const successfulPresentation = {
@@ -5227,7 +5227,7 @@ describe("CodingAssistantApp", () => {
                 printToConsole: false,
             }),
             cwd: harness.context.fs.cwd,
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
             tui: fakeTui(),
         });
 
@@ -5271,7 +5271,7 @@ describe("CodingAssistantApp", () => {
                 printToConsole: false,
             }),
             cwd: harness.context.fs.cwd,
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
             tui: fakeTui(),
         });
         const toolCall = {
@@ -5571,7 +5571,7 @@ describe("CodingAssistantApp", () => {
         const app = new CodingAssistantApp({
             agent,
             cwd: harness.context.fs.cwd,
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
             tui: fakeTui(),
         });
 
@@ -5619,7 +5619,7 @@ describe("CodingAssistantApp", () => {
         const app = new CodingAssistantApp({
             agent,
             cwd: harness.context.fs.cwd,
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
             tui: fakeTui(),
         });
 
@@ -5683,7 +5683,7 @@ describe("CodingAssistantApp", () => {
         const app = new CodingAssistantApp({
             agent,
             cwd: harness.context.fs.cwd,
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
             tui: fakeTui(),
         });
 
@@ -5742,7 +5742,7 @@ describe("CodingAssistantApp", () => {
         const app = new CodingAssistantApp({
             agent,
             cwd: harness.context.fs.cwd,
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
             tui: fakeTui(),
         });
 
@@ -5819,7 +5819,7 @@ describe("CodingAssistantApp", () => {
             }),
             cwd: harness.context.fs.cwd,
             now: () => now,
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
             tui: fakeTui(),
         });
 
@@ -5880,7 +5880,7 @@ describe("CodingAssistantApp", () => {
             }),
             cwd: harness.context.fs.cwd,
             now: () => now,
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
             tui: fakeTui(),
         });
 
@@ -5963,7 +5963,7 @@ describe("CodingAssistantApp", () => {
             }),
             cwd: harness.context.fs.cwd,
             now: () => now,
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
             tui: fakeTui(),
         });
 
@@ -6022,7 +6022,7 @@ describe("CodingAssistantApp", () => {
             }),
             cwd: harness.context.fs.cwd,
             now: () => now,
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
             tui: fakeTui(),
         });
 
@@ -6084,7 +6084,7 @@ describe("CodingAssistantApp", () => {
         const app = new CodingAssistantApp({
             agent,
             cwd: harness.context.fs.cwd,
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
             tui: fakeTui(),
         });
 
@@ -6132,7 +6132,7 @@ describe("CodingAssistantApp", () => {
             agent,
             cwd: harness.context.fs.cwd,
             now: () => now,
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
             tui: fakeTui(),
         });
 
@@ -6182,7 +6182,7 @@ describe("CodingAssistantApp", () => {
             }),
             cwd: harness.context.fs.cwd,
             now: () => now,
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
             sessionBacked: true,
             tui: fakeTui(),
         });
@@ -6319,7 +6319,7 @@ describe("CodingAssistantApp", () => {
         const app = new CodingAssistantApp({
             agent,
             cwd: harness.context.fs.cwd,
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
             showReasoning: true,
             tui: fakeTui(),
         });
@@ -6364,7 +6364,7 @@ describe("CodingAssistantApp", () => {
         const app = new CodingAssistantApp({
             agent,
             cwd: harness.context.fs.cwd,
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
             showReasoning: true,
             tui: fakeTui(),
         });
@@ -6433,7 +6433,7 @@ describe("CodingAssistantApp", () => {
             onSettingsChange: (settings) => {
                 settingsChanges.push(settings);
             },
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
             tui: fakeTui(),
         });
 
@@ -6520,7 +6520,7 @@ describe("CodingAssistantApp", () => {
         const app = new CodingAssistantApp({
             agent,
             cwd: harness.context.fs.cwd,
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
             tui: fakeTui(),
         });
 
@@ -6568,7 +6568,7 @@ describe("CodingAssistantApp", () => {
         const app = new CodingAssistantApp({
             agent,
             cwd: harness.context.fs.cwd,
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
             respondUserInput,
             tui: fakeTui(),
         });
@@ -6655,7 +6655,7 @@ describe("CodingAssistantApp", () => {
                 printToConsole: false,
             }),
             cwd: harness.context.fs.cwd,
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
             respondUserInput,
             tui: fakeTui(),
         });
@@ -6721,7 +6721,7 @@ describe("CodingAssistantApp", () => {
                 printToConsole: false,
             }),
             cwd: harness.context.fs.cwd,
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
             respondUserInput,
             tui: fakeTui(),
         });
@@ -6779,7 +6779,7 @@ describe("CodingAssistantApp", () => {
         const app = new CodingAssistantApp({
             agent,
             cwd: harness.context.fs.cwd,
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
             tui: fakeTui(),
         });
 
@@ -6825,7 +6825,7 @@ describe("CodingAssistantApp", () => {
             agent,
             cwd: harness.context.fs.cwd,
             idFactory: createDeterministicIds(),
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
             tui: fakeTui({ rows: 8 }),
         });
 
@@ -6908,7 +6908,7 @@ describe("CodingAssistantApp", () => {
                     environmentVariables: ["SHARED_TOKEN"],
                 },
             ],
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
             registerSecret: async () => ({
                 id: "unused",
                 description: "Unused",
@@ -6997,7 +6997,7 @@ describe("CodingAssistantApp", () => {
             cwd: harness.context.fs.cwd,
             detachSecret: async () => {},
             listSecrets: async () => [],
-            processManager: new NativeProxessManager(),
+            processManager: new NativeProcessManager(),
             registerSecret,
             tui: fakeTui(),
             unregisterSecret: async () => true,
@@ -7088,11 +7088,11 @@ function fakeTui(options: { rows?: number; columns?: number } = {}): TUI {
     } as unknown as TUI;
 }
 
-class SlowKillProcessManager extends NativeProxessManager {
+class SlowKillProcessManager extends NativeProcessManager {
     killAllStarted = false;
     #finishKillAll: (() => void) | undefined;
 
-    override async killAll(..._args: Parameters<NativeProxessManager["killAll"]>): Promise<void> {
+    override async killAll(..._args: Parameters<NativeProcessManager["killAll"]>): Promise<void> {
         this.killAllStarted = true;
         await new Promise<void>((resolve) => {
             this.#finishKillAll = resolve;
