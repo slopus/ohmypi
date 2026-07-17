@@ -43,7 +43,7 @@ export function createTerminalInputBurstHandler(
         handle(data: string): void {
             if (!isTextInput(data)) {
                 flush();
-                if (/^\x1b{2,}$/u.test(data)) {
+                if (data.length >= 2 && data === "\x1b".repeat(data.length)) {
                     for (const _escape of data) onInput("\x1b");
                     return;
                 }
