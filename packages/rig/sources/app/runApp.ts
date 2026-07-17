@@ -323,7 +323,7 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
     });
     startup.stop();
     const followController = new AbortController();
-    const observedSettlementEvents = new Set<string>();
+    const observedChimeEvents = new Set<string>();
     const lastHistoryEventId = history.events.at(-1)?.id ?? session.session.lastEventId;
     void localServer.client.watchSessionEvents({
         ...(lastHistoryEventId !== undefined ? { after: lastHistoryEventId } : {}),
@@ -331,13 +331,14 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
             if (event.type === "session_title_changed" && event.data.title !== undefined) {
                 terminal.setTitle(`Rig - ${sanitizeTerminalTitle(event.data.title)}`);
             }
-            const isNewSettlement =
-                event.type === "session_title_changed" &&
-                event.data.status === "ready" &&
-                event.data.metadataUpdatedAt !== undefined &&
-                !observedSettlementEvents.has(event.id);
-            if (isNewSettlement) {
-                observedSettlementEvents.add(event.id);
+            const shouldChime =
+                !observedChimeEvents.has(event.id) &&
+                (event.type === "user_input_requested" ||
+                    (event.type === "session_title_changed" &&
+                        event.data.status === "ready" &&
+                        event.data.metadataUpdatedAt !== undefined));
+            if (shouldChime) {
+                observedChimeEvents.add(event.id);
                 if (completionChime) terminal.write("\x07");
             }
             agent.applySessionEvent(event);
