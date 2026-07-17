@@ -4,10 +4,24 @@ import { createNodeAgentContext } from "../agent/context/createNodeAgentContext.
 import type { ConfigProvider } from "../config/types.js";
 import { NativeProcessManager } from "../processes/NativeProcessManager.js";
 import { createConfiguredProvider } from "./createConfiguredProvider.js";
-import { modelAnthropicFable5, modelOpenaiGpt56Sol, modelXaiGrokBuild } from "./models.js";
+import {
+    modelAnthropicFable5,
+    modelMoonshotKimiK3,
+    modelOpenaiGpt56Sol,
+    modelXaiGrokBuild,
+} from "./models.js";
 
 describe("createConfiguredProvider", () => {
     it.each([
+        {
+            config: {
+                enabled: true,
+                includeModels: [modelMoonshotKimiK3.id],
+                type: "kimi",
+            } satisfies ConfigProvider,
+            id: "work_kimi",
+            profile: "kimi",
+        },
         {
             config: {
                 enabled: true,

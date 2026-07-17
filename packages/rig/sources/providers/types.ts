@@ -11,7 +11,7 @@ import type { ProviderQuota } from "./providerQuota.js";
 export type StopReason = "stop" | "length" | "toolUse" | "error" | "aborted";
 export type ProviderErrorCode = "incomplete_response" | "invalid_image_request";
 export type ProviderImageProfile = "claude" | "codex";
-export type ProviderToolProfile = "claude" | "codex" | "grok" | "pi";
+export type ProviderToolProfile = "claude" | "codex" | "grok" | "kimi" | "pi";
 export type ServiceTier = "fast";
 
 /** Plain text content block. */

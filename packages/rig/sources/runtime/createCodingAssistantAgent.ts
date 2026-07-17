@@ -22,7 +22,7 @@ import { NativeProcessManager } from "../processes/index.js";
 import { createConfiguredProvider } from "../providers/createConfiguredProvider.js";
 import { createGymProviderFromEnvironment } from "../providers/createGymProviderFromEnvironment.js";
 import { getBedrockModelRoute } from "../providers/getBedrockModelRoute.js";
-import { modelOpenaiGpt56Sol } from "../providers/models.js";
+import { modelMoonshotKimiK3, modelOpenaiGpt56Sol } from "../providers/models.js";
 import type { ServiceTier } from "../providers/types.js";
 import { routeProviderThroughGym } from "../providers/routeProviderThroughGym.js";
 import { claudeCollaborationTools } from "../tools/claude/index.js";
@@ -30,6 +30,7 @@ import { codexCollaborationTools } from "../tools/codex/index.js";
 import { grokCollaborationTools } from "../tools/grok/index.js";
 import { agentTool } from "../tools/Agent.js";
 import { goalTools } from "../tools/goals/index.js";
+import { kimiAgentTool, kimiGoalTools } from "../tools/kimi/index.js";
 import type { CodingAssistantRuntime } from "./CodingAssistantRuntime.js";
 import { createDefaultInstructions } from "./createDefaultInstructions.js";
 import { selectToolsForModel } from "./selectToolsForModel.js";
@@ -99,11 +100,13 @@ export function createCodingAssistantAgent(
             ? "claude"
             : modelId.startsWith("xai/")
               ? "grok"
-              : modelId.startsWith("openai/")
-                ? "codex"
-                : getBedrockModelRoute(modelId) !== undefined
-                  ? "bedrock"
-                  : "codex");
+              : modelId === modelMoonshotKimiK3.id
+                ? "kimi"
+                : modelId.startsWith("openai/")
+                  ? "codex"
+                  : getBedrockModelRoute(modelId) !== undefined
+                    ? "bedrock"
+                    : "codex");
     const providerConfig =
         providerId === "gym"
             ? undefined
@@ -146,15 +149,18 @@ export function createCodingAssistantAgent(
     const usesClaudeTools = toolProfile === "claude";
     const usesCodexTools = toolProfile === "codex";
     const usesGrokTools = toolProfile === "grok";
+    const usesKimiTools = toolProfile === "kimi";
     const baseTools = selectToolsForModel({ model, provider });
     const collaborationTools = (
         usesCodexTools
             ? codexCollaborationTools
             : usesGrokTools
               ? grokCollaborationTools
-              : usesClaudeTools
-                ? [agentTool, ...claudeCollaborationTools]
-                : [agentTool]
+              : usesKimiTools
+                ? [kimiAgentTool]
+                : usesClaudeTools
+                  ? [agentTool, ...claudeCollaborationTools]
+                  : [agentTool]
     ).filter(
         (tool) =>
             workflowsEnabled ||
@@ -172,7 +178,9 @@ export function createCodingAssistantAgent(
             ? [...baseTools]
             : [...baseTools, ...collaborationTools];
     const tools =
-        options.goals === undefined ? toolsWithoutGoals : [...toolsWithoutGoals, ...goalTools];
+        options.goals === undefined
+            ? toolsWithoutGoals
+            : [...toolsWithoutGoals, ...(usesKimiTools ? kimiGoalTools : goalTools)];
     const agentOptions: AgentOptions = {
         ...(options.appendSystemPrompt !== undefined
             ? { appendSystemPrompt: options.appendSystemPrompt }

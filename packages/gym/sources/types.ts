@@ -39,8 +39,8 @@ export interface GymOptions {
     inference?: readonly GymMockResponse[] | GymInferenceHandler | undefined;
     modelId?: string;
     permissionMode?: "auto" | "from_config" | "full_access" | "read_only" | "workspace_write";
-    providerId?: "bedrock" | "claude" | "codex" | "gym";
-    providerOverrides?: readonly ("claude" | "codex")[];
+    providerId?: "bedrock" | "claude" | "codex" | "gym" | "kimi";
+    providerOverrides?: readonly ("claude" | "codex" | "kimi")[];
     rows?: number;
     startupText?: string;
     terminalColorScheme?: TerminalColorScheme;

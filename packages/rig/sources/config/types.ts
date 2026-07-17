@@ -76,11 +76,18 @@ export interface ConfigGrokProvider extends ConfigProviderBase {
     type: "grok";
 }
 
+export interface ConfigKimiProvider extends ConfigProviderBase {
+    authFile?: string;
+    baseUrl?: string;
+    type: "kimi";
+}
+
 export type ConfigProvider =
     | ConfigBedrockProvider
     | ConfigClaudeProvider
     | ConfigCodexProvider
-    | ConfigGrokProvider;
+    | ConfigGrokProvider
+    | ConfigKimiProvider;
 
 export type ConfigProviders = Readonly<Record<string, ConfigProvider>>;
 

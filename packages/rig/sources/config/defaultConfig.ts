@@ -26,6 +26,10 @@ export const DEFAULT_RIG_CONFIG: RigConfig = {
             enabled: true,
             type: "grok",
         },
+        kimi: {
+            enabled: true,
+            type: "kimi",
+        },
     },
     settings: {
         completionChime: false,

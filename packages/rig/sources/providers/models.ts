@@ -150,6 +150,14 @@ export const modelMoonshotKimiK2Thinking = defineModel({
     contextWindow: 256_000,
 });
 
+export const modelMoonshotKimiK3 = defineModel({
+    id: "moonshot/kimi-k3",
+    name: "Kimi K3",
+    thinkingLevels: ["max"],
+    defaultThinkingLevel: "max",
+    contextWindow: 1_048_576,
+});
+
 export const modelZaiGlm5 = defineModel({
     id: "zai/glm-5",
     name: "GLM 5",

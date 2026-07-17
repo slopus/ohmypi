@@ -3,6 +3,7 @@ import { delayBeforeInferenceRetry } from "../delayBeforeInferenceRetry.js";
 import { hasResponseContentBegun } from "../hasResponseContentBegun.js";
 import { INFERENCE_MAX_RETRIES } from "../inferenceRetryPolicy.js";
 import { isRetryableInferenceError } from "../isRetryableInferenceError.js";
+import { selectCompactionSystemPromptForModel } from "./selectCompactionSystemPromptForModel.js";
 import type { Message } from "../types.js";
 import type {
     AssistantMessage,
@@ -11,10 +12,6 @@ import type {
     ServiceTier,
     StreamOptions,
 } from "../../providers/types.js";
-
-const COMPACTION_SYSTEM_PROMPT = `Create a detailed continuation brief for a coding agent that will continue this conversation without access to the original history.
-
-Preserve the user's requests and constraints, important technical facts, decisions and rationale, files examined or changed, concrete edits, commands and test results, errors and fixes, and all unfinished work. Distinguish completed work from pending work. Include exact identifiers, paths, and short code fragments when they are needed to continue accurately. Do not continue the work or address the user. Return only the continuation brief.`;
 
 export async function requestCompactionSummary(options: {
     provider: Provider;
@@ -32,7 +29,7 @@ export async function requestCompactionSummary(options: {
     if (options.signal !== undefined) streamOptions.signal = options.signal;
 
     const context = {
-        systemPrompt: COMPACTION_SYSTEM_PROMPT,
+        systemPrompt: selectCompactionSystemPromptForModel(options.model),
         messages: [
             {
                 role: "user" as const,

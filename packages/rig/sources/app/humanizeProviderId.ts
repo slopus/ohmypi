@@ -11,6 +11,9 @@ export function humanizeProviderId(providerId: string): string {
     if (providerId === "grok") {
         return "Grok Build";
     }
+    if (providerId === "kimi") {
+        return "Kimi Code";
+    }
     if (providerId === "anthropic") {
         return "Anthropic";
     }

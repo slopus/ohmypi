@@ -208,7 +208,7 @@ function readProviders(value: TomlValue | undefined): Record<string, ConfigProvi
             continue;
         }
 
-        if (type === "grok") {
+        if (type === "grok" || type === "kimi") {
             assertKnownKeys(rawProvider, `providers.${id}`, [
                 "auth_file",
                 "base_url",
@@ -271,10 +271,15 @@ function readProviders(value: TomlValue | undefined): Record<string, ConfigProvi
     return providers;
 }
 
-function readProviderType(id: string, table: TomlTable): "bedrock" | "claude" | "codex" | "grok" {
+function readProviderType(
+    id: string,
+    table: TomlTable,
+): "bedrock" | "claude" | "codex" | "grok" | "kimi" {
     const configuredType = readProviderString(id, table, "type");
     const builtInType =
-        id === "bedrock" || id === "claude" || id === "codex" || id === "grok" ? id : undefined;
+        id === "bedrock" || id === "claude" || id === "codex" || id === "grok" || id === "kimi"
+            ? id
+            : undefined;
     if (
         configuredType !== undefined &&
         builtInType !== undefined &&
@@ -283,9 +288,15 @@ function readProviderType(id: string, table: TomlTable): "bedrock" | "claude" | 
         throw new Error(`Built-in provider "${id}" must use type "${builtInType}".`);
     }
     const type = configuredType ?? builtInType;
-    if (type !== "bedrock" && type !== "claude" && type !== "codex" && type !== "grok") {
+    if (
+        type !== "bedrock" &&
+        type !== "claude" &&
+        type !== "codex" &&
+        type !== "grok" &&
+        type !== "kimi"
+    ) {
         throw new Error(
-            `Provider "${id}" must set type to "codex", "claude", "grok", or "bedrock".`,
+            `Provider "${id}" must set type to "codex", "claude", "grok", "kimi", or "bedrock".`,
         );
     }
     return type;

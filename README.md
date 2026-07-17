@@ -2,7 +2,7 @@
 
 <p><img src="./logo.png" alt="Rig" width="400" /></p>
 
-<h3>The best of Pi, Codex, Claude Code, and Grok Build — unified in one coding-agent harness.</h3>
+<h3>The best of Pi, Codex, Claude Code, Kimi Code, and Grok Build — unified in one coding-agent harness.</h3>
 
 <p>
   Use model-native prompts and tools with provider access already configured on
@@ -29,7 +29,8 @@ https://github.com/user-attachments/assets/99a7dee6-36ef-4110-95b2-e236633640a4
 Rig is an open-source coding-agent harness built on top of
 [Pi](https://github.com/earendil-works/pi)'s foundations. It recreates the best
 parts of [Codex](https://github.com/openai/codex),
-[Claude Code](https://code.claude.com/docs/en/overview), and
+[Claude Code](https://code.claude.com/docs/en/overview),
+[Kimi Code](https://code.kimi.com), and
 [Grok Build](https://github.com/xai-org/grok-build) in one consistent local
 runtime: the right prompts and tools for each model, useful defaults, safe
 execution, durable sessions, subagents, MCP, and a friendly terminal interface.
@@ -54,12 +55,13 @@ complete their normal sign-in:
 ```sh
 codex
 claude
+kimi login
 grok login
 ```
 
-Rig then uses the credentials already managed by those installations. Grok
-Build credentials are hot-reloaded from `~/.grok/auth.json`, so a later
-`grok login` is picked up without copying tokens into Rig.
+Rig then uses the credentials already managed by those installations. Kimi and
+Grok credentials are hot-reloaded from their local auth stores, so later logins
+are picked up without copying tokens into Rig.
 
 ### Step 3: Start building
 
@@ -74,14 +76,15 @@ time to choose an available model.
 
 ## Why Rig?
 
-Pi is a wonderfully small, flexible foundation. Codex, Claude Code, and Grok
-Build each add excellent model-specific behavior, but they expose different
+Pi is a wonderfully small, flexible foundation. Codex, Claude Code, Kimi Code,
+and Grok Build each add excellent model-specific behavior, but they expose different
 tools, permissions, session models, and integration protocols. Rig brings those ideas together
 without making you rebuild the setup for every model, machine, or repository.
 
 - **Feels native to the model.** GPT receives Codex-style prompts and tools;
-  Claude receives Claude Code-style prompts and tools; Grok receives the
-  open-source Grok Build prompt and tool contracts.
+  Claude receives Claude Code-style prompts and tools; Kimi receives its coding
+  prompt and Chat Completions contract; Grok receives the open-source Grok Build
+  prompt and tool contracts.
 - **One dependable workflow.** Sessions, permissions, MCP, Docker, background
   commands, reviews, goals, and headless execution work through one interface.
 - **Thoughtful defaults.** A fresh install is useful immediately, while global
@@ -108,6 +111,7 @@ runtime without flattening the important differences between models.
 | Pi foundation     | Pi's inference adapters and terminal UI library                                                                  | The shared terminal, permissions, sessions, processes, persistence, and client protocol                                 |
 | Codex             | Pi's Codex transport, with [OpenAI's source](https://github.com/openai/codex) as the behavioral reference        | Reimplemented Codex prompts, tool contracts, reasoning controls, collaboration, approvals, review, and transcript rules |
 | Claude Code       | Anthropic's official [Claude Agent SDK](https://code.claude.com/docs/en/agent-sdk/overview) for direct inference | Reimplemented Claude-facing prompts, tools, tasks, subagents, permissions, and session behavior                         |
+| Kimi Code         | Moonshot's OpenAI-compatible Chat Completions API and credentials managed by Kimi Code                           | Adapted Kimi prompt, tool schemas, max reasoning, context compaction, token refresh, and request metadata               |
 | Grok Build        | xAI's OpenAI-compatible Responses API and the credentials managed by the Grok CLI                                | Adapted [Grok Build](https://github.com/xai-org/grok-build) prompt, tools, token refresh, and request metadata          |
 | Other model paths | Pi inference adapters and selected generic Pi tool definitions                                                   | A useful fallback experience without pretending those models are Codex or Claude Code                                   |
 | External clients  | Rig's local daemon, durable event stream, and protocol                                                           | One stable API for terminal, headless, mobile, web, or other interfaces                                                 |
@@ -122,6 +126,15 @@ for inference, but disables its built-in tools, skills, slash commands, and
 filesystem settings. Rig then supplies its own implementations of those surfaces.
 This keeps Claude's native inference path while giving Rig one place to control
 tools, permissions, persistence, subagents, and client events.
+
+Kimi K3 uses Moonshot's coding endpoint and the session already managed by Kimi
+Code. Rig sends K3's max-reasoning contract, preserved reasoning content,
+normalized function schemas and tool-call IDs, prompt-cache key, usage metadata,
+and adapted Kimi coding, compaction, subagent, and per-tool contracts. Kimi's
+native names and guidance are mapped onto Rig's shared tool executions and
+permission boundary rather than creating a provider-specific security path.
+Token refresh is serialized with Kimi Code's cross-process lock and rotated
+credentials are written back atomically.
 
 Grok Build uses xAI's Responses API at the same first-party proxy as the
 open-source CLI. Rig reads Grok's scoped auth store on every request, prefers an
@@ -146,18 +159,18 @@ service, pool access, or bypass Anthropic's terms and limits.
 Rig is a unifying harness, not a replacement for every surface offered by Pi,
 Codex, or Claude Code. This table focuses on the local coding-agent experience.
 
-|                        | Rig                                                                   | [Pi](https://github.com/earendil-works/pi)                   | [Codex](https://github.com/openai/codex)  | [Claude Code](https://code.claude.com/docs/en/overview) |
-| ---------------------- | --------------------------------------------------------------------- | ------------------------------------------------------------ | ----------------------------------------- | ------------------------------------------------------- |
-| Primary role           | Opinionated multi-model harness                                       | Minimal, highly extensible agent toolkit                     | OpenAI's native coding agent              | Anthropic's native coding agent                         |
-| Model access           | Codex, Claude Code, Grok Build, and optional Bedrock models           | Broad multi-provider catalog                                 | OpenAI models                             | Claude models, including supported cloud platforms      |
-| Authentication         | Reuses Codex, Claude Code, and Grok credentials                       | Pi logins or provider API keys                               | ChatGPT sign-in or API key                | Claude sign-in, API, or supported cloud provider        |
-| Tool behavior          | Switches between model-native Codex, Claude, and Grok toolsets        | Small generic core, replaceable with extensions              | Codex-native                              | Claude Code-native                                      |
-| Subagents              | Built in, with provider-aligned controls and saved transcripts        | Intentionally extension-driven                               | Built-in multi-agent tools                | Built-in subagents and agent teams                      |
-| Permissions            | Unified Auto, Workspace write, Read only, and Full access modes       | Intentionally extension- or container-driven                 | Native approvals and sandboxing           | Native permission modes                                 |
-| MCP                    | Built-in stdio and streamable HTTP                                    | Available through extensions                                 | Built in                                  | Built in                                                |
-| Long-running work      | Managed shells, workflows, persistent goals, and background subagents | Intentionally uses external tools such as tmux or extensions | Background commands and multi-agent work  | Background commands, tasks, and agents                  |
-| Headless and embedding | Text, JSON, streaming JSON, daemon protocol, and durable events       | Print, JSON, RPC, and a TypeScript SDK                       | Non-interactive mode, SDK, and app server | Print mode and Agent SDK                                |
-| Best fit               | One local harness across model families and client apps               | Building a deeply customized agent                           | The first-party OpenAI experience         | The first-party Anthropic experience                    |
+|                        | Rig                                                                    | [Pi](https://github.com/earendil-works/pi)                   | [Codex](https://github.com/openai/codex)  | [Claude Code](https://code.claude.com/docs/en/overview) |
+| ---------------------- | ---------------------------------------------------------------------- | ------------------------------------------------------------ | ----------------------------------------- | ------------------------------------------------------- |
+| Primary role           | Opinionated multi-model harness                                        | Minimal, highly extensible agent toolkit                     | OpenAI's native coding agent              | Anthropic's native coding agent                         |
+| Model access           | Codex, Claude Code, Kimi Code, Grok Build, and optional Bedrock models | Broad multi-provider catalog                                 | OpenAI models                             | Claude models, including supported cloud platforms      |
+| Authentication         | Reuses Codex, Claude Code, Kimi Code, and Grok credentials             | Pi logins or provider API keys                               | ChatGPT sign-in or API key                | Claude sign-in, API, or supported cloud provider        |
+| Tool behavior          | Switches between model-native Codex, Claude, Kimi, and Grok toolsets   | Small generic core, replaceable with extensions              | Codex-native                              | Claude Code-native                                      |
+| Subagents              | Built in, with provider-aligned controls and saved transcripts         | Intentionally extension-driven                               | Built-in multi-agent tools                | Built-in subagents and agent teams                      |
+| Permissions            | Unified Auto, Workspace write, Read only, and Full access modes        | Intentionally extension- or container-driven                 | Native approvals and sandboxing           | Native permission modes                                 |
+| MCP                    | Built-in stdio and streamable HTTP                                     | Available through extensions                                 | Built in                                  | Built in                                                |
+| Long-running work      | Managed shells, workflows, persistent goals, and background subagents  | Intentionally uses external tools such as tmux or extensions | Background commands and multi-agent work  | Background commands, tasks, and agents                  |
+| Headless and embedding | Text, JSON, streaming JSON, daemon protocol, and durable events        | Print, JSON, RPC, and a TypeScript SDK                       | Non-interactive mode, SDK, and app server | Print mode and Agent SDK                                |
+| Best fit               | One local harness across model families and client apps                | Building a deeply customized agent                           | The first-party OpenAI experience         | The first-party Anthropic experience                    |
 
 Rig deliberately keeps Pi's strong foundations and extensibility, then chooses a
 cohesive built-in experience where Pi prefers a minimal core. From Codex and
@@ -347,6 +360,9 @@ enabled = true
 [providers.claude]
 enabled = true
 
+[providers.kimi]
+enabled = true
+
 [providers.grok]
 enabled = true
 
@@ -354,9 +370,9 @@ enabled = true
 enabled = true
 ```
 
-These four built-in instances use the normal Codex, Claude Code, Grok, and Bedrock
-credential locations, so their `type` is inferred. Disabling Codex or Claude
-Code removes that provider and its native authentication path from the model
+These five built-in instances use the normal Codex, Claude Code, Kimi Code,
+Grok, and Bedrock credential locations, so their `type` is inferred. Disabling
+one removes that provider and its native authentication path from the model
 picker.
 
 Add any number of named instances when you need separate accounts. For custom
@@ -376,6 +392,11 @@ include_models = ["openai/gpt-5.6-sol", "openai/gpt-5.6-terra"]
 type = "claude"
 config_dir = "/Users/me/.claude-personal"
 exclude_models = ["anthropic/haiku-4-5"]
+
+[providers.work_kimi]
+type = "kimi"
+auth_file = "/Users/me/.kimi-code-work/credentials/kimi-code.json"
+include_models = ["moonshot/kimi-k3"]
 
 [providers.work_grok]
 type = "grok"
@@ -397,7 +418,8 @@ Filters use exact Rig model IDs; exclusions win when a model appears in both
 lists. Codex instances also accept `auth_file`, `base_url`, and `transport`.
 Claude Code instances accept `config_dir` and `executable`. Grok instances
 accept `auth_file` and `base_url`; `RIG_GROK_BASE_URL` is also available for
-local proxy testing. Bedrock instances
+local proxy testing. Kimi instances accept `auth_file` and `base_url`;
+`RIG_KIMI_BASE_URL` is available for local proxy testing. Bedrock instances
 accept `region`, `model_overrides`, and `bearer_token_env_var`. `region` is the
 provider default. Each exact Rig model ID under `model_overrides` may set
 `region`, `endpoint`, or both. A full `endpoint` URL overrides the Mantle or
@@ -486,6 +508,38 @@ lets a session use tools added after startup.
 Only configure servers you trust. Stdio servers run as local processes, receive
 the daemon environment, and are not restricted by the session filesystem
 sandbox.
+
+</details>
+
+<details>
+<summary><strong>Kimi Code</strong></summary>
+
+Install Kimi Code, complete its device-code login, then choose Kimi K3:
+
+```sh
+kimi login
+export RIG_PROVIDER="kimi"
+export RIG_MODEL="moonshot/kimi-k3"
+rig
+```
+
+By default Rig reads
+`$KIMI_CODE_HOME/credentials/kimi-code.json`, or
+`~/.kimi-code/credentials/kimi-code.json` when `KIMI_CODE_HOME` is unset. A
+named Kimi provider may instead set `auth_file`. Rig refreshes expired access
+tokens through Kimi Code's OAuth flow, coordinates refreshes with Kimi Code's
+cross-process lock, and atomically writes rotated credentials back to the same
+file.
+
+The built-in endpoint is `https://api.kimi.com/coding/v1`. Rig calls its
+OpenAI-compatible `/chat/completions` API with wire model `k3`, Kimi's
+1,048,576-token context, max reasoning, native reasoning continuation,
+normalized schemas and tool-call IDs, prompt caching, and streamed usage.
+Kimi receives adapted upstream coding, compaction, subagent, and tool guidance;
+all execution still runs through Rig's provider-neutral permissions and
+sandbox. Rig keeps planning in the normal agent workflow and uses its existing
+background work surfaces rather than reproducing Kimi Code's dedicated Plan,
+Cron, or AgentSwarm modes.
 
 </details>
 
@@ -616,7 +670,8 @@ queue behavior.
 Rig aims for the best common coding-agent workflows, not exhaustive parity with
 every upstream option. It intentionally keeps planning in the normal agent flow,
 uses standard terminal editing instead of modal editing, follows Codex skill
-semantics, and relies on the existing Codex, Claude Code, and Grok login flows.
+semantics, and relies on the existing Codex, Claude Code, Kimi Code, and Grok
+login flows.
 
 Rig also draws a clear boundary around the terminal UI. The terminal is for a
 focused, linear agent workflow. Features that need a richer interaction model—
@@ -636,4 +691,5 @@ setup, tests, architecture notes, and the release process.
 ## License
 
 Rig is available under the [MIT License](LICENSE). Adapted Grok Build portions
-remain under Apache-2.0; see the [third-party notices](THIRD-PARTY-NOTICES.md).
+remain under Apache-2.0, and adapted Kimi Code portions remain under MIT; see
+the [third-party notices](THIRD-PARTY-NOTICES.md).

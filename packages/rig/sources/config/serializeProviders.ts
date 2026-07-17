@@ -24,7 +24,8 @@ function isBuiltInProvider(id: string, provider: ConfigProvider): boolean {
         (id === "codex" && provider.type === "codex") ||
         (id === "claude" && provider.type === "claude") ||
         (id === "bedrock" && provider.type === "bedrock") ||
-        (id === "grok" && provider.type === "grok")
+        (id === "grok" && provider.type === "grok") ||
+        (id === "kimi" && provider.type === "kimi")
     );
 }
 
@@ -42,7 +43,7 @@ function serializeProviderFields(provider: ConfigProvider): Record<string, unkno
             ...(provider.executable === undefined ? {} : { executable: provider.executable }),
         };
     }
-    if (provider.type === "grok") {
+    if (provider.type === "grok" || provider.type === "kimi") {
         return {
             ...(provider.authFile === undefined ? {} : { auth_file: provider.authFile }),
             ...(provider.baseUrl === undefined ? {} : { base_url: provider.baseUrl }),

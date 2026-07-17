@@ -4,6 +4,7 @@ import { createConfiguredBedrockProvider } from "./createConfiguredBedrockProvid
 import { createConfiguredClaudeProvider } from "./createConfiguredClaudeProvider.js";
 import { createConfiguredCodexProvider } from "./createConfiguredCodexProvider.js";
 import { createConfiguredGrokProvider } from "./createConfiguredGrokProvider.js";
+import { createConfiguredKimiProvider } from "./createConfiguredKimiProvider.js";
 import { filterConfiguredProviderModels } from "./filterConfiguredProviderModels.js";
 import type { Provider } from "./types.js";
 
@@ -44,11 +45,21 @@ export function createConfiguredProvider(options: {
                       id: options.id,
                       ...(options.sessionId === undefined ? {} : { sessionId: options.sessionId }),
                   })
-                : createConfiguredBedrockProvider({
-                      config: options.config,
-                      env: options.env,
-                      id: options.id,
-                  });
+                : options.config.type === "kimi"
+                  ? createConfiguredKimiProvider({
+                        ...(options.apiKey === undefined ? {} : { apiKey: options.apiKey }),
+                        config: options.config,
+                        env: options.env,
+                        id: options.id,
+                        ...(options.sessionId === undefined
+                            ? {}
+                            : { sessionId: options.sessionId }),
+                    })
+                  : createConfiguredBedrockProvider({
+                        config: options.config,
+                        env: options.env,
+                        id: options.id,
+                    });
 
     if (provider === undefined) {
         return {

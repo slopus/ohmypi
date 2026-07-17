@@ -1,19 +1,32 @@
+import {
+    KIMI_SUBAGENT_INSTRUCTIONS_MARKER,
+    kimiSubagentInstructions,
+} from "./prompts/kimiSubagentInstructions.js";
+
+const genericSubagentInstructionsMarker = "You are a subagent working on one delegated step.";
+
 export function createSubagentInstructions(
     parentInstructions: string | undefined,
     depth: number,
     maxDepth: number,
+    modelId?: string,
 ): string {
-    const previousSubagentInstructions = parentInstructions?.indexOf(
-        "You are a subagent working on one delegated step.",
-    );
+    const previousSubagentInstructions = [
+        parentInstructions?.indexOf(genericSubagentInstructionsMarker) ?? -1,
+        parentInstructions?.indexOf(KIMI_SUBAGENT_INSTRUCTIONS_MARKER) ?? -1,
+    ].filter((index) => index >= 0);
+    const previousSubagentInstructionsStart =
+        previousSubagentInstructions.length === 0 ? -1 : Math.min(...previousSubagentInstructions);
     const baseInstructions =
-        previousSubagentInstructions !== undefined && previousSubagentInstructions >= 0
-            ? parentInstructions?.slice(0, previousSubagentInstructions).trimEnd()
+        previousSubagentInstructionsStart >= 0
+            ? parentInstructions?.slice(0, previousSubagentInstructionsStart).trimEnd()
             : parentInstructions;
+    const roleInstructions = modelId?.toLowerCase().includes("kimi")
+        ? kimiSubagentInstructions
+        : `${genericSubagentInstructionsMarker} Complete the task independently and return a concise result to the parent agent.\n\nThe parent agent may send follow-up work after this step. Continue from your existing context when it does.`;
     return [
         baseInstructions,
-        "You are a subagent working on one delegated step. Complete the task independently and return a concise result to the parent agent.",
-        "The parent agent may send follow-up work after this step. Continue from your existing context when it does.",
+        roleInstructions,
         depth < maxDepth
             ? `You may delegate focused work to another subagent. The current depth is ${depth} of ${maxDepth}.`
             : "You are at the maximum subagent depth and must complete the task directly.",

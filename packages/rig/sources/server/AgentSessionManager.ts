@@ -221,12 +221,14 @@ export class AgentSessionManager {
                 type: "subagent",
             };
             const parentRequest = parent.requestForSubagent();
+            const childModelId = request.modelId ?? parentRequest.modelId;
             const childRequest = {
                 ...parentRequest,
                 instructions: createSubagentInstructions(
                     parentRequest.instructions,
                     depth,
                     this.maxDepth,
+                    childModelId,
                 ),
                 ...(request.modelId === undefined ? {} : { modelId: request.modelId }),
                 ...(request.providerId === undefined ? {} : { providerId: request.providerId }),

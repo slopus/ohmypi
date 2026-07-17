@@ -3,6 +3,7 @@ import type { Model, Provider } from "../providers/types.js";
 import { claudeCodeTools } from "../tools/claude/index.js";
 import { codexTools } from "../tools/codex/index.js";
 import { grokBuildTools } from "../tools/grok/index.js";
+import { kimiCodeTools } from "../tools/kimi/index.js";
 import { piTools } from "../tools/pi/index.js";
 
 export interface SelectToolsForModelOptions {
@@ -20,6 +21,8 @@ export function selectToolsForModel(
             return codexTools;
         case "grok":
             return grokBuildTools;
+        case "kimi":
+            return kimiCodeTools;
         case "pi":
             return piTools;
     }
