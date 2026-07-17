@@ -640,6 +640,7 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
                     effort,
                     service_tier,
                     instructions,
+                    append_system_prompt,
                     status,
                     active_run_id,
                     active_since_ms,
@@ -666,7 +667,7 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
                     created_at_ms,
                     updated_at_ms
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                     agent_id = excluded.agent_id,
                     session_kind = excluded.session_kind,
@@ -684,6 +685,7 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
                     effort = excluded.effort,
                     service_tier = excluded.service_tier,
                     instructions = excluded.instructions,
+                    append_system_prompt = excluded.append_system_prompt,
                     status = excluded.status,
                     active_run_id = excluded.active_run_id,
                     active_since_ms = excluded.active_since_ms,
@@ -728,6 +730,7 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
                 state.effort ?? null,
                 state.serviceTier ?? null,
                 state.instructions ?? null,
+                state.appendSystemPrompt ?? null,
                 state.status,
                 state.activeRunId ?? null,
                 state.activeSince ?? null,
@@ -872,6 +875,7 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
                 effort TEXT,
                 service_tier TEXT,
                 instructions TEXT,
+                append_system_prompt TEXT,
                 status TEXT NOT NULL,
                 active_run_id TEXT,
                 active_since_ms INTEGER,
@@ -1093,6 +1097,7 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
         const dockerJson = readOptionalString(row, "docker_json");
         const secretIdsJson = readOptionalString(row, "secret_ids_json");
         const instructions = readOptionalString(row, "instructions");
+        const appendSystemPrompt = readOptionalString(row, "append_system_prompt");
         const interruptionJson = readOptionalString(row, "interruption_json");
         const lastMessageAt = readOptionalNumber(row, "last_message_at_ms");
         const modelId = readString(row, "model_id");
@@ -1125,6 +1130,7 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
             ...(activeSince !== undefined ? { activeSince } : {}),
             agent,
             agentId: readString(row, "agent_id"),
+            ...(appendSystemPrompt !== undefined ? { appendSystemPrompt } : {}),
             cwd: readString(row, "cwd"),
             elapsedMs: readNumber(row, "elapsed_ms"),
             ...(dockerJson !== undefined
@@ -1168,6 +1174,9 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
         }
 
         const request: CreateSessionRequest = {
+            ...(restore.appendSystemPrompt !== undefined
+                ? { appendSystemPrompt: restore.appendSystemPrompt }
+                : {}),
             cwd: restore.cwd,
             ...(restore.docker === undefined ? {} : { docker: restore.docker }),
             ...(restore.effort !== undefined ? { effort: restore.effort } : {}),

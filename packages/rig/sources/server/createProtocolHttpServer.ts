@@ -44,6 +44,7 @@ import type {
     UnregisterSecretResponse,
     UpdateDaemonConfigRequest,
     UpdateDaemonConfigResponse,
+    UpdateSessionRequest,
 } from "../protocol/index.js";
 import { getDaemonIdentity } from "../daemon/index.js";
 import { errorToMessage } from "../errorToMessage.js";
@@ -342,6 +343,12 @@ async function handleRequest(
             });
             return;
         }
+        if (body.appendSystemPrompt !== undefined && typeof body.appendSystemPrompt !== "string") {
+            sendJson(response, 400, {
+                error: "The appended system prompt must be text.",
+            });
+            return;
+        }
         if (
             body.secretIds !== undefined &&
             (!Array.isArray(body.secretIds) ||
@@ -498,6 +505,23 @@ async function handleRequest(
 
     if (request.method === "GET" && route.name === "session") {
         sendJson(response, 200, { session: session.snapshot() });
+        return;
+    }
+
+    if (request.method === "PATCH" && route.name === "session") {
+        const body = await readJson<UpdateSessionRequest | null>(request);
+        if (
+            body === null ||
+            typeof body !== "object" ||
+            Array.isArray(body) ||
+            (typeof body.appendSystemPrompt !== "string" && body.appendSystemPrompt !== null)
+        ) {
+            sendJson(response, 400, {
+                error: "The appended system prompt must be text or null.",
+            });
+            return;
+        }
+        sendJson(response, 200, { session: session.update(body) });
         return;
     }
 
@@ -1064,6 +1088,7 @@ function matchRoute(pathname: string):
 
 function isSessionMutation(routeName: string, method: string | undefined): boolean {
     return (
+        (method === "PATCH" && routeName === "session") ||
         (method === "POST" &&
             [
                 "abort",

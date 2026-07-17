@@ -9,6 +9,7 @@ import type { Model, Provider } from "../providers/types.js";
 import { createSecretInstructions } from "../secrets/index.js";
 
 export interface CreateSystemPromptOptions {
+    appendSystemPrompt?: string;
     provider: Provider;
     model: Model;
     instructions?: string;
@@ -55,6 +56,10 @@ export async function createSystemPrompt(
     if (options.context.secrets !== undefined) {
         const secretInstructions = createSecretInstructions(options.context.secrets);
         if (secretInstructions !== undefined) parts.push(secretInstructions);
+    }
+
+    if (options.appendSystemPrompt !== undefined && options.appendSystemPrompt.length > 0) {
+        parts.push(options.appendSystemPrompt);
     }
 
     return parts.length > 0 ? parts.join("\n\n") : undefined;

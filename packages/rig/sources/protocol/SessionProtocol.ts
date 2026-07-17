@@ -109,6 +109,7 @@ export type UpdateDaemonConfigResponse = GetDaemonConfigResponse;
 export interface ProtocolSession {
     id: string;
     agentId: string;
+    appendSystemPrompt?: string;
     cwd: string;
     providerId: string;
     permissionMode: PermissionMode;
@@ -184,6 +185,7 @@ export interface SessionSummary {
 
 export interface CreateSessionRequest {
     apiKey?: string;
+    appendSystemPrompt?: string;
     cwd: string;
     effort?: string;
     serviceTier?: ServiceTier;
@@ -195,6 +197,10 @@ export interface CreateSessionRequest {
     workflowsEnabled?: boolean;
     docker?: DockerExecutionConfig;
     local?: boolean;
+}
+
+export interface UpdateSessionRequest {
+    appendSystemPrompt: string | null;
 }
 
 export interface ChangePermissionModeRequest {
@@ -403,6 +409,7 @@ export interface AbortRunOptions {
 
 export type SessionEvent =
     | SessionCreatedEvent
+    | SessionUpdatedEvent
     | MessageSubmittedEvent
     | SteeringAppliedEvent
     | RunStartedEvent
@@ -438,6 +445,8 @@ export interface BaseSessionEvent<TType extends string, TData> {
 }
 
 export type SessionCreatedEvent = BaseSessionEvent<"session_created", { session: ProtocolSession }>;
+
+export type SessionUpdatedEvent = BaseSessionEvent<"session_updated", { session: ProtocolSession }>;
 
 export type MessageSubmittedEvent = BaseSessionEvent<
     "message_submitted",

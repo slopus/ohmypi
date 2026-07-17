@@ -35,6 +35,7 @@ import { createDefaultInstructions } from "./createDefaultInstructions.js";
 import { selectToolsForModel } from "./selectToolsForModel.js";
 
 export interface CreateCodingAssistantAgentOptions {
+    appendSystemPrompt?: string;
     cwd: string;
     docker?: DockerExecutionConfig;
     agentId?: string;
@@ -173,6 +174,9 @@ export function createCodingAssistantAgent(
     const tools =
         options.goals === undefined ? toolsWithoutGoals : [...toolsWithoutGoals, ...goalTools];
     const agentOptions: AgentOptions = {
+        ...(options.appendSystemPrompt !== undefined
+            ? { appendSystemPrompt: options.appendSystemPrompt }
+            : {}),
         provider,
         modelId,
         context,

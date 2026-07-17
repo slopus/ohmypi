@@ -25,6 +25,7 @@ export type AgentToolSelector = (options: {
 }) => readonly AnyDefinedTool[];
 
 export interface AgentSnapshot {
+    appendSystemPrompt?: string;
     id: string;
     providerId: string;
     modelId: string;
@@ -41,6 +42,7 @@ export interface AgentSnapshot {
 }
 
 export interface AgentOptions {
+    appendSystemPrompt?: string;
     provider: Provider;
     modelId: string;
     context: AgentContext;
@@ -88,6 +90,7 @@ export class Agent {
     readonly provider: Provider;
     readonly context: AgentContext;
 
+    #appendSystemPrompt: string | undefined;
     #model: Model;
     #effort: string | undefined;
     #serviceTier: ServiceTier | undefined;
@@ -111,6 +114,7 @@ export class Agent {
     #resetVersion = 0;
 
     constructor(options: AgentOptions) {
+        this.#appendSystemPrompt = options.appendSystemPrompt;
         this.#idFactory = options.idFactory ?? createId;
         this.id = options.id ?? this.#idFactory();
         this.provider = options.provider;
@@ -173,6 +177,10 @@ export class Agent {
 
     setInstructions(instructions: string | undefined): void {
         this.#instructions = instructions;
+    }
+
+    setAppendSystemPrompt(appendSystemPrompt: string | undefined): void {
+        this.#appendSystemPrompt = appendSystemPrompt;
     }
 
     setEffort(effort: string | undefined): void {
@@ -402,6 +410,9 @@ export class Agent {
             if (this.#contextMessages !== undefined) {
                 loopOptions.contextMessages = this.#contextMessages;
             }
+            if (this.#appendSystemPrompt !== undefined) {
+                loopOptions.appendSystemPrompt = this.#appendSystemPrompt;
+            }
             if (this.#effort !== undefined) loopOptions.effort = this.#effort;
             if (this.#serviceTier !== undefined) loopOptions.serviceTier = this.#serviceTier;
             if (this.#instructions !== undefined) loopOptions.instructions = this.#instructions;
@@ -444,6 +455,9 @@ export class Agent {
 
     snapshot(): AgentSnapshot {
         return {
+            ...(this.#appendSystemPrompt !== undefined
+                ? { appendSystemPrompt: this.#appendSystemPrompt }
+                : {}),
             id: this.id,
             providerId: this.provider.id,
             modelId: this.#model.id,

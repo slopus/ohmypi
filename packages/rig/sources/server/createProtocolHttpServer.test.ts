@@ -734,6 +734,54 @@ describe("createProtocolHttpServer", () => {
         }
     });
 
+    it("creates, updates, and clears an appended system prompt", async () => {
+        const { client, close } = await startServer();
+        try {
+            const created = await client.createSession({
+                appendSystemPrompt: "Created API instructions.",
+                cwd: "/tmp/rig-protocol-test",
+            });
+
+            expect(created.session.appendSystemPrompt).toBe("Created API instructions.");
+            expect(created.session.snapshot.appendSystemPrompt).toBe("Created API instructions.");
+
+            await expect(
+                client.createSession({
+                    appendSystemPrompt: 42 as unknown as string,
+                    cwd: "/tmp/rig-invalid-prompt-test",
+                }),
+            ).rejects.toThrow("The appended system prompt must be text.");
+
+            const updated = await client.updateSession(created.session.id, {
+                appendSystemPrompt: "Updated API instructions.",
+            });
+            const events = await client.getEvents(created.session.id, created.session.lastEventId);
+
+            expect(updated.session.appendSystemPrompt).toBe("Updated API instructions.");
+            expect(updated.session.snapshot.appendSystemPrompt).toBe("Updated API instructions.");
+            expect(events.events.at(-1)).toMatchObject({
+                data: {
+                    session: { appendSystemPrompt: "Updated API instructions." },
+                },
+                type: "session_updated",
+            });
+
+            const cleared = await client.updateSession(created.session.id, {
+                appendSystemPrompt: null,
+            });
+            expect(cleared.session.appendSystemPrompt).toBeUndefined();
+            expect(cleared.session.snapshot.appendSystemPrompt).toBeUndefined();
+
+            await expect(
+                client.updateSession(created.session.id, {
+                    appendSystemPrompt: 42 as unknown as string,
+                }),
+            ).rejects.toThrow("The appended system prompt must be text or null.");
+        } finally {
+            await close();
+        }
+    });
+
     it("changes the service tier through a dedicated endpoint", async () => {
         const { client, close } = await startServer();
         try {

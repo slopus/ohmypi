@@ -85,6 +85,50 @@ describe("Agent", () => {
         expect(metadata).toMatchObject({ width: 2000, height: 1000 });
     });
 
+    it("uses an updated appended system prompt on later runs", async () => {
+        const model = defineModel({
+            id: "openai/gpt-test",
+            name: "GPT Test",
+            thinkingLevels: ["off"],
+            defaultThinkingLevel: "off",
+        });
+        const contexts: Context[] = [];
+        const provider = defineProvider({
+            id: "codex",
+            models: [model],
+            stream(_model, context) {
+                contexts.push(context);
+                return streamFor({
+                    role: "assistant",
+                    content: [{ type: "text", text: "done" }],
+                    api: "test",
+                    provider: "codex",
+                    model: model.id,
+                    usage: zeroUsage(),
+                    stopReason: "stop",
+                    timestamp: 1,
+                });
+            },
+        });
+        const agent = new Agent({
+            appendSystemPrompt: "Initial API instructions.",
+            provider,
+            modelId: model.id,
+            context: createJustBashToolHarness().context,
+            instructions: "Base instructions.",
+            printToConsole: false,
+        });
+
+        agent.enqueueUserMessage("First run.");
+        await agent.run();
+        agent.setAppendSystemPrompt("Updated API instructions.");
+        agent.enqueueUserMessage("Second run.");
+        await agent.run();
+
+        expect(contexts[0]?.systemPrompt).toBe("Base instructions.\n\nInitial API instructions.");
+        expect(contexts[1]?.systemPrompt).toBe("Base instructions.\n\nUpdated API instructions.");
+    });
+
     it("queues steering and user messages, runs the loop, and prints messages", async () => {
         const model = defineModel({
             id: "openai/gpt-test",

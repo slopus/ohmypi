@@ -44,6 +44,7 @@ import type {
     UnregisterSecretResponse,
     UpdateDaemonConfigRequest,
     UpdateDaemonConfigResponse,
+    UpdateSessionRequest,
 } from "../protocol/index.js";
 import type { SecretAttachmentScope } from "../secrets/index.js";
 import { parseGlobalSseEvent } from "./parseGlobalSseEvent.js";
@@ -296,6 +297,13 @@ export class ProtocolHttpClient {
             `${this.#remoteTerminalPath(sessionId, terminalId)}/input`,
             { data },
         );
+    }
+
+    updateSession(
+        sessionId: string,
+        request: UpdateSessionRequest,
+    ): Promise<{ session: ProtocolSession }> {
+        return this.#requestJson("PATCH", `/sessions/${encodeURIComponent(sessionId)}`, request);
     }
 
     forkSession(sessionId: string): Promise<ForkSessionResponse> {

@@ -13,6 +13,34 @@ import type { PersistedQueuedRun, PersistedSessionState } from "./InMemorySessio
 import { PersistentSessionStore } from "./PersistentSessionStore.js";
 
 describe("PersistentSessionStore", () => {
+    it("restores appended system prompts after reopening SQLite", async () => {
+        const { cleanup, databasePath } = await createDatabasePath();
+        try {
+            const store = new PersistentSessionStore({ databasePath });
+            const session = store.create({
+                appendSystemPrompt: "Persisted API instructions.",
+                cwd: "/tmp/rig-persistent-prompt-test",
+            });
+            session.update({ appendSystemPrompt: "Updated persisted instructions." });
+            store.close();
+
+            const restoredStore = new PersistentSessionStore({ databasePath });
+            try {
+                const restored = restoredStore.get(session.id);
+                expect(restored?.snapshot().appendSystemPrompt).toBe(
+                    "Updated persisted instructions.",
+                );
+                expect(restored?.requestForSubagent().appendSystemPrompt).toBe(
+                    "Updated persisted instructions.",
+                );
+            } finally {
+                restoredStore.close();
+            }
+        } finally {
+            await cleanup();
+        }
+    });
+
     it("delivers transient inference events live without writing session event rows", async () => {
         const { cleanup, databasePath } = await createDatabasePath();
         try {

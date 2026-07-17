@@ -48,6 +48,7 @@ import { requestAutoPermissionApproval, reviewAutoPermission } from "../permissi
 import type { DebugLog } from "../debug/index.js";
 
 export interface RunAgentLoopOptions {
+    appendSystemPrompt?: string;
     debug?: DebugLog;
     provider: Provider;
     modelId: string;
@@ -169,6 +170,9 @@ export async function runAgentLoop(options: RunAgentLoopOptions): Promise<AgentL
         providerId: options.provider.id,
     });
     const systemPrompt = await createSystemPrompt({
+        ...(options.appendSystemPrompt !== undefined
+            ? { appendSystemPrompt: options.appendSystemPrompt }
+            : {}),
         provider: options.provider,
         model,
         ...(options.instructions !== undefined ? { instructions: options.instructions } : {}),

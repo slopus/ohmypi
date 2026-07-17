@@ -47,6 +47,7 @@ import type {
     SubmitMessageResponse,
     SteerMessageRequest,
     SteerMessageResponse,
+    UpdateSessionRequest,
 } from "../protocol/index.js";
 import type { Model, Provider, ServiceTier, StopReason } from "../providers/types.js";
 import type { ProviderQuota } from "../providers/providerQuota.js";
@@ -128,6 +129,7 @@ export interface PersistedSessionState {
     activeRunId?: string;
     agent: SessionAgentMetadata;
     agentId: string;
+    appendSystemPrompt?: string;
     cwd: string;
     docker?: DockerExecutionConfig;
     elapsedMs?: number;
@@ -255,6 +257,7 @@ export class InMemorySession {
     readonly events: SessionEventLog;
     readonly id: string;
 
+    #appendSystemPrompt: string | undefined;
     #activePartial: PartialMessageState | undefined;
     #activeRun: ActiveRun | undefined;
     #abortInFlight: { key: string; promise: Promise<AbortRunResponse> } | undefined;
@@ -386,6 +389,8 @@ export class InMemorySession {
                 options.request.permissionMode ??
                 DEFAULT_PERMISSION_MODE,
         );
+        this.#appendSystemPrompt =
+            options.restore?.appendSystemPrompt ?? options.request.appendSystemPrompt;
         const requestedEffort = options.restore?.effort ?? options.request.effort;
         this.#effort =
             requestedEffort !== undefined &&
@@ -852,6 +857,14 @@ export class InMemorySession {
             serviceTier: serviceTier ?? null,
             snapshot: this.#agentSnapshot(),
         });
+        return this.snapshot();
+    }
+
+    update(request: UpdateSessionRequest): ProtocolSession {
+        this.#appendSystemPrompt = request.appendSystemPrompt ?? undefined;
+        this.#runtime?.agent.setAppendSystemPrompt(this.#appendSystemPrompt);
+        this.#interruption = undefined;
+        this.#append("session_updated", { session: this.snapshot() });
         return this.snapshot();
     }
 
@@ -1580,6 +1593,9 @@ export class InMemorySession {
 
     requestForSubagent(): CreateSessionRequest {
         return {
+            ...(this.#appendSystemPrompt !== undefined
+                ? { appendSystemPrompt: this.#appendSystemPrompt }
+                : {}),
             cwd: this.#request.cwd,
             ...(this.#effort !== undefined ? { effort: this.#effort } : {}),
             ...(this.#serviceTier !== undefined ? { serviceTier: this.#serviceTier } : {}),
@@ -1603,6 +1619,9 @@ export class InMemorySession {
         return {
             id: this.id,
             agentId: this.#agentId,
+            ...(this.#appendSystemPrompt !== undefined
+                ? { appendSystemPrompt: this.#appendSystemPrompt }
+                : {}),
             cwd: this.#request.cwd,
             environment: summarizeDockerExecution(this.#request.docker),
             providerId: this.#providerId,
@@ -1680,6 +1699,9 @@ export class InMemorySession {
             ...(this.#activeSince === undefined ? {} : { activeSince: this.#activeSince }),
             agent: this.agentMetadata(),
             agentId: this.#agentId,
+            ...(this.#appendSystemPrompt !== undefined
+                ? { appendSystemPrompt: this.#appendSystemPrompt }
+                : {}),
             cwd: this.#request.cwd,
             elapsedMs: this.#elapsedMs,
             ...(this.#request.docker === undefined ? {} : { docker: this.#request.docker }),
@@ -2008,6 +2030,9 @@ export class InMemorySession {
         const runtimeSnapshot = this.#runtime?.agent.snapshot();
         return {
             id: this.#agentId,
+            ...(this.#appendSystemPrompt !== undefined
+                ? { appendSystemPrompt: this.#appendSystemPrompt }
+                : {}),
             providerId: this.#providerId,
             modelId: this.#modelId,
             status: this.#agentStatus(),
@@ -2315,6 +2340,9 @@ export class InMemorySession {
 
         const options: CreateCodingAssistantAgentOptions = {
             agentId: this.#agentId,
+            ...(this.#appendSystemPrompt !== undefined
+                ? { appendSystemPrompt: this.#appendSystemPrompt }
+                : {}),
             cwd: this.#request.cwd,
             messages: this.#committedMessages(),
             modelId: this.#modelId,
@@ -2392,6 +2420,7 @@ export class InMemorySession {
         const snapshot = runtime.agent.snapshot();
         this.#runtime = runtime;
         this.#agentId = snapshot.id;
+        this.#appendSystemPrompt = snapshot.appendSystemPrompt;
         this.#providerId = runtime.provider.id;
         this.#modelId = snapshot.modelId;
         this.#effort = snapshot.effort;

@@ -183,6 +183,31 @@ describe("createSystemPrompt", () => {
         );
     });
 
+    it("appends API-provided text after every generated prompt section", async () => {
+        const cwd = await makeTempDir();
+        const model = defineModel({
+            id: "mock/model",
+            name: "Mock Model",
+            thinkingLevels: ["off"],
+            defaultThinkingLevel: "off",
+        });
+        const context = contextFor(cwd);
+        context.permissions = createPermissionContext("read_only");
+
+        const prompt = await createSystemPrompt({
+            appendSystemPrompt: "Final API instructions.",
+            provider: providerFor("mock", model),
+            model,
+            instructions: "Base instructions.",
+            messages: [],
+            context,
+        });
+
+        expect(prompt).toContain("Base instructions.");
+        expect(prompt).toContain("You are in Read only mode.");
+        expect(prompt?.endsWith("Final API instructions.")).toBe(true);
+    });
+
     it("adds the active shell tool's provider-specific Auto escalation instructions", async () => {
         const cwd = await makeTempDir();
         const model = defineModel({

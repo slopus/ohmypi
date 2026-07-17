@@ -470,6 +470,11 @@ export class RemoteAgent implements CodingAssistantAgentBackend {
             return;
         }
 
+        if (event.type === "session_updated") {
+            this.#replaceSession({ ...event.data.session, lastEventId: event.id });
+            return;
+        }
+
         this.#session = { ...this.#session, lastEventId: event.id };
 
         if (event.type === "message_submitted") {
