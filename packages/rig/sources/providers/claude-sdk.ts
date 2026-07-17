@@ -31,6 +31,7 @@ import { resolveClaudeCodeExecutablePath } from "./resolveClaudeCodeExecutablePa
 import { createProviderQuotaCache } from "./createProviderQuotaCache.js";
 import { createInferenceStream } from "./createInferenceStream.js";
 import { fetchClaudeProviderQuota } from "./fetchClaudeProviderQuota.js";
+import { humanizeClaudeSdkResultSubtype } from "./humanizeClaudeSdkResultSubtype.js";
 import { idleClaudeSdkPrompt } from "./idleClaudeSdkPrompt.js";
 import { unavailableProviderQuota } from "./unavailableProviderQuota.js";
 import {
@@ -1066,7 +1067,9 @@ function sdkResultErrorMessage(result: SDKResultMessage): string {
         return "";
     }
 
-    return result.errors.length > 0 ? result.errors.join("\n") : result.subtype;
+    return result.errors.length > 0
+        ? result.errors.join("\n")
+        : humanizeClaudeSdkResultSubtype(result.subtype);
 }
 
 function zeroUsage(): Usage {
