@@ -1,9 +1,10 @@
 import { isAbsolute, resolve } from "node:path";
 
-import type {
-    ManagedProcess,
-    NativeProcessManager,
-    ProcessRunResult,
+import {
+    resolveSystemShell,
+    type ManagedProcess,
+    type NativeProcessManager,
+    type ProcessRunResult,
 } from "../../processes/index.js";
 import type { PermissionContext } from "../../permissions/index.js";
 import type { BashContext, BashSessionSnapshot } from "./BashContext.js";
@@ -119,33 +120,30 @@ export function createNodeBashContext(options: CreateNodeBashContextOptions): Ba
         async run(runOptions) {
             assertCanUseCustomShell(options.permissions.mode, runOptions.shell);
             const cwd = runCwd(runOptions.cwd);
+            const shell = runOptions.shell ?? resolveSystemShell();
+            const toolEnvironment = await createToolEnvironment(
+                options.permissions.mode,
+                globalThis.process.env,
+                { cwd: options.cwd },
+            );
             const sandboxedCommand = await createSandboxedCommand({
                 command: runOptions.command,
                 cwd: options.cwd,
                 mode: options.permissions.mode,
+                ...(toolEnvironment.PATH === undefined ? {} : { path: toolEnvironment.PATH }),
+                shell,
             });
             const processRunOptions: Parameters<NativeProcessManager["run"]>[0] = {
                 command: sandboxedCommand.command,
                 cwd,
-                env: createCommandEnvironment(
-                    await createToolEnvironment(options.permissions.mode, globalThis.process.env, {
-                        cwd: options.cwd,
-                    }),
-                    options.secrets,
-                    runOptions.secrets,
-                ),
+                env: createCommandEnvironment(toolEnvironment, options.secrets, runOptions.secrets),
                 timeoutMs: runOptions.timeoutMs ?? 120_000,
                 maxOutputBytes: runOptions.maxOutputBytes ?? 512_000,
             };
             if (sandboxedCommand.args !== undefined) {
                 processRunOptions.args = sandboxedCommand.args;
-            } else if (runOptions.shell !== undefined) {
-                processRunOptions.shell = runOptions.shell;
-            } else if (
-                options.permissions.mode !== "full_access" &&
-                globalThis.process.platform !== "win32"
-            ) {
-                processRunOptions.shell = "/bin/sh";
+            } else {
+                processRunOptions.shell = shell;
             }
             if (runOptions.signal !== undefined) processRunOptions.signal = runOptions.signal;
 
@@ -160,33 +158,30 @@ export function createNodeBashContext(options: CreateNodeBashContextOptions): Ba
         async startSession(runOptions) {
             assertCanUseCustomShell(options.permissions.mode, runOptions.shell);
             const cwd = runCwd(runOptions.cwd);
+            const shell = runOptions.shell ?? resolveSystemShell();
+            const toolEnvironment = await createToolEnvironment(
+                options.permissions.mode,
+                globalThis.process.env,
+                { cwd: options.cwd },
+            );
             const sandboxedCommand = await createSandboxedCommand({
                 command: runOptions.command,
                 cwd: options.cwd,
                 mode: options.permissions.mode,
+                ...(toolEnvironment.PATH === undefined ? {} : { path: toolEnvironment.PATH }),
+                shell,
             });
             const processStartOptions: Parameters<NativeProcessManager["start"]>[0] = {
                 cleanupProcessGroupOnExit: true,
                 command: sandboxedCommand.command,
                 cwd,
-                env: createCommandEnvironment(
-                    await createToolEnvironment(options.permissions.mode, globalThis.process.env, {
-                        cwd: options.cwd,
-                    }),
-                    options.secrets,
-                    runOptions.secrets,
-                ),
+                env: createCommandEnvironment(toolEnvironment, options.secrets, runOptions.secrets),
                 maxOutputBytes: runOptions.maxOutputBytes ?? 512_000,
             };
             if (sandboxedCommand.args !== undefined) {
                 processStartOptions.args = sandboxedCommand.args;
-            } else if (runOptions.shell !== undefined) {
-                processStartOptions.shell = runOptions.shell;
-            } else if (
-                options.permissions.mode !== "full_access" &&
-                globalThis.process.platform !== "win32"
-            ) {
-                processStartOptions.shell = "/bin/sh";
+            } else {
+                processStartOptions.shell = shell;
             }
             const process = options.processManager.start(processStartOptions);
             const completion = process.wait();

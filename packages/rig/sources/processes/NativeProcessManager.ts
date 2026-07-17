@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { basename } from "node:path";
 
 import { killProcessTree } from "./killProcessTree.js";
+import { resolveSystemShell } from "./resolveSystemShell.js";
 import type {
     ManagedProcessStatus,
     ProcessKillOptions,
@@ -142,7 +143,7 @@ export class ManagedProcess {
         });
 
         const executable =
-            options.args === undefined ? (options.shell ?? defaultShell()) : options.command;
+            options.args === undefined ? (options.shell ?? resolveSystemShell()) : options.command;
         const args =
             options.args === undefined ? shellArgs(executable, options.command) : [...options.args];
         this.#child = spawn(executable, args, {
@@ -393,21 +394,15 @@ export class ManagedProcess {
     }
 }
 
-function defaultShell(): string {
-    if (process.platform === "win32") {
-        return process.env.ComSpec ?? "cmd.exe";
-    }
-    return process.env.SHELL ?? "/bin/sh";
-}
-
 function shellArgs(shell: string, command: string): string[] {
     if (process.platform === "win32") {
         const shellName = basename(shell).toLowerCase();
         if (shellName === "cmd.exe" || shellName === "cmd") {
             return ["/d", "/s", "/c", command];
         }
+        return ["-c", command];
     }
-    return ["-c", command];
+    return ["-lc", command];
 }
 
 function appendCapped(

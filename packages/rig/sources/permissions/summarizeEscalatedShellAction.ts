@@ -5,5 +5,7 @@ export function summarizeEscalatedShellAction(options: {
     cwd: string;
     shell?: string;
 }): string {
-    return `running ${quoteVisibleExact(options.command)}. Working directory: ${quoteVisibleExact(options.cwd)}. Shell: ${quoteVisibleExact(options.shell ?? "the default shell")}. Access: unrestricted filesystem and network access`;
+    const shell =
+        options.shell === undefined ? "the system login shell" : `${options.shell} (login)`;
+    return `running ${quoteVisibleExact(options.command)}. Working directory: ${quoteVisibleExact(options.cwd)}. Shell: ${quoteVisibleExact(shell)}. Access: unrestricted filesystem and network access`;
 }

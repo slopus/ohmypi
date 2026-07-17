@@ -7,6 +7,7 @@ import { dirname, join } from "node:path";
 import { createSandboxFilesystemConfig } from "./createSandboxFilesystemConfig.js";
 import { materializeSandboxConfig } from "./materializeSandboxConfig.js";
 import type { PermissionMode } from "../../permissions/index.js";
+import { quoteShellArgument } from "./quoteShellArgument.js";
 
 const require = createRequire(import.meta.url);
 let configDirectoryPromise: Promise<string> | undefined;
@@ -20,6 +21,8 @@ export async function createSandboxedCommand(options: {
     command: string;
     cwd: string;
     mode: PermissionMode;
+    path?: string;
+    shell: string;
 }): Promise<SandboxedCommand> {
     if (options.mode === "full_access") return { command: options.command };
 
@@ -39,8 +42,16 @@ export async function createSandboxedCommand(options: {
 
     const packageEntry = require.resolve("@anthropic-ai/sandbox-runtime");
     const cliPath = join(dirname(packageEntry), "cli.js");
+    const userCommand =
+        options.path === undefined
+            ? options.command
+            : `export PATH=${quoteShellArgument(options.path)}\n${options.command}`;
+    const command =
+        process.platform === "win32"
+            ? options.command
+            : `${quoteShellArgument(options.shell)} -lc ${quoteShellArgument(userCommand)}`;
     return {
-        args: [cliPath, "--settings", configPath, "-c", options.command],
+        args: [cliPath, "--settings", configPath, "-c", command],
         command: process.execPath,
     };
 }

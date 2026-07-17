@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -14,10 +14,42 @@ import {
 const tempDirs: string[] = [];
 
 afterEach(async () => {
+    vi.unstubAllEnvs();
     await Promise.all(tempDirs.splice(0).map((path) => rm(path, { force: true, recursive: true })));
 });
 
 describe("createNodeBashContext", () => {
+    it.runIf(process.platform !== "win32")(
+        "uses the system login shell for foreground and background commands",
+        async () => {
+            const cwd = await makeTempDir();
+            const shell = join(cwd, "system-shell");
+            await writeFile(
+                shell,
+                '#!/bin/sh\nif [ "$1" = "-lc" ]; then export RIG_LOGIN_SHELL_USED=1; fi\nshift\nexec /bin/sh -c "$1"\n',
+            );
+            await chmod(shell, 0o755);
+            vi.stubEnv("SHELL", shell);
+            const context = createNodeBashContext({
+                cwd,
+                permissions: createPermissionContext("full_access"),
+                processManager: new NativeProcessManager(),
+            });
+            const command = '[ "$RIG_LOGIN_SHELL_USED" = 1 ] && printf LOGIN_SHELL_OK';
+
+            await expect(context.run({ command })).resolves.toMatchObject({
+                exitCode: 0,
+                stdout: "LOGIN_SHELL_OK",
+            });
+            const sessionId = await context.startSession({ command });
+            await expect(context.readSession(sessionId, { waitMs: 2_000 })).resolves.toMatchObject({
+                exitCode: 0,
+                status: "completed",
+                stdout: "LOGIN_SHELL_OK",
+            });
+        },
+    );
+
     it("observes background process completion only once across repeated polls", async () => {
         const cwd = await makeTempDir();
         let resolveCompletion!: (result: ProcessRunResult) => void;

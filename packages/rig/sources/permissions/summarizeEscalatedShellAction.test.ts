@@ -13,18 +13,18 @@ describe("summarizeEscalatedShellAction", () => {
                 shell: "/bin/sh",
             }),
         ).toBe(
-            `running "printf start\\n${"x".repeat(140)}\\nprintf VISIBLE_COMMAND_SUFFIX". Working directory: "/home/rig". Shell: "/bin/sh". Access: unrestricted filesystem and network access`,
+            `running "printf start\\n${"x".repeat(140)}\\nprintf VISIBLE_COMMAND_SUFFIX". Working directory: "/home/rig". Shell: "/bin/sh (login)". Access: unrestricted filesystem and network access`,
         );
     });
 
-    it("names the effective directory and default shell", () => {
+    it("names the effective directory and system login shell default", () => {
         const action = summarizeEscalatedShellAction({
             command: "printf safe",
             cwd: "/workspace/project",
         });
 
         expect(action).toContain('Working directory: "/workspace/project"');
-        expect(action).toContain('Shell: "the default shell"');
+        expect(action).toContain('Shell: "the system login shell"');
         expect(action).toContain("Access: unrestricted filesystem and network access");
     });
 });

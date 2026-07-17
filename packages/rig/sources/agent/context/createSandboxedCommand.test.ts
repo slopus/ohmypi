@@ -21,6 +21,8 @@ describe("createSandboxedCommand", () => {
             command: userCommand,
             cwd: process.cwd(),
             mode: "read_only",
+            path: "/developer/bin:/usr/bin",
+            shell: "/bin/zsh",
         });
 
         expect(result).toMatchObject({
@@ -29,7 +31,8 @@ describe("createSandboxedCommand", () => {
                 "--settings",
                 expect.stringMatching(/\.json$/u),
                 "-c",
-                userCommand,
+                String.raw`'/bin/zsh' -lc 'export PATH='\''/developer/bin:/usr/bin'\''
+node -e "console.log('\''quoted & safe'\'')"'`,
             ],
             command: process.execPath,
         });
@@ -38,7 +41,12 @@ describe("createSandboxedCommand", () => {
     it("materializes identical sandbox settings only once", async () => {
         const cwd = await mkdtemp(join(tmpdir(), "rig-sandbox-command-"));
         tempDirectories.push(cwd);
-        const options = { command: "true", cwd, mode: "read_only" as const };
+        const options = {
+            command: "true",
+            cwd,
+            mode: "read_only" as const,
+            shell: "/bin/zsh",
+        };
         const first = await createSandboxedCommand(options);
         const configPath = first.args?.[2];
         expect(configPath).toEqual(expect.stringMatching(/\.json$/u));

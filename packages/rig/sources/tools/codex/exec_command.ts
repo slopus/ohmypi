@@ -41,7 +41,7 @@ export const codexExecCommandTool = defineTool({
         ),
         shell: Type.Optional(
             Type.String({
-                description: "Shell binary to launch. Defaults to the user's default shell.",
+                description: "Shell binary to launch. Defaults to the system login shell.",
             }),
         ),
         sandbox_permissions: Type.Optional(
