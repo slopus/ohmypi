@@ -54,7 +54,9 @@ jobs:
               run: pnpm run check
 
             - name: Run tests
-              run: pnpm test
+              run: |
+                  pnpm run test:scripts
+                  pnpm --recursive --filter './packages/**' --filter '!@slopus/rig-dev' run test
 
             - name: Build the package
               run: pnpm run build
