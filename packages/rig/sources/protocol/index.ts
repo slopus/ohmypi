@@ -59,6 +59,7 @@ export type {
     ListSubagentsResponse,
     ListModelsResponse,
     HealthResponse,
+    ReadyHealthResponse,
     GoalChangedEvent,
     GoalSessionResponse,
     ModelCatalog,

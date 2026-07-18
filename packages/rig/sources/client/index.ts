@@ -5,6 +5,7 @@ export {
     type EnsureLocalProtocolServerOptions,
     type LocalProtocolServerConnection,
 } from "./ensureLocalProtocolServer.js";
+export { stopLocalProtocolServer } from "./stopLocalProtocolServer.js";
 export {
     ProtocolHttpClient,
     type ProtocolHttpClientOptions,

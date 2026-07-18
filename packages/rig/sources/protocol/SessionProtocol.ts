@@ -75,7 +75,7 @@ export interface DaemonIdentity {
     developmentBuildId?: string;
 }
 
-export interface HealthResponse {
+export interface ReadyHealthResponse {
     catalog: ModelCatalog;
     durableGlobalEventQueue: boolean;
     healthy: true;
@@ -83,6 +83,23 @@ export interface HealthResponse {
     ready: true;
     status: "ready";
 }
+
+export interface StartingHealthResponse {
+    healthy: true;
+    identity: DaemonIdentity;
+    ready: false;
+    status: "starting";
+}
+
+export interface ErrorHealthResponse {
+    error: string;
+    healthy: false;
+    identity: DaemonIdentity;
+    ready: false;
+    status: "error";
+}
+
+export type HealthResponse = ErrorHealthResponse | ReadyHealthResponse | StartingHealthResponse;
 
 export interface ListModelsResponse {
     catalog: ModelCatalog;

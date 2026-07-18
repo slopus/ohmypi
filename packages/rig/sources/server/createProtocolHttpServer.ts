@@ -1,5 +1,4 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
-import { timingSafeEqual } from "node:crypto";
 
 import type {
     AbortRunResponse,
@@ -79,6 +78,7 @@ import type {
     WriteRemoteTerminalRequest,
 } from "../terminal/index.js";
 import { streamRemoteTerminalFrames } from "./streamRemoteTerminalFrames.js";
+import { isAuthorizedProtocolRequest } from "./isAuthorizedProtocolRequest.js";
 
 export interface ProtocolHttpServerOptions {
     defaultDocker?: DockerExecutionConfig;
@@ -97,7 +97,10 @@ export interface ProtocolHttpServerOptions {
     token: string;
 }
 
-export function createProtocolHttpServer(options: ProtocolHttpServerOptions): Server {
+export function createProtocolHttpServer(
+    options: ProtocolHttpServerOptions,
+    server: Server = createServer(),
+): Server {
     const modelCatalog = options.modelCatalog ?? createModelCatalog();
     const store =
         options.store ??
@@ -112,7 +115,7 @@ export function createProtocolHttpServer(options: ProtocolHttpServerOptions): Se
         onDurableGlobalEventQueueChange: options.onDurableGlobalEventQueueChange,
     };
 
-    const server = createServer((request, response) => {
+    server.on("request", (request, response) => {
         const mutating = isMutatingProtocolRequest(request);
         if (mutating && options.taskDrain?.closing === true) {
             sendJson(response, 503, { error: "The local daemon is shutting down." });
@@ -174,7 +177,7 @@ async function handleRequest(
     taskDrain: TaskDrain | undefined,
     getProviderQuota: ((providerId: string) => Promise<ProviderQuota | undefined>) | undefined,
 ): Promise<void> {
-    if (!isAuthorized(request, token)) {
+    if (!isAuthorizedProtocolRequest(request, token)) {
         sendJson(response, 401, { error: "Unauthorized" });
         return;
     }
@@ -919,17 +922,6 @@ function parseFileSearchLimit(value: string | null): number {
         return 20;
     }
     return Math.min(limit, 50);
-}
-
-function isAuthorized(request: IncomingMessage, token: string): boolean {
-    const authorization = request.headers.authorization;
-    if (authorization === undefined || !authorization.startsWith("Bearer ")) {
-        return false;
-    }
-
-    const received = Buffer.from(authorization.slice("Bearer ".length));
-    const expected = Buffer.from(token);
-    return received.length === expected.length && timingSafeEqual(received, expected);
 }
 
 function matchRoute(pathname: string):

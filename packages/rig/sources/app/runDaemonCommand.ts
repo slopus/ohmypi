@@ -2,10 +2,12 @@ import {
     ensureLocalProtocolServer,
     ProtocolHttpClient,
     readTokenIfPresent,
+    stopLocalProtocolServer,
 } from "../client/index.js";
 import { getEnvironmentLocalServerPaths } from "../server/index.js";
+import type { HealthResponse } from "../protocol/index.js";
 
-export type DaemonCommand = "start" | "stop" | "status";
+export type DaemonCommand = "reload" | "start" | "stop" | "status";
 
 export async function runDaemonCommand(command: DaemonCommand): Promise<void> {
     if (command === "start") {
@@ -17,9 +19,28 @@ export async function runDaemonCommand(command: DaemonCommand): Promise<void> {
     }
 
     const connection = await connectToExistingDaemon();
+    if (command === "reload") {
+        if (connection !== undefined) {
+            await stopLocalProtocolServer(connection.client, connection.registryPath);
+        }
+        const reloaded = await ensureLocalProtocolServer({
+            confirmRestart: async () => true,
+        });
+        console.log(`Daemon is running at ${reloaded.paths.socketPath}`);
+        return;
+    }
+
     if (command === "status") {
         if (connection === undefined) {
             console.log("Daemon is not running.");
+            return;
+        }
+        if (connection.health.status === "error") {
+            console.log(`Daemon could not start: ${connection.health.error}`);
+            return;
+        }
+        if (connection.health.status === "starting") {
+            console.log(`Daemon is starting at ${connection.client.socketPath}`);
             return;
         }
         console.log(`Daemon is running at ${connection.client.socketPath}`);
@@ -37,6 +58,8 @@ export async function runDaemonCommand(command: DaemonCommand): Promise<void> {
 async function connectToExistingDaemon(): Promise<
     | {
           client: ProtocolHttpClient;
+          health: HealthResponse;
+          registryPath: string;
       }
     | undefined
 > {
@@ -51,8 +74,8 @@ async function connectToExistingDaemon(): Promise<
         token,
     });
     try {
-        await client.health();
-        return { client };
+        const health = await client.health();
+        return { client, health, registryPath: paths.registryPath };
     } catch {
         return undefined;
     }

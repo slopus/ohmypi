@@ -4,7 +4,7 @@ export function formatCliHelp(): string {
         "       rig exec [options] [prompt]",
         "       rig resume [--last | --all | SESSION_ID]",
         "       rig fork [--last | --all | SESSION_ID]",
-        "       rig daemon <start|stop|status>",
+        "       rig daemon <start|stop|status|reload>",
         "       rig monit",
         "",
         "Run Rig without a command to start an interactive session.",

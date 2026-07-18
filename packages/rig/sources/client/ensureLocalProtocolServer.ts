@@ -4,19 +4,16 @@ import { open } from "node:fs/promises";
 import {
     getEnvironmentLocalServerPaths,
     prepareLocalServerDirectory,
-    readLocalServerProcessId,
     readLocalServerToken,
     removeStaleSocket,
     writeLocalServerToken,
     type LocalServerPaths,
 } from "../server/index.js";
 import { daemonIdentitiesMatch, getDaemonIdentity } from "../daemon/index.js";
-import type { DaemonIdentity } from "../protocol/index.js";
+import type { DaemonIdentity, ReadyHealthResponse } from "../protocol/index.js";
 import { ProtocolHttpClient } from "./ProtocolHttpClient.js";
 import { loadDaemonSettings } from "../config/index.js";
-import { waitForProcessExit } from "../processes/index.js";
-
-const DAEMON_SHUTDOWN_TIMEOUT_MS = 10_000;
+import { stopLocalProtocolServer } from "./stopLocalProtocolServer.js";
 
 export interface LocalProtocolServerConnection {
     client: ProtocolHttpClient;
@@ -38,7 +35,6 @@ export async function ensureLocalProtocolServer(
     options: EnsureLocalProtocolServerOptions = {},
 ): Promise<LocalProtocolServerConnection> {
     const paths = getEnvironmentLocalServerPaths();
-    const daemonSettings = await loadDaemonSettings();
     const currentIdentity = getDaemonIdentity();
     await prepareLocalServerDirectory(paths.directory);
     const existingToken = await readTokenIfPresent(paths.tokenPath);
@@ -51,20 +47,8 @@ export async function ensureLocalProtocolServer(
         const identityMatches =
             health !== undefined && daemonIdentitiesMatch(currentIdentity, health.identity);
         if (identityMatches) {
-            if (health.durableGlobalEventQueue === daemonSettings.durableGlobalEventQueue) {
-                return { client, paths, token: existingToken };
-            }
-            const updated = await client.updateDaemonConfig({
-                settings: {
-                    durableGlobalEventQueue: daemonSettings.durableGlobalEventQueue,
-                },
-            });
-            if (
-                updated.config.settings.durableGlobalEventQueue !==
-                daemonSettings.durableGlobalEventQueue
-            ) {
-                throw new Error("The local daemon did not apply the requested configuration.");
-            }
+            const readyHealth = await resolveReadyHealth(client, health);
+            await reconcileDaemonSettings(client, readyHealth);
             return { client, paths, token: existingToken };
         }
         if (health !== undefined) {
@@ -81,7 +65,7 @@ export async function ensureLocalProtocolServer(
                 }
             }
             options.onStatus?.("Restarting local daemon.");
-            await stopIncompatibleDaemon(client, paths.registryPath);
+            await stopLocalProtocolServer(client, paths.registryPath);
         }
     }
 
@@ -90,7 +74,8 @@ export async function ensureLocalProtocolServer(
     const token = await writeLocalServerToken(paths.tokenPath);
     await spawnLocalServer(paths);
     const client = new ProtocolHttpClient({ socketPath: paths.socketPath, token });
-    await waitForReady(client);
+    const health = await waitForReady(client);
+    await reconcileDaemonSettings(client, health);
     return { client, paths, token };
 }
 
@@ -109,28 +94,6 @@ async function readHealth(
         return await client.health();
     } catch {
         return undefined;
-    }
-}
-
-async function stopIncompatibleDaemon(
-    client: ProtocolHttpClient,
-    registryPath: string,
-): Promise<void> {
-    const registeredProcessId = await readLocalServerProcessId(registryPath);
-    const response = await client.shutdown();
-    const processId =
-        response.pid !== undefined && Number.isSafeInteger(response.pid) && response.pid > 0
-            ? response.pid
-            : registeredProcessId;
-    if (processId === undefined) {
-        throw new Error(
-            "Rig could not identify the running daemon process, so it did not start a replacement. Stop the daemon, then try again.",
-        );
-    }
-    if (!(await waitForProcessExit(processId, DAEMON_SHUTDOWN_TIMEOUT_MS))) {
-        throw new Error(
-            "Timed out while waiting for the existing local daemon to stop. Rig did not start a replacement.",
-        );
     }
 }
 
@@ -157,19 +120,61 @@ async function spawnLocalServer(paths: LocalServerPaths): Promise<void> {
     }
 }
 
-async function waitForReady(client: ProtocolHttpClient): Promise<void> {
-    const deadline = Date.now() + 5_000;
+async function waitForReady(client: ProtocolHttpClient): Promise<ReadyHealthResponse> {
+    let deadline = Date.now() + 5_000;
+    let observedStarting = false;
     while (Date.now() < deadline) {
+        let health: Awaited<ReturnType<ProtocolHttpClient["health"]>>;
         try {
-            await client.health();
-            return;
+            health = await client.health();
         } catch {
             // The socket may not be accepting connections yet.
+            await delay(50);
+            continue;
         }
+        if (health.status === "ready") return health;
+        if (health.status === "error") throw daemonStartupError(health.error);
+        observedStarting = true;
+        deadline = Date.now() + 5_000;
         await delay(50);
     }
 
+    if (observedStarting) {
+        throw new Error("The local daemon stopped responding while it was starting.");
+    }
     throw new Error("Timed out while waiting for the local Rig server.");
+}
+
+async function resolveReadyHealth(
+    client: ProtocolHttpClient,
+    health: Awaited<ReturnType<ProtocolHttpClient["health"]>>,
+): Promise<ReadyHealthResponse> {
+    if (health.status === "error") throw daemonStartupError(health.error);
+    if (health.status === "ready") return health;
+    return waitForReady(client);
+}
+
+async function reconcileDaemonSettings(
+    client: ProtocolHttpClient,
+    health: ReadyHealthResponse,
+): Promise<void> {
+    const daemonSettings = await loadDaemonSettings();
+    if (health.durableGlobalEventQueue === daemonSettings.durableGlobalEventQueue) return;
+
+    const updated = await client.updateDaemonConfig({
+        settings: {
+            durableGlobalEventQueue: daemonSettings.durableGlobalEventQueue,
+        },
+    });
+    if (
+        updated.config.settings.durableGlobalEventQueue !== daemonSettings.durableGlobalEventQueue
+    ) {
+        throw new Error("The local daemon did not apply the requested configuration.");
+    }
+}
+
+function daemonStartupError(message: string): Error {
+    return new Error(`Daemon could not start: ${message}`);
 }
 
 function delay(ms: number): Promise<void> {

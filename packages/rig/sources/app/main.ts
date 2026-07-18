@@ -63,7 +63,7 @@ export async function main(argv: readonly string[] = process.argv.slice(2)): Pro
     if (command === "daemon") {
         const daemonCommand = commandArgs[0];
         if (!isDaemonCommand(daemonCommand)) {
-            throw new Error("Usage: rig daemon <start|stop|status>");
+            throw new Error("Usage: rig daemon <start|stop|status|reload>");
         }
         await runDaemonCommand(daemonCommand);
         return;
@@ -96,5 +96,5 @@ export async function main(argv: readonly string[] = process.argv.slice(2)): Pro
 }
 
 function isDaemonCommand(value: string | undefined): value is DaemonCommand {
-    return value === "start" || value === "stop" || value === "status";
+    return value === "start" || value === "stop" || value === "status" || value === "reload";
 }

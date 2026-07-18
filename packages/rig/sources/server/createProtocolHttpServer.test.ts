@@ -699,7 +699,8 @@ describe("createProtocolHttpServer", () => {
                 ready: true,
                 status: "ready",
             });
-            expect(health.catalog?.models.map((model) => model.id)).toContain(
+            if (health.status !== "ready") throw new Error("Expected the daemon to be ready.");
+            expect(health.catalog.models.map((model) => model.id)).toContain(
                 modelOpenaiGpt56Sol.id,
             );
             expect(models.catalog.models.map((model) => model.id)).toContain(
