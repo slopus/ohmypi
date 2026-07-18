@@ -112,22 +112,39 @@ work into history without making the composer jump.
 
 ## Publishing
 
-Authenticate with npm once:
-
-```sh
-pnpm login
-```
-
 From a clean, current `main` branch, publish with:
 
 ```sh
 pnpm release 0.1.0
 ```
 
-The release command also accepts `patch`, `minor`, or `major`. It verifies npm
-authentication, runs type checks and tests, builds the package, creates the
-release commit and tag, previews the package contents, pushes the release to
-`main`, publishes it publicly, and verifies the published version.
+The release command also accepts `patch`, `minor`, or `major`. It runs type
+checks and tests, builds the package, creates the release commit and tag,
+previews the package contents, and pushes the release to `main`. Pushing a tag
+named `v<package version>` starts the `Publish package` GitHub Actions workflow,
+which repeats the validation and publishes `@slopus/rig` to npm.
 
-If publishing is interrupted after the tag is pushed, rerun the command with
-the exact version to resume safely.
+If the local release is interrupted before the tag is pushed, rerun the command
+with the exact version to resume safely. If the GitHub Actions job fails, fix the
+configuration or transient failure and rerun that job instead of creating a new
+tag.
+
+### One-time publishing setup
+
+The publish workflow uses npm Trusted Publishing, so it does not need a
+long-lived npm token or a contributor's npm account:
+
+1. In the GitHub repository settings, create an environment named `npm`. Under
+   deployment branches and tags, select only matching tags and add `v*`. Do not
+   add required reviewers if every collaborator with permission to create tags
+   should be able to release.
+2. In the npm settings for `@slopus/rig`, add a GitHub Actions trusted publisher
+   for organization `slopus`, repository `rig`, workflow `publish.yml`, and
+   environment `npm`. Allow the `npm publish` action.
+3. Do not create an `NPM_TOKEN` GitHub secret. The workflow requests a short-lived
+   OIDC credential for each run and npm automatically records provenance for the
+   public package.
+
+Anyone with GitHub write access can then run `pnpm release <version>` from an
+up-to-date `main` branch without receiving npm access. Keep tag creation limited
+to trusted collaborators; creating a matching tag is authorization to publish.

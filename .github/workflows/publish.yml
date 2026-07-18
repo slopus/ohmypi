@@ -1,0 +1,63 @@
+name: Publish package
+
+on:
+    push:
+        tags:
+            - "v*"
+
+permissions:
+    contents: read
+    id-token: write
+
+concurrency:
+    group: publish-${{ github.ref }}
+    cancel-in-progress: false
+
+jobs:
+    publish:
+        name: Publish @slopus/rig
+        runs-on: ubuntu-latest
+        environment: npm
+        timeout-minutes: 30
+
+        steps:
+            - name: Check out the release tag
+              uses: actions/checkout@v6
+              with:
+                  fetch-depth: 0
+
+            - name: Set up pnpm
+              uses: pnpm/action-setup@v6
+
+            - name: Set up Node.js
+              uses: actions/setup-node@v6
+              with:
+                  node-version: "24"
+                  package-manager-cache: false
+
+            - name: Verify the tagged commit is on main
+              run: |
+                  if ! git merge-base --is-ancestor HEAD origin/main; then
+                      echo "Release tags must point to a commit on the main branch." >&2
+                      exit 1
+                  fi
+
+            - name: Install dependencies
+              run: pnpm install --frozen-lockfile
+
+            - name: Verify the tag matches the package version
+              env:
+                  RELEASE_TAG: ${{ github.ref_name }}
+              run: pnpm exec tsx scripts/validateReleaseTag.ts
+
+            - name: Run type checks
+              run: pnpm run check
+
+            - name: Run tests
+              run: pnpm test
+
+            - name: Build the package
+              run: pnpm run build
+
+            - name: Publish the package
+              run: pnpm exec tsx scripts/publishPackage.ts
