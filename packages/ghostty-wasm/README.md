@@ -30,6 +30,9 @@ terminal.write("hello\r\n");
 const snapshot = terminal.snapshot();
 console.log(snapshot.rows);
 
+// Export every retained history and screen row in one snapshot.
+const completeScrollback = terminal.snapshotScrollback();
+
 terminal.scrollToTop();
 const firstHundredRows = terminal.snapshotPage(0, 100);
 terminal.scrollToBottom();
@@ -173,6 +176,7 @@ class GhosttyTerminal {
     scrollToTop(): void;
     scrollToBottom(): void;
     snapshot(): GhosttySnapshot;
+    snapshotScrollback(): GhosttySnapshot;
     snapshotPage(startRow: number, rowCount: number): GhosttySnapshot;
     setColorScheme(colorScheme: "dark" | "light"): void;
     onPtyWrite(handler: (data: Uint8Array) => void): () => void;
@@ -185,6 +189,7 @@ class GhosttyTerminal {
 - `scrollBy` scrolls the native Ghostty viewport; positive values move toward the bottom and negative values move toward older history.
 - `scrollTo`, `scrollToTop`, and `scrollToBottom` position the native viewport without resizing the terminal.
 - `snapshot` returns the current native viewport and terminal metadata.
+- `snapshotScrollback` returns every retained history and visible-screen row in one snapshot, with `startRow` set to `0`. It restores the viewport before returning. This allocates the complete retained buffer; use `snapshotPage` when exporting large histories incrementally.
 - `snapshotPage` returns any requested scrollback range, including ranges larger than the viewport. It restores the viewport to its exact previous offset before returning.
 - `setColorScheme` switches the default foreground/background pair and emits the standard color-scheme notification when terminal mode 2031 is enabled.
 - `onPtyWrite` subscribes to bytes that must be written back to the attached PTY. It returns an unsubscribe function. See [PTY integration](#pty-integration).

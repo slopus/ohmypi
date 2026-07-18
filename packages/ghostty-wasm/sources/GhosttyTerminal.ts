@@ -116,7 +116,17 @@ export class GhosttyTerminal {
         this.#title.observe(bytes);
         this.#outputRevision += 1;
         if (this.#pendingText.length > maximumPendingText) {
-            const flushLength = this.#pendingText.length - retainedTextSuffix;
+            let flushLength = this.#pendingText.length - retainedTextSuffix;
+            const previousCodeUnit = this.#pendingText.charCodeAt(flushLength - 1);
+            const nextCodeUnit = this.#pendingText.charCodeAt(flushLength);
+            if (
+                previousCodeUnit >= 0xd800 &&
+                previousCodeUnit <= 0xdbff &&
+                nextCodeUnit >= 0xdc00 &&
+                nextCodeUnit <= 0xdfff
+            ) {
+                flushLength -= 1;
+            }
             this.#writeDirect(this.#pendingText.slice(0, flushLength));
             this.#pendingText = this.#pendingText.slice(flushLength);
         }
@@ -142,6 +152,11 @@ export class GhosttyTerminal {
         this.#assertActive();
         this.#flushPending();
         return this.#snapshotCurrent();
+    }
+
+    snapshotScrollback(): GhosttySnapshot {
+        const current = this.snapshot();
+        return this.snapshotPage(0, current.totalRows);
     }
 
     snapshotPage(startRow: number, rowCount: number): GhosttySnapshot {

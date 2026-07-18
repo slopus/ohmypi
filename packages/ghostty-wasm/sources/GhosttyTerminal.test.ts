@@ -100,6 +100,14 @@ describe("GhosttyTerminal", () => {
         terminal.scrollBy(2);
         expect(terminal.snapshot()).toMatchObject({ startRow: 2 });
 
+        const scrollback = terminal.snapshotScrollback();
+        expect(scrollback).toMatchObject({ startRow: 0, totalRows: bottom.totalRows });
+        expect(scrollback.rows).toHaveLength(scrollback.totalRows);
+        expect(scrollback.rows.map(rowText)).toEqual(
+            Array.from({ length: 10 }, (_, index) => `line-${index}`),
+        );
+        expect(terminal.snapshot()).toMatchObject({ startRow: 2 });
+
         const history = terminal.snapshotPage(1, 7);
         expect(history.startRow).toBe(1);
         expect(history.rows.map(rowText)).toEqual([
@@ -123,6 +131,20 @@ describe("GhosttyTerminal", () => {
         for (const byte of bytes) terminal.write(Uint8Array.of(byte));
 
         expect(terminal.snapshot().rows.map(rowText).join("\n")).toContain("A🙂́界 é");
+    });
+
+    it("preserves a surrogate pair across the bounded text flush boundary", async () => {
+        terminal = await createGhosttyTerminal({ cols: 80, rows: 3 });
+        const maximumBufferedText = 1024 * 1024;
+        terminal.write(`${"a".repeat(maximumBufferedText - 64)}🙂${"b".repeat(63)}`);
+
+        const rendered = terminal
+            .snapshot()
+            .rows.flatMap((row) => row.cells)
+            .map((cell) => cell.text)
+            .join("");
+        expect(rendered).toContain("🙂");
+        expect(rendered).not.toContain("�");
     });
 
     it("emits terminal replies and reports color-scheme and synchronized-output modes", async () => {
