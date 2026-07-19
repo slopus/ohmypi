@@ -6,8 +6,14 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const lane = process.argv[2];
-if (lane !== "local" && lane !== "fast" && lane !== "slow" && lane !== "docker") {
-    throw new Error("Usage: node runGymLane.ts <local|fast|slow|docker>");
+if (
+    lane !== "local" &&
+    lane !== "fast" &&
+    lane !== "slow" &&
+    lane !== "docker" &&
+    lane !== "heavy"
+) {
+    throw new Error("Usage: node runGymLane.ts <local|fast|slow|docker|heavy>");
 }
 
 const root = dirname(fileURLToPath(import.meta.url));
@@ -32,10 +38,13 @@ const timingSensitiveTests = new Set([
 const isolatedProcessTests = new Set([
     "account_quota_observations_survive_rollover_and_resume.test.ts",
 ]);
+const heavyTests = new Set(["very_large_session_stays_usable_from_fresh_start_and_resume.test.ts"]);
 
 const tests = readdirSync(testDirectory)
     .filter((name) => name.endsWith(".test.ts"))
     .filter((name) => {
+        if (lane === "heavy") return heavyTests.has(name);
+        if (heavyTests.has(name)) return false;
         const source = readFileSync(join(testDirectory, name), "utf8");
         const usesDocker = /\bmode\s*:\s*["']docker["']/u.test(source);
         if (lane === "docker") return usesDocker;
@@ -94,7 +103,7 @@ if (lane === "docker") {
         await runTests(
             lane,
             tests.map((test) => test.path),
-            4,
+            lane === "heavy" ? 1 : 4,
         ),
     ];
 }
@@ -123,7 +132,7 @@ function runTests(
                 "run",
                 "--isolate=false",
                 `--maxWorkers=${String(workers)}`,
-                `--testTimeout=${lane === "fast" ? "120000" : "210000"}`,
+                `--testTimeout=${lane === "fast" ? "120000" : lane === "heavy" ? "360000" : "210000"}`,
                 ...paths,
                 ...process.argv.slice(3),
             ],

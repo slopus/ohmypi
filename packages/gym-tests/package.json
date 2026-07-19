@@ -8,6 +8,7 @@
         "test:gym": "pnpm run test:gym:fast",
         "test:gym:just-bash": "node runGymLane.ts local",
         "test:gym:fast": "node runGymLane.ts fast",
+        "test:gym:heavy": "pnpm run prepare:image && RIG_GYM_SKIP_BUILD=1 node runGymLane.ts heavy",
         "test:gym:slow": "node runGymLane.ts slow",
         "test:gym:full": "pnpm run test:gym:fast && pnpm run test:gym:slow && pnpm run test:gym:docker",
         "test:gym:docker": "pnpm run prepare:image && RIG_GYM_SKIP_BUILD=1 node runGymLane.ts docker"

@@ -19,6 +19,7 @@
         "test:gym": "pnpm --filter @slopus/rig-gym-tests test:gym",
         "test:gym:fast": "pnpm --filter @slopus/rig-gym-tests test:gym:fast",
         "test:gym:full": "pnpm --filter @slopus/rig-gym-tests test:gym:full",
+        "test:gym:heavy": "pnpm --filter @slopus/rig-gym-tests test:gym:heavy",
         "test:gym:docker": "pnpm --filter @slopus/rig-gym-tests test:gym:docker",
         "test:gym:slow": "pnpm --filter @slopus/rig-gym-tests test:gym:slow",
         "test:live": "pnpm --filter @slopus/rig test:live",
