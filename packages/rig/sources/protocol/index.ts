@@ -104,6 +104,7 @@ export type {
     StopWorkflowResponse,
     SessionTitleStatus,
     ShutdownServerResponse,
+    StartInspectorResponse,
     SubmitMessageRequest,
     SubmitMessageResponse,
     SteerMessageRequest,

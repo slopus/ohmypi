@@ -180,11 +180,26 @@ export interface CodingAssistantAppOptions {
     unregisterSecret?: (id: string) => boolean | Promise<boolean>;
     detachSecret?: (id: string, scope: SecretAttachmentScope) => void | Promise<void>;
     durableGlobalEventQueue?: boolean;
+    debugInfo?: AppDebugInfo;
     showReasoning?: boolean;
     showUsage?: boolean;
     startupStatus?: StartupStatusCardModel;
     version?: string;
     theme?: TerminalTheme;
+}
+
+export interface AppDebugInfo {
+    serverInspectorUrl?: string;
+    sessionId: string;
+    startInspectors: () => Promise<AppDebugInspectorUrls>;
+    stateDirectory: string;
+    tuiInspectorUrl?: string;
+    tuiStderrIsTTY: boolean;
+}
+
+interface AppDebugInspectorUrls {
+    serverInspectorUrl: string;
+    tuiInspectorUrl: string;
 }
 
 function addUsage(left: Usage, right: Usage): Usage {
@@ -391,6 +406,8 @@ export class CodingAssistantApp implements Component, Focusable {
     #streamedToolCallEntries = new Set<AppTranscriptEntry>();
     #streamingThinkingEntryIds = new Set<string>();
     #deferredTurnSeparator = false;
+    readonly #debugInfo: AppDebugInfo | undefined;
+    #debugInspectorStart: Promise<AppDebugInspectorUrls> | undefined;
     #pendingSubagentCompletionIds = new Set<string>();
     #recordedSubagentCompletionIds = new Set<string>();
     #renderedCompletionNotices = new Map<string, number>();
@@ -426,6 +443,7 @@ export class CodingAssistantApp implements Component, Focusable {
         this.#sessionBacked = options.sessionBacked ?? false;
         this.#completionChime = options.completionChime ?? false;
         this.#durableGlobalEventQueue = options.durableGlobalEventQueue ?? false;
+        this.#debugInfo = options.debugInfo;
         this.#showReasoning = options.showReasoning ?? false;
         this.#showUsage = options.showUsage ?? false;
         this.#modelLocked = options.modelLocked ?? !options.agent.canChangeModel;
@@ -639,10 +657,7 @@ export class CodingAssistantApp implements Component, Focusable {
             } else {
                 this.#recordUserInput(event.createdAt);
                 if (
-                    this.#reconcileSubmittedUserEntry(
-                        event.data.message.id,
-                        event.data.displayText,
-                    )
+                    this.#reconcileSubmittedUserEntry(event.data.message.id, event.data.displayText)
                 ) {
                     return;
                 }
@@ -1617,6 +1632,11 @@ export class CodingAssistantApp implements Component, Focusable {
             return true;
         }
 
+        if (prompt === "/debug") {
+            this.#handleDebugCommand();
+            return true;
+        }
+
         if (prompt === "/permissions" || prompt === "/permission") {
             this.#openPermissionsMenu();
             return true;
@@ -1703,6 +1723,103 @@ export class CodingAssistantApp implements Component, Focusable {
         }
 
         return false;
+    }
+
+    #handleDebugCommand(): void {
+        const debug = this.#debugInfo;
+        if (debug === undefined) {
+            this.#appendDebugInfo();
+            return;
+        }
+        if (debug.tuiInspectorUrl === undefined && debug.tuiStderrIsTTY) {
+            const finish = (start: boolean) => {
+                this.#closeSelectionPanel();
+                if (start) {
+                    void this.#startInspectorsAndReport();
+                } else {
+                    this.#appendEntry({
+                        role: "event",
+                        text: "Live debugging was not started.",
+                        title: "Debug",
+                    });
+                }
+            };
+            this.#showSelectionPanel(
+                createSelectionPanel({
+                    items: [
+                        {
+                            description: "Open local debugger ports for this TUI and daemon.",
+                            label: "Start inspectors",
+                            value: "start",
+                        },
+                        {
+                            description: "Leave live debugging off.",
+                            label: "Cancel",
+                            value: "cancel",
+                        },
+                    ],
+                    onCancel: () => finish(false),
+                    onSelect: (item) => finish(item.value === "start"),
+                    subtitle:
+                        "The TUI's stderr is still this terminal. Node will write debugger connection messages here and may disturb the interface. Redirect stderr before starting when possible.",
+                    theme: this.#theme,
+                    title: "Start live debugging?",
+                }),
+            );
+            return;
+        }
+        void this.#startInspectorsAndReport();
+    }
+
+    async #startInspectorsAndReport(): Promise<void> {
+        const debug = this.#debugInfo;
+        if (debug === undefined) {
+            this.#appendDebugInfo();
+            return;
+        }
+        try {
+            if (debug.tuiInspectorUrl === undefined || debug.serverInspectorUrl === undefined) {
+                const starting = this.#debugInspectorStart ?? debug.startInspectors();
+                this.#debugInspectorStart = starting;
+                const urls = await starting;
+                debug.serverInspectorUrl = urls.serverInspectorUrl;
+                debug.tuiInspectorUrl = urls.tuiInspectorUrl;
+                if (this.#debugInspectorStart === starting) this.#debugInspectorStart = undefined;
+            }
+            this.#appendDebugInfo();
+        } catch (error) {
+            this.#debugInspectorStart = undefined;
+            this.#appendEntry({
+                role: "error",
+                text: errorToMessage(error),
+                title: "Debug",
+            });
+            this.#requestRender();
+        }
+    }
+
+    #appendDebugInfo(): void {
+        const debug = this.#debugInfo;
+        const details =
+            debug === undefined
+                ? [{ label: "Session", reason: "Unavailable" }]
+                : [
+                      { label: "Session", reason: debug.sessionId },
+                      { label: "State directory", reason: debug.stateDirectory },
+                      { label: "TUI inspector", reason: debug.tuiInspectorUrl ?? "Off" },
+                      { label: "Daemon inspector", reason: debug.serverInspectorUrl ?? "Off" },
+                      {
+                          label: "Live state",
+                          reason: "Evaluate globalThis.__rigDebug in either inspector",
+                      },
+                  ];
+        this.#appendEntry({
+            noticeChildren: details,
+            role: "event",
+            text: "Open either inspector and evaluate globalThis.__rigDebug to walk the live process state.",
+            title: "Debug",
+        });
+        this.#requestRender();
     }
 
     #handleFastCommand(prompt: string): void {

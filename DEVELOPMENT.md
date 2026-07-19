@@ -51,6 +51,22 @@ invoked as the session workspace. They do not reuse or replace the installed
 Rig daemon. When runtime source changes, the CLI fingerprints it and asks before
 restarting an older workspace daemon.
 
+## Live process debugging
+
+Run `/debug` in any interactive Rig session to start loopback-only Node
+inspectors for both the terminal UI and daemon. The command reports the current
+session, state directory, and both inspector URLs. In either inspector, evaluate
+`globalThis.__rigDebug` to start walking the live process state.
+
+Breakpoints suspend the process they target until it is resumed. Native
+inspector output from the daemon is written to the state directory's
+`server.log`. The TUI inherits Rig's stderr, so redirect it when starting Rig if
+you want to keep inspector messages out of the interface, for example
+`rig 2>rig-tui.log`. If stderr is still the terminal, `/debug` warns and asks for
+confirmation before starting. The inspectors use ephemeral ports bound to
+`127.0.0.1`; Node does not authenticate inspector connections, so do not expose
+those ports beyond the local machine.
+
 ## Validation
 
 Run these checks separately from the repository root:

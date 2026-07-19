@@ -29,7 +29,12 @@ import { resolveStartupProviderQuota } from "./resolveStartupProviderQuota.js";
 import { RigTerminal } from "./RigTerminal.js";
 import { sessionAgentFooterLabel } from "./sessionAgentFooterLabel.js";
 import { StartupStatusApp } from "./StartupStatusApp.js";
-import { getDebugRootDirectory } from "../debug/index.js";
+import {
+    getDebugRootDirectory,
+    getNodeInspectorUrl,
+    openNodeInspector,
+    registerRigDebugRoot,
+} from "../debug/index.js";
 
 export interface RunAppOptions {
     apiKey?: string;
@@ -209,6 +214,7 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
             ? []
             : [{ text: projectMcpNotice, title: "Project MCP needs trust" }]),
     ];
+    const tuiInspectorUrl = getNodeInspectorUrl();
     const app = new CodingAssistantApp({
         ...(activeAgentLabel === undefined ? {} : { activeAgentLabel }),
         agent,
@@ -291,6 +297,19 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
         sessionBacked: true,
         completionChime,
         durableGlobalEventQueue,
+        debugInfo: {
+            sessionId: session.session.id,
+            startInspectors: async () => {
+                const server = await localServer.client.startInspector();
+                return {
+                    serverInspectorUrl: server.inspectorUrl,
+                    tuiInspectorUrl: openNodeInspector(),
+                };
+            },
+            stateDirectory: localServer.paths.directory,
+            tuiStderrIsTTY: process.stderr.isTTY === true,
+            ...(tuiInspectorUrl === undefined ? {} : { tuiInspectorUrl }),
+        },
         showReasoning,
         showUsage,
         startupStatus: createStartupStatusCardModel({
@@ -324,6 +343,16 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
     });
     startup.stop();
     const followController = new AbortController();
+    registerRigDebugRoot({
+        agent,
+        app,
+        connection: localServer,
+        eventFollowerController: followController,
+        kind: "tui",
+        sessionId: session.session.id,
+        terminal,
+        tui,
+    });
     const observedChimeEvents = new Set<string>();
     const lastHistoryEventId = history.events.at(-1)?.id ?? session.session.lastEventId;
     void localServer.client.watchSessionEvents({
