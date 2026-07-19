@@ -1,4 +1,4 @@
-export type ProviderQuotaSource = "codex" | "claude";
+export type ProviderQuotaSource = "codex" | "claude" | "kimi";
 
 export type ProviderQuotaWindow =
     | {

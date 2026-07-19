@@ -3,6 +3,7 @@ import { query as createClaudeQuery, type Query } from "@anthropic-ai/claude-age
 import { createProviderQuotaCache } from "./createProviderQuotaCache.js";
 import { fetchClaudeProviderQuota } from "./fetchClaudeProviderQuota.js";
 import { fetchCodexProviderQuota } from "./fetchCodexProviderQuota.js";
+import { fetchKimiProviderQuota } from "./fetchKimiProviderQuota.js";
 import { idleClaudeSdkPrompt } from "./idleClaudeSdkPrompt.js";
 import type { ProviderQuota } from "./providerQuota.js";
 import { resolveClaudeCodeExecutablePath } from "./resolveClaudeCodeExecutablePath.js";
@@ -18,6 +19,7 @@ export interface CreateProviderQuotaServiceOptions {
     env?: NodeJS.ProcessEnv;
     loadClaudeQuota?: () => Promise<ProviderQuota>;
     loadCodexQuota?: () => Promise<ProviderQuota>;
+    loadKimiQuota?: () => Promise<ProviderQuota>;
     now?: () => number;
     pathToClaudeCodeExecutable?: string;
 }
@@ -62,11 +64,24 @@ export function createProviderQuotaService(
             }),
         { now },
     );
+    const kimi = createProviderQuotaCache(
+        options.loadKimiQuota ??
+            (() =>
+                fetchKimiProviderQuota({
+                    ...(env.RIG_KIMI_BASE_URL === undefined
+                        ? {}
+                        : { baseUrl: env.RIG_KIMI_BASE_URL }),
+                    now,
+                    env,
+                })),
+        { now },
+    );
 
     return {
         get(providerId, getOptions) {
             if (providerId === "codex") return codex.get(getOptions);
             if (providerId === "claude") return claude.get(getOptions);
+            if (providerId === "kimi") return kimi.get(getOptions);
             return Promise.resolve(undefined);
         },
     };

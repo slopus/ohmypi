@@ -8,10 +8,12 @@ describe("createProviderQuotaService", () => {
         let now = 1_000;
         const loadCodexQuota = vi.fn(async () => quota("codex", now, 30, 10));
         const loadClaudeQuota = vi.fn(async () => quota("claude", now, 40, 20));
+        const loadKimiQuota = vi.fn(async () => quota("kimi", now, 7, 14));
         const service = createProviderQuotaService({
             cwd: "/tmp/quota-service",
             loadClaudeQuota,
             loadCodexQuota,
+            loadKimiQuota,
             now: () => now,
         });
 
@@ -27,12 +29,20 @@ describe("createProviderQuotaService", () => {
                 weekly: { usedPercent: 20 },
             },
         });
+        await expect(service.get("kimi")).resolves.toMatchObject({
+            windows: {
+                fiveHour: { usedPercent: 7 },
+                weekly: { usedPercent: 14 },
+            },
+        });
         now += 1;
         await service.get("codex");
         await service.get("claude", { fresh: true });
+        await service.get("kimi", { fresh: true });
 
         expect(loadCodexQuota).toHaveBeenCalledOnce();
         expect(loadClaudeQuota).toHaveBeenCalledTimes(2);
+        expect(loadKimiQuota).toHaveBeenCalledTimes(2);
         await expect(service.get("gym")).resolves.toBeUndefined();
     });
 });

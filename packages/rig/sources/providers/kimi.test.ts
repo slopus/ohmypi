@@ -11,6 +11,43 @@ import { createKimiProvider } from "./kimi.js";
 import { modelMoonshotKimiK3 } from "./models.js";
 
 describe("Kimi provider", () => {
+    it("exposes managed plan quota through the provider quota hook", async () => {
+        const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+            Response.json({
+                usage: { limit: 100, used: 14, reset_at: "2025-01-08T00:00:00Z" },
+                limits: [
+                    {
+                        detail: { limit: 50, used: 4, reset_in: 12_000 },
+                        window: { duration: 5, timeUnit: "HOUR" },
+                    },
+                ],
+            }),
+        );
+        vi.stubGlobal("fetch", fetchMock);
+        try {
+            const provider = createKimiProvider({
+                env: { KIMI_CODE_HOME: "/tmp/kimi-test" },
+                resolveCredential: async () => ({ source: "session", token: "secret-token" }),
+            });
+
+            const quota = await provider.quota?.();
+
+            expect(quota?.source).toBe("kimi");
+            expect(quota?.windows.weekly).toMatchObject({
+                status: "available",
+                usedPercent: 14,
+            });
+            expect(quota?.windows.fiveHour).toMatchObject({
+                status: "available",
+                usedPercent: 8,
+            });
+            expect(fetchMock).toHaveBeenCalledOnce();
+            expect(fetchMock.mock.calls[0]?.[0]).toBe("https://api.kimi.com/coding/v1/usages");
+        } finally {
+            vi.unstubAllGlobals();
+        }
+    });
+
     it("disables SDK request retries so the shared agent loop owns retry policy", () => {
         const client = createKimiOpenAIClient({
             baseUrl: "https://api.kimi.com/coding/v1",

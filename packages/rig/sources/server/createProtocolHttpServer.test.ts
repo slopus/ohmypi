@@ -122,8 +122,8 @@ describe("createProtocolHttpServer", () => {
         }
     });
 
-    it("serves only the current provider quota from the daemon quota service", async () => {
-        const quota = {
+    it("serves current quota from the session's configured provider", async () => {
+        const sessionQuota = {
             capturedAt: 10,
             source: "codex" as const,
             windows: {
@@ -136,17 +136,22 @@ describe("createProtocolHttpServer", () => {
                 weekly: { status: "unavailable" as const },
             },
         };
-        const getProviderQuota = vi.fn(async () => quota);
-        const { client, close } = await startServer({ getProviderQuota });
+        const getProviderQuota = vi.fn(async () => undefined);
+        const { client, close, store } = await startServer({ getProviderQuota });
         try {
             const created = await client.createSession({ cwd: "/tmp/current-provider-quota" });
+            const session = store.get(created.session.id);
+            if (session === undefined) throw new Error("Expected the created session.");
+            const providerQuota = vi
+                .spyOn(session, "providerQuota")
+                .mockResolvedValue(sessionQuota);
 
             await expect(client.getCurrentProviderQuota(created.session.id)).resolves.toEqual({
                 currentProviderId: "codex",
-                quota,
+                quota: sessionQuota,
             });
-            expect(getProviderQuota).toHaveBeenCalledTimes(1);
-            expect(getProviderQuota).toHaveBeenCalledWith("codex");
+            expect(providerQuota).toHaveBeenCalledOnce();
+            expect(getProviderQuota).not.toHaveBeenCalled();
         } finally {
             await close();
         }
@@ -217,7 +222,8 @@ describe("createProtocolHttpServer", () => {
     });
 
     it("serves durable attributed usage and current-provider quota", async () => {
-        const { client, close, store } = await startServer();
+        const getProviderQuota = vi.fn(async () => undefined);
+        const { client, close, store } = await startServer({ getProviderQuota });
         try {
             const created = await client.createSession({ cwd: "/tmp/usage-project" });
             const session = store.get(created.session.id);
@@ -289,6 +295,7 @@ describe("createProtocolHttpServer", () => {
                     },
                 ],
             });
+            expect(getProviderQuota).not.toHaveBeenCalledWith("codex");
         } finally {
             await close();
         }
@@ -413,31 +420,35 @@ describe("createProtocolHttpServer", () => {
     });
 
     it("returns independent current quotas and observed movement for every used provider", async () => {
-        const getProviderQuota = vi.fn(
-            async (providerId: string): Promise<ProviderQuota> => ({
-                capturedAt: 10,
-                source: providerId === "codex" ? "codex" : "claude",
-                windows: {
-                    fiveHour: {
-                        capturedAt: 10,
-                        resetsAt: 100,
-                        status: "available",
-                        usedPercent: providerId === "codex" ? 30 : 40,
-                    },
-                    weekly: {
-                        capturedAt: 10,
-                        resetsAt: 200,
-                        status: "available",
-                        usedPercent: providerId === "codex" ? 10 : 20,
-                    },
+        const quotaFor = (providerId: string): ProviderQuota => ({
+            capturedAt: 10,
+            source: providerId === "codex" ? "codex" : "claude",
+            windows: {
+                fiveHour: {
+                    capturedAt: 10,
+                    resetsAt: 100,
+                    status: "available",
+                    usedPercent: providerId === "codex" ? 30 : 40,
                 },
-            }),
+                weekly: {
+                    capturedAt: 10,
+                    resetsAt: 200,
+                    status: "available",
+                    usedPercent: providerId === "codex" ? 10 : 20,
+                },
+            },
+        });
+        const getProviderQuota = vi.fn(
+            async (providerId: string): Promise<ProviderQuota> => quotaFor(providerId),
         );
         const { client, close, store } = await startServer({ getProviderQuota });
         try {
             const created = await client.createSession({ cwd: "/tmp/multi-provider-usage" });
             const session = store.get(created.session.id);
             if (session === undefined) throw new Error("Expected the created session.");
+            const providerQuota = vi
+                .spyOn(session, "providerQuota")
+                .mockResolvedValue(quotaFor("codex"));
             const before = {
                 capturedAt: 1,
                 source: "claude" as const,
@@ -531,7 +542,8 @@ describe("createProtocolHttpServer", () => {
                 },
             ]);
             expect(getProviderQuota).toHaveBeenCalledWith("claude");
-            expect(getProviderQuota).toHaveBeenCalledWith("codex");
+            expect(getProviderQuota).not.toHaveBeenCalledWith("codex");
+            expect(providerQuota).toHaveBeenCalledOnce();
         } finally {
             await close();
         }

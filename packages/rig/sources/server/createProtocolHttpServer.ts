@@ -619,7 +619,7 @@ async function handleRequest(
 
     if (request.method === "GET" && route.name === "current-provider-quota") {
         const currentProviderId = session.snapshot().providerId;
-        const quota = await getProviderQuota?.(currentProviderId);
+        const quota = await session.providerQuota();
         sendJson<GetCurrentProviderQuotaResponse>(response, 200, {
             currentProviderId,
             ...(quota === undefined ? {} : { quota }),
@@ -644,11 +644,9 @@ async function handleRequest(
             await Promise.all(
                 providerIds.map(async (providerId) => {
                     const loadedQuota =
-                        getProviderQuota === undefined
-                            ? providerId === currentProviderId
-                                ? await session.providerQuota()
-                                : undefined
-                            : await getProviderQuota(providerId);
+                        providerId === currentProviderId
+                            ? await session.providerQuota()
+                            : await getProviderQuota?.(providerId);
                     const observedQuota = observedQuotas.get(providerId);
                     const quota =
                         observedQuota !== undefined &&
