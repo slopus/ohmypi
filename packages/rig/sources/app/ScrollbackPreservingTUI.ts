@@ -32,10 +32,15 @@ interface TerminalResizeComponent {
     endTerminalResize(): void;
 }
 
+type CursorProbeSupport = "unknown" | "supported" | "unsupported";
+
 export class ScrollbackPreservingTUI extends TUI {
+    #activeCursorProbeGeneration: number | undefined;
     #bottomAnchorLineCount = 0;
-    #cursorReportPending = 0;
+    #cursorProbeGeneration = 0;
+    #cursorProbeSupport: CursorProbeSupport = "unknown";
     #forceRenderAfterResize = false;
+    readonly #issuedCursorProbeGenerations: number[] = [];
     #measuredCursorRow: number | undefined;
     #paintedLiveTailLineCount = 0;
     #probeTimer: NodeJS.Timeout | undefined;
@@ -82,13 +87,14 @@ export class ScrollbackPreservingTUI extends TUI {
 
     override stop(): void {
         this.#abortCursorProbe();
-        this.#cursorReportPending = 0;
+        this.#issuedCursorProbeGenerations.length = 0;
         super.stop();
     }
 
     #shouldProbeCursor(): boolean {
         const state = this as unknown as TuiRenderState;
         return (
+            this.#cursorProbeSupport !== "unsupported" &&
             state.previousLines.length > 0 &&
             state.previousWidth === this.terminal.columns &&
             state.previousHeight !== this.terminal.rows
@@ -101,11 +107,19 @@ export class ScrollbackPreservingTUI extends TUI {
     // rides along with the content, so asking the terminal where the cursor actually is
     // reveals how far our rows moved without assuming either behavior.
     #beginCursorProbe(): void {
-        this.#cursorReportPending += 1;
+        const generation = (this.#cursorProbeGeneration += 1);
+        this.#activeCursorProbeGeneration = generation;
+        this.#issuedCursorProbeGenerations.push(generation);
         this.#measuredCursorRow = undefined;
         this.terminal.write("\x1b[6n");
         this.#probeTimer = setTimeout(() => {
+            if (this.#activeCursorProbeGeneration !== generation) return;
             this.#probeTimer = undefined;
+            this.#activeCursorProbeGeneration = undefined;
+            this.#issuedCursorProbeGenerations.length = 0;
+            if (this.#cursorProbeSupport === "unknown") {
+                this.#cursorProbeSupport = "unsupported";
+            }
             this.#completeRender(false);
         }, CURSOR_REPORT_TIMEOUT_MS);
     }
@@ -113,36 +127,45 @@ export class ScrollbackPreservingTUI extends TUI {
     #abortCursorProbe(): void {
         if (this.#probeTimer !== undefined) clearTimeout(this.#probeTimer);
         this.#probeTimer = undefined;
+        this.#activeCursorProbeGeneration = undefined;
         this.#measuredCursorRow = undefined;
     }
 
     #consumeCursorReports(data: string): { consume: true } | { data: string } | undefined {
-        if (this.#cursorReportPending === 0) return undefined;
+        if (this.#issuedCursorProbeGenerations.length === 0) return undefined;
         let remaining = data;
         let match = CURSOR_REPORT_PATTERN.exec(remaining);
-        while (this.#cursorReportPending > 0 && match !== null) {
-            this.#cursorReportPending -= 1;
-            this.#measuredCursorRow = Number.parseInt(match[1] ?? "1", 10) - 1;
+        let measuredCursorRow: number | undefined;
+        while (this.#issuedCursorProbeGenerations.length > 0 && match !== null) {
+            const generation = this.#issuedCursorProbeGenerations.shift();
+            this.#cursorProbeSupport = "supported";
+            if (generation === this.#activeCursorProbeGeneration) {
+                measuredCursorRow = Number.parseInt(match[1] ?? "1", 10) - 1;
+                this.#activeCursorProbeGeneration = undefined;
+            }
             remaining =
                 remaining.slice(0, match.index) + remaining.slice(match.index + match[0].length);
             match = CURSOR_REPORT_PATTERN.exec(remaining);
         }
         if (remaining === data) return undefined;
-        if (this.#probeTimer !== undefined && this.#cursorReportPending === 0) {
+        if (measuredCursorRow !== undefined) {
             clearTimeout(this.#probeTimer);
             this.#probeTimer = undefined;
+            this.#measuredCursorRow = measuredCursorRow;
+            this.#issuedCursorProbeGenerations.length = 0;
             this.#completeRender(false);
         }
         return remaining.length === 0 ? { consume: true } : { data: remaining };
     }
 
     #takeMeasuredCursorRow(): number | undefined {
-        const row = this.#cursorReportPending === 0 ? this.#measuredCursorRow : undefined;
+        const row = this.#measuredCursorRow;
         this.#measuredCursorRow = undefined;
         return row;
     }
 
     #completeRender(force: boolean): void {
+        this.#issuedCursorProbeGenerations.length = 0;
         const resized = this.#prepareLiveTailAfterResize(this.#takeMeasuredCursorRow());
         if (this.#resizePending) {
             this.#resizePending = false;

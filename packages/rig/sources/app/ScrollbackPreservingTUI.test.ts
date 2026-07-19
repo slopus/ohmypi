@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Terminal } from "@earendil-works/pi-tui";
 
+import { ScrollbackPreservingTerminal } from "./ScrollbackPreservingTerminal.js";
 import { ScrollbackPreservingTUI } from "./ScrollbackPreservingTUI.js";
 
 describe("ScrollbackPreservingTUI", () => {
@@ -323,6 +324,96 @@ describe("ScrollbackPreservingTUI", () => {
         expect(output).toContain("\x1b[5;1H\x1b[?2026l");
         tui.stop();
     });
+
+    it("recovers after overlapping cursor probes receive only one reply", async () => {
+        const terminal = new RecordingTerminal(30, 5);
+        const receivedInput: string[] = [];
+        const component = {
+            ...overflowingComponent(),
+            handleInput: (data: string) => receivedInput.push(data),
+        };
+        const tui = new ScrollbackPreservingTUI(terminal, false);
+        tui.addChild(component);
+        tui.setFocus(component);
+        tui.start();
+        await renderCycle();
+        terminal.output.length = 0;
+
+        terminal.rows = 8;
+        tui.requestRender();
+        terminal.resizePendingState = true;
+        terminal.rows = 9;
+        tui.requestRender();
+        terminal.resizePendingState = false;
+        tui.requestRender();
+        terminal.emitInput("\x1b[5;1R");
+        await cursorProbeTimeout();
+
+        terminal.emitInput("\x1b[1;2R");
+        expect(receivedInput).toEqual(["\x1b[1;2R"]);
+        terminal.output.length = 0;
+
+        terminal.rows = 10;
+        tui.requestRender();
+        terminal.emitInput("\x1b[8;1R");
+        await renderCycle();
+
+        const output = terminal.output.join("");
+        expect(output).toContain("\x1b[6;1H\x1b[2Kinput");
+        expect(output).toContain("\x1b[8;1H\x1b[2Kfooter");
+        tui.stop();
+    });
+
+    it("stops probing after a terminal does not answer the first cursor probe", async () => {
+        const terminal = new RecordingTerminal(30, 5);
+        const tui = new ScrollbackPreservingTUI(terminal, false);
+        tui.addChild(overflowingComponent());
+        tui.start();
+        await renderCycle();
+        terminal.output.length = 0;
+
+        terminal.rows = 8;
+        tui.requestRender();
+        await cursorProbeTimeout();
+        expect(terminal.output.join("")).toContain("\x1b[6n");
+        terminal.output.length = 0;
+
+        terminal.rows = 9;
+        tui.requestRender();
+        await renderCycle();
+
+        const output = terminal.output.join("");
+        expect(output).not.toContain("\x1b[6n");
+        expect(output).toContain("\x1b[3;1H\x1b[2Kinput");
+        expect(output).toContain("\x1b[5;1H\x1b[2Kfooter");
+        tui.stop();
+    });
+
+    it("uses the latest cursor report when overlapping probes both answer in order", async () => {
+        const terminal = new RecordingTerminal(30, 5);
+        const tui = new ScrollbackPreservingTUI(terminal, false);
+        tui.addChild(overflowingComponent());
+        tui.start();
+        await renderCycle();
+        terminal.output.length = 0;
+
+        terminal.rows = 8;
+        tui.requestRender();
+        terminal.resizePendingState = true;
+        terminal.rows = 9;
+        tui.requestRender();
+        terminal.resizePendingState = false;
+        tui.requestRender();
+        terminal.emitInput("\x1b[5;1R");
+        terminal.emitInput("\x1b[8;1R");
+        await renderCycle();
+
+        const output = terminal.output.join("");
+        expect(output).toContain("\x1b[6;1H\x1b[2Kinput");
+        expect(output).toContain("\x1b[8;1H\x1b[2Kfooter");
+        expect(output).not.toContain("\x1b[3;1H\x1b[2Kinput");
+        tui.stop();
+    });
 });
 
 function overflowingComponent() {
@@ -346,35 +437,59 @@ function overflowingComponent() {
     };
 }
 
-class RecordingTerminal implements Terminal {
+class RecordingTerminal extends ScrollbackPreservingTerminal implements Terminal {
     readonly output: string[] = [];
-    readonly kittyProtocolActive = false;
-    columns: number;
-    rows: number;
+    #columns: number;
+    #rows: number;
+    resizePendingState = false;
 
     constructor(columns: number, rows: number) {
-        this.columns = columns;
-        this.rows = rows;
+        super();
+        this.#columns = columns;
+        this.#rows = rows;
     }
 
     protected onInput: ((data: string) => void) | undefined;
 
-    start(onInput?: (data: string) => void): void {
+    override get columns(): number {
+        return this.#columns;
+    }
+    override set columns(columns: number) {
+        this.#columns = columns;
+    }
+    override get kittyProtocolActive(): boolean {
+        return false;
+    }
+    override get resizePending(): boolean {
+        return this.resizePendingState;
+    }
+    override get rows(): number {
+        return this.#rows;
+    }
+    override set rows(rows: number) {
+        this.#rows = rows;
+    }
+
+    override start(onInput?: (data: string) => void): void {
         this.onInput = onInput;
     }
-    stop(): void {}
-    async drainInput(): Promise<void> {}
-    write(data: string): void {
+    override stop(): void {}
+    override async drainInput(): Promise<void> {}
+    override write(data: string): void {
         this.output.push(data);
     }
-    moveBy(): void {}
-    hideCursor(): void {}
-    showCursor(): void {}
-    clearLine(): void {}
-    clearFromCursor(): void {}
-    clearScreen(): void {}
-    setTitle(): void {}
-    setProgress(): void {}
+    override moveBy(): void {}
+    override hideCursor(): void {}
+    override showCursor(): void {}
+    override clearLine(): void {}
+    override clearFromCursor(): void {}
+    override clearScreen(): void {}
+    override setTitle(): void {}
+    override setProgress(): void {}
+
+    emitInput(data: string): void {
+        this.onInput?.(data);
+    }
 }
 
 class ProbeAnsweringTerminal extends RecordingTerminal {
@@ -391,4 +506,8 @@ class ProbeAnsweringTerminal extends RecordingTerminal {
 
 async function renderCycle(): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, 25));
+}
+
+async function cursorProbeTimeout(): Promise<void> {
+    await new Promise((resolve) => setTimeout(resolve, 225));
 }
