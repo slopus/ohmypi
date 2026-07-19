@@ -122,6 +122,15 @@ To run local and explicit Docker scenarios:
 pnpm --filter @slopus/rig-gym-tests test:gym:full
 ```
 
+Run the opt-in, real-world-scale session startup and resume scenario separately:
+
+```sh
+pnpm test:gym:heavy
+```
+
+Set `RIG_GYM_HEAVY_SESSION_SCALE` to a positive multiplier for quicker iteration
+or larger stress runs. The default `1` generates a calibrated roughly 200 MB session database.
+
 Set `mode: "docker"` on every scenario that needs Docker. `dockerSocket`, `entrypoint`, and `image` are rejected in local mode so a test cannot silently leave the fast lane.
 
 ### Targeted iteration
