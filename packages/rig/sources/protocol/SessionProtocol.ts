@@ -365,6 +365,10 @@ export interface ShutdownServerResponse {
     shuttingDown: boolean;
 }
 
+export interface StartInspectorResponse {
+    inspectorUrl: string;
+}
+
 export interface GlobalEventQueueEntry {
     cursor: number;
     event: SessionEvent;

@@ -19,6 +19,7 @@ import { createProviderQuotaService } from "../providers/createProviderQuotaServ
 import { createCodingAssistantAgent } from "../runtime/createCodingAssistantAgent.js";
 import { getDaemonIdentity } from "../daemon/index.js";
 import { errorToMessage } from "../errorToMessage.js";
+import { getNodeInspectorUrl, openNodeInspector, registerRigDebugRoot } from "../debug/index.js";
 
 export interface RunLocalProtocolServerOptions {
     socketPath?: string;
@@ -31,6 +32,7 @@ export async function runLocalProtocolServer(
     const paths = getEnvironmentLocalServerPaths();
     const socketPath = options.socketPath ?? paths.socketPath;
     const tokenPath = options.tokenPath ?? paths.tokenPath;
+    const startedAt = new Date().toISOString();
     await prepareLocalServerDirectory(paths.directory);
     const token = await readLocalServerToken(tokenPath);
     await removeStaleSocket(socketPath);
@@ -75,6 +77,15 @@ export async function runLocalProtocolServer(
         token,
     });
     const server = createServer(startupRequestListener);
+    const writeServerRegistry = () => {
+        const inspectorUrl = getNodeInspectorUrl();
+        return writeRegistry(paths.registryPath, {
+            ...(inspectorUrl === undefined ? {} : { inspectorUrl }),
+            pid: process.pid,
+            socketPath,
+            startedAt,
+        });
+    };
     let initialization = Promise.resolve();
     const reportStartupError = (error: unknown) => {
         if (stopping) return;
@@ -103,11 +114,7 @@ export async function runLocalProtocolServer(
                 await stopped;
                 return;
             }
-            await writeRegistry(paths.registryPath, {
-                pid: process.pid,
-                socketPath,
-                startedAt: new Date().toISOString(),
-            });
+            await writeServerRegistry();
         } catch (error) {
             reportStartupError(error);
             await stopped;
@@ -163,6 +170,12 @@ export async function runLocalProtocolServer(
             modelCatalog,
             taskDrain,
         });
+        registerRigDebugRoot({
+            kind: "daemon",
+            paths,
+            server,
+            store,
+        });
         if (stopping) {
             taskDrain.beginClose();
             return;
@@ -181,6 +194,11 @@ export async function runLocalProtocolServer(
                 onDurableGlobalEventQueueChange: async (enabled) => {
                     await writeDaemonSettings({ durableGlobalEventQueue: enabled });
                     return store?.setDurableGlobalEventQueue(enabled);
+                },
+                onStartInspector: async () => {
+                    const inspectorUrl = openNodeInspector();
+                    await writeServerRegistry();
+                    return { inspectorUrl };
                 },
                 onShutdown: stopServer,
                 store,

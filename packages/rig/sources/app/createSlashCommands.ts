@@ -51,6 +51,12 @@ export function createSlashCommands(
             aliases: ["todos"],
         },
         {
+            value: "debug",
+            label: "/debug",
+            description: "Start live process debugging.",
+            aliases: [],
+        },
+        {
             value: "usage",
             label: "/usage",
             description: "Show token usage for this session.",
@@ -124,7 +130,7 @@ export function createSlashCommands(
         },
     ];
     if (options.workflowsEnabled !== false) {
-        commands.splice(8, 0, {
+        commands.splice(9, 0, {
             value: "workflows",
             label: "/workflows",
             description: "Open the live workflow monitor.",

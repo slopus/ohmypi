@@ -202,6 +202,65 @@ describe("CodingAssistantApp", () => {
         await app.waitForIdle();
     });
 
+    it("warns before starting inspectors when TUI stderr is the terminal", async () => {
+        const model = defineModel({
+            id: "openai/gpt-test",
+            name: "GPT Test",
+            thinkingLevels: ["off"],
+            defaultThinkingLevel: "off",
+        });
+        const provider = defineProvider({
+            id: "codex",
+            models: [model],
+            stream() {
+                return streamText("unused");
+            },
+        });
+        const harness = createJustBashToolHarness();
+        const startInspectors = vi.fn(async () => ({
+            serverInspectorUrl: "ws://127.0.0.1:42002/daemon",
+            tuiInspectorUrl: "ws://127.0.0.1:42001/tui",
+        }));
+        const app = new CodingAssistantApp({
+            agent: new Agent({
+                provider,
+                modelId: model.id,
+                context: harness.context,
+                printToConsole: false,
+            }),
+            cwd: harness.context.fs.cwd,
+            debugInfo: {
+                sessionId: "session-debug-1",
+                startInspectors,
+                stateDirectory: "/state/rig",
+                tuiStderrIsTTY: true,
+            },
+            processManager: new NativeProcessManager(),
+            tui: fakeTui(),
+        });
+
+        submit(app, "/debug");
+
+        const warning = stripAnsi(app.render(120).join("\n"));
+        expect(warning).toContain("Start live debugging?");
+        expect(warning).toContain("stderr is still this terminal");
+        expect(warning).toContain("Redirect stderr before starting");
+        expect(startInspectors).not.toHaveBeenCalled();
+
+        app.handleInput("\r");
+        await vi.waitFor(() => expect(startInspectors).toHaveBeenCalledOnce());
+
+        const rendered = stripAnsi(app.render(120).join("\n"));
+        expect(rendered).toContain("Debug");
+        expect(rendered).toContain("globalThis.__rigDebug");
+        expect(rendered).toContain("session-debug-1");
+        expect(rendered).toContain("/state/rig");
+        expect(rendered).toContain("ws://127.0.0.1:42001/tui");
+        expect(rendered).toContain("ws://127.0.0.1:42002/daemon");
+        expect(rendered).not.toContain("Daemon socket");
+        expect(rendered).not.toContain("Client state");
+    });
+
     it("renders the startup frame and Codex-style empty composer", () => {
         const model = defineModel({
             id: "openai/gpt-test",
@@ -1339,9 +1398,7 @@ describe("CodingAssistantApp", () => {
         });
 
         const updated = app.render(80);
-        expect(updated.slice(0, transcriptLine + 1)).toEqual(
-            initial.slice(0, transcriptLine + 1),
-        );
+        expect(updated.slice(0, transcriptLine + 1)).toEqual(initial.slice(0, transcriptLine + 1));
     });
 
     it("renders every markdown table row after streaming finishes", () => {
@@ -1373,8 +1430,9 @@ describe("CodingAssistantApp", () => {
         const table = [
             "| Name | Value |",
             "| --- | --- |",
-            ...Array.from({ length: 30 }, (_, index) =>
-                `| row-${String(index + 1)} | value-${String(index + 1)} |`,
+            ...Array.from(
+                { length: 30 },
+                (_, index) => `| row-${String(index + 1)} | value-${String(index + 1)} |`,
             ),
         ].join("\n");
         const partial: AssistantMessage = {

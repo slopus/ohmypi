@@ -40,6 +40,7 @@ import type {
     SessionEvent,
     SetGoalRequest,
     ShutdownServerResponse,
+    StartInspectorResponse,
     SteerMessageResponse,
     StopWorkflowResponse,
     SubmitMessageResponse,
@@ -94,6 +95,7 @@ export interface ProtocolHttpServerOptions {
         enabled: boolean,
     ) => GlobalEventQueue | undefined | Promise<GlobalEventQueue | undefined>;
     onShutdown?: () => void;
+    onStartInspector?: () => StartInspectorResponse | Promise<StartInspectorResponse>;
     store?: SessionStore;
     taskDrain?: TaskDrain;
     secrets?: readonly SecretRegistration[];
@@ -116,6 +118,7 @@ export function createProtocolHttpServer(
     const runtimeConfig: ProtocolServerRuntimeConfig = {
         globalEventQueue: options.globalEventQueue,
         onDurableGlobalEventQueueChange: options.onDurableGlobalEventQueueChange,
+        onStartInspector: options.onStartInspector,
     };
 
     attachRemoteTerminalWebSocketServer({ server, store, token: options.token });
@@ -173,6 +176,7 @@ interface ProtocolServerRuntimeConfig {
               enabled: boolean,
           ) => GlobalEventQueue | undefined | Promise<GlobalEventQueue | undefined>)
         | undefined;
+    onStartInspector: (() => StartInspectorResponse | Promise<StartInspectorResponse>) | undefined;
 }
 
 async function handleRequest(
@@ -217,6 +221,15 @@ async function handleRequest(
             shuttingDown: true,
         });
         setImmediate(() => onShutdown?.());
+        return;
+    }
+
+    if (request.method === "POST" && route.name === "debug-inspector") {
+        if (runtimeConfig.onStartInspector === undefined) {
+            sendJson(response, 409, { error: "This daemon cannot start a debugger." });
+            return;
+        }
+        sendJson<StartInspectorResponse>(response, 200, await runtimeConfig.onStartInspector());
         return;
     }
 
@@ -1010,6 +1023,7 @@ function matchRoute(pathname: string):
               | "global-events-trim"
               | "external-tool-calls"
               | "config"
+              | "debug-inspector"
               | "health"
               | "messages"
               | "models"
@@ -1059,6 +1073,7 @@ function matchRoute(pathname: string):
     | undefined {
     if (pathname === "/health") return { name: "health" };
     if (pathname === "/config") return { name: "config" };
+    if (pathname === "/debug/inspector") return { name: "debug-inspector" };
     if (pathname === "/events") return { name: "global-events" };
     if (pathname === "/events/stream") return { name: "global-events-stream" };
     if (pathname === "/events/trim") return { name: "global-events-trim" };
@@ -1187,6 +1202,7 @@ function isMutatingProtocolRequest(request: IncomingMessage): boolean {
     const route = matchRoute(url.pathname);
     if (route === undefined) return false;
     if (route.name === "config") return request.method === "PATCH";
+    if (route.name === "debug-inspector") return request.method === "POST";
     if (route.name === "global-events-trim") return request.method === "POST";
     if (route.name === "secret-registrations") return request.method === "POST";
     if (route.name === "secret-registration") return request.method === "DELETE";

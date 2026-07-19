@@ -670,6 +670,21 @@ describe("createProtocolHttpServer", () => {
         }
     });
 
+    it("starts the daemon inspector through the authenticated local protocol", async () => {
+        const onStartInspector = vi.fn(async () => ({
+            inspectorUrl: "ws://127.0.0.1:42002/daemon",
+        }));
+        const { client, close } = await startServer({ onStartInspector });
+        try {
+            await expect(client.startInspector()).resolves.toEqual({
+                inspectorUrl: "ws://127.0.0.1:42002/daemon",
+            });
+            expect(onStartInspector).toHaveBeenCalledOnce();
+        } finally {
+            await close();
+        }
+    });
+
     it("enables and disables the durable queue through daemon configuration", async () => {
         const store = new PersistentSessionStore({ databasePath: ":memory:" });
         const { client, close } = await startServer({
@@ -1553,6 +1568,7 @@ async function startServer(
             enabled: boolean,
         ) => GlobalEventQueue | undefined | Promise<GlobalEventQueue | undefined>;
         onShutdown?: () => void;
+        onStartInspector?: () => Promise<{ inspectorUrl: string }>;
         store?: SessionStore;
         taskDrain?: TrackedTaskDrain;
     } = {},
@@ -1577,6 +1593,9 @@ async function startServer(
             ? {}
             : { getProviderQuota: options.getProviderQuota }),
         ...(options.onShutdown !== undefined ? { onShutdown: options.onShutdown } : {}),
+        ...(options.onStartInspector !== undefined
+            ? { onStartInspector: options.onStartInspector }
+            : {}),
         ...(options.onDurableGlobalEventQueueChange === undefined
             ? {}
             : {

@@ -46,6 +46,7 @@ import type {
     SecretSessionResponse,
     SessionEvent,
     ShutdownServerResponse,
+    StartInspectorResponse,
     SetGoalRequest,
     SteerMessageRequest,
     SteerMessageResponse,
@@ -431,6 +432,10 @@ export class ProtocolHttpClient {
 
     shutdown(): Promise<ShutdownServerResponse> {
         return this.#requestJson("POST", "/shutdown");
+    }
+
+    startInspector(): Promise<StartInspectorResponse> {
+        return this.#requestJson("POST", "/debug/inspector");
     }
 
     submitMessage(
