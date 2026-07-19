@@ -1,7 +1,14 @@
-# Remote terminal protocol
+# @slopus/ghostty-web
 
-This package is an isolated client/server implementation for efficiently remoting a terminal. It
-does not depend on Rig sessions or agent execution.
+Client/server protocol for efficiently remoting a Ghostty-backed terminal. Clients implement the
+protocol by importing this library:
+
+```ts
+import { RemoteTerminalProtocolClient, GhosttyRemoteTerminalReplica } from "@slopus/ghostty-web";
+```
+
+The implementation is isolated: it does not depend on Rig sessions or agent execution, and the
+Ghostty adapters use structural typing so any compatible emulator (WASM or native) can plug in.
 
 The protocol has two server-selected display modes:
 
@@ -46,7 +53,7 @@ forwarded to the PTY.
 
 ## Measurements and tests
 
-`pnpm --filter @slopus/remote-terminal test` runs the protocol independently over real TCP. The
+`pnpm --filter @slopus/ghostty-web test` runs the protocol independently over real TCP. The
 suite covers byte-split and malformed frames, bounded control floods, real Ghostty on both ends,
 reconnects, resize races and rejection, stale-grid prevention, durable exit, one slow client,
 16-client encode-once fanout, 1 MiB output through a 96-byte credit window, hard pressure caps,

@@ -36,6 +36,21 @@ importers:
         specifier: ^3.2.4
         version: 3.2.6(@types/debug@4.1.13)(@types/node@24.13.2)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.0)(yaml@2.9.0)
 
+  packages/ghostty-web:
+    devDependencies:
+      '@slopus/rig-gym':
+        specifier: workspace:*
+        version: link:../gym
+      '@types/node':
+        specifier: ^24.0.10
+        version: 24.13.2
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.6(@types/debug@4.1.13)(@types/node@24.13.2)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.0)(yaml@2.9.0)
+
   packages/gym:
     dependencies:
       '@lydell/node-pty':
@@ -70,21 +85,6 @@ importers:
       '@earendil-works/pi-tui':
         specifier: ^0.80.3
         version: 0.80.3
-      '@slopus/rig-gym':
-        specifier: workspace:*
-        version: link:../gym
-      '@types/node':
-        specifier: ^24.0.10
-        version: 24.13.2
-      typescript:
-        specifier: ^5.8.3
-        version: 5.9.3
-      vitest:
-        specifier: ^3.2.4
-        version: 3.2.6(@types/debug@4.1.13)(@types/node@24.13.2)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.0)(yaml@2.9.0)
-
-  packages/remote-terminal:
-    devDependencies:
       '@slopus/rig-gym':
         specifier: workspace:*
         version: link:../gym

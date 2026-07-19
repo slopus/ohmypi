@@ -1,7 +1,7 @@
 # Remote terminal API
 
 > This HTTP/SSE API is the compatibility snapshot surface. The independently tested
-> [`@slopus/remote-terminal`](packages/remote-terminal/README.md) package implements the efficient
+> [`@slopus/ghostty-web`](packages/ghostty-web/README.md) library implements the efficient
 > hybrid binary client/server protocol for Ghostty-capable remote clients.
 
 Rig exposes session-scoped interactive terminals independently of agent runs. A terminal uses the

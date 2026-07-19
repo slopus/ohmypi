@@ -1,0 +1,29 @@
+{
+    "name": "@slopus/ghostty-web",
+    "version": "0.1.0",
+    "description": "Client/server protocol for efficiently remoting a Ghostty-backed terminal to web and native clients.",
+    "license": "MIT",
+    "files": [
+        "dist",
+        "LICENSE",
+        "README.md"
+    ],
+    "type": "module",
+    "exports": {
+        ".": {
+            "types": "./dist/index.d.ts",
+            "default": "./dist/index.js"
+        }
+    },
+    "scripts": {
+        "build": "tsc -p tsconfig.build.json",
+        "check": "tsc --noEmit",
+        "test": "vitest run"
+    },
+    "devDependencies": {
+        "@slopus/rig-gym": "workspace:*",
+        "@types/node": "^24.0.10",
+        "typescript": "^5.8.3",
+        "vitest": "^3.2.4"
+    }
+}
