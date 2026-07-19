@@ -306,7 +306,14 @@ export class InMemorySession {
     #appendSystemPrompt: string | undefined;
     #activePartial: PartialMessageState | undefined;
     #activeRun: ActiveRun | undefined;
-    #abortInFlight: { key: string; promise: Promise<AbortRunResponse> } | undefined;
+    #abortInFlight:
+        | {
+              continuePendingSteering: boolean;
+              key: string;
+              promise: Promise<AbortRunResponse>;
+              runId: string | undefined;
+          }
+        | undefined;
     #agentManager: AgentSessionManager | undefined;
     #agentMetadata: SessionAgentMetadata;
     #agentId: string;
@@ -579,17 +586,44 @@ export class InMemorySession {
         const key = createAbortRequestKey(options);
         if (this.#abortInFlight !== undefined) {
             if (this.#abortInFlight.key !== key) {
+                if (
+                    options.continuePendingSteering !== true &&
+                    this.#abortInFlight.continuePendingSteering &&
+                    (options.expectedRunId === undefined ||
+                        options.expectedRunId === this.#abortInFlight.runId)
+                ) {
+                    const continuationRunId = this.#abortInFlight.runId;
+                    const activeRun = this.#activeRun;
+                    if (continuationRunId === undefined || activeRun?.runId !== continuationRunId) {
+                        return Promise.resolve({ aborted: false });
+                    }
+                    const continuation = this.#pendingSteeringContinuations.get(continuationRunId);
+                    if (continuation !== undefined) {
+                        continuation.cancelled = true;
+                        continuation.resolveReady();
+                    }
+                    activeRun.controller.abort();
+                    return this.#abortInFlight.promise.then(
+                        ({ continued: _, ...response }) => response,
+                    );
+                }
                 return Promise.reject(
                     new Error("An abort request with different options is already in progress."),
                 );
             }
             return this.#abortInFlight.promise;
         }
+        const runId = this.#activeRun?.runId ?? this.#restoredActiveRunId;
         const operation = this.#performAbort(options);
         const tracked = operation.finally(() => {
             if (this.#abortInFlight?.promise === tracked) this.#abortInFlight = undefined;
         });
-        this.#abortInFlight = { key, promise: tracked };
+        this.#abortInFlight = {
+            continuePendingSteering: options.continuePendingSteering === true,
+            key,
+            promise: tracked,
+            runId,
+        };
         return tracked;
     }
 
@@ -705,7 +739,9 @@ export class InMemorySession {
         }
         return {
             aborted: true,
-            ...(shouldContinuePendingSteering ? { continued: true } : {}),
+            ...(shouldContinuePendingSteering && continuation?.cancelled !== true
+                ? { continued: true }
+                : {}),
             eventId: event.id,
             ...(runningProcesses > 0 ? { stoppedProcesses: runningProcesses } : {}),
         };

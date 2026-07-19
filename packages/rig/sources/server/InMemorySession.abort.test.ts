@@ -356,9 +356,9 @@ describe("InMemorySession abort", () => {
         const secondAbort = session.abort({ continuePendingSteering: true });
         expect(secondAbort).toBe(firstAbort);
         expect(pauseDescendants).toHaveBeenCalledOnce();
-        await expect(session.abort()).rejects.toThrow(
-            "An abort request with different options is already in progress.",
-        );
+        await expect(
+            session.abort({ continuePendingSteering: true, pauseDescendants: false }),
+        ).rejects.toThrow("An abort request with different options is already in progress.");
         session.steer({ text: "Submitted while interrupt settles." });
         releaseDescendants.resolve(1);
 
@@ -391,6 +391,64 @@ describe("InMemorySession abort", () => {
         );
         expect(new Set(appliedIds).size).toBe(2);
         expect(appliedIds).toHaveLength(2);
+    });
+
+    it("lets a hard abort override an in-flight steering continuation", async () => {
+        const started = deferred<void>();
+        const releaseDescendants = deferred<number>();
+        const contexts: Context[] = [];
+        const model = defineModel({
+            defaultThinkingLevel: "off",
+            id: "test/hard-abort-override",
+            name: "Hard abort override",
+            thinkingLevels: ["off"],
+        });
+        const provider = defineProvider({
+            id: "test",
+            models: [model],
+            stream(_model, context, options) {
+                contexts.push(context);
+                return abortableStream(options?.signal, started.resolve);
+            },
+        });
+        const pauseDescendants = vi.fn(() => releaseDescendants.promise);
+        const session = new InMemorySession({
+            agentManager: { pauseDescendants } as unknown as AgentSessionManager,
+            createEventId: createEventIdFactory(),
+            createRuntime: (options) => createRuntime(options, provider),
+            modelCatalog: {
+                defaultModelId: model.id,
+                defaultProviderId: provider.id,
+                models: [model],
+                providers: [{ models: [model], providerId: provider.id }],
+            },
+            request: { cwd: "/tmp/rig-hard-abort-override", modelId: model.id },
+        });
+
+        const submitted = session.submit({ text: "Start waiting." });
+        await started.promise;
+        session.steer({ text: "Do not revive this run after a hard abort." });
+
+        const continuingAbort = session.abort({
+            continuePendingSteering: true,
+            expectedRunId: submitted.runId,
+        });
+        const hardAbort = session.abort({ expectedRunId: submitted.runId });
+        releaseDescendants.resolve(1);
+
+        await expect(Promise.all([continuingAbort, hardAbort])).resolves.toEqual([
+            expect.objectContaining({ aborted: true }),
+            expect.objectContaining({ aborted: true }),
+        ]);
+        expect(await continuingAbort).not.toHaveProperty("continued");
+        expect(await hardAbort).not.toHaveProperty("continued");
+        await expect(session.waitForRun(submitted.runId)).resolves.toEqual({ status: "aborted" });
+
+        expect(contexts).toHaveLength(1);
+        expect(
+            session.events.since(undefined)?.filter((event) => event.type === "abort_requested"),
+        ).toHaveLength(1);
+        expect(pauseDescendants).toHaveBeenCalledOnce();
     });
 
     it("does not steer or abort a replacement run when the expected run already finished", async () => {
