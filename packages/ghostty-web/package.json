@@ -11,9 +11,18 @@
     "type": "module",
     "exports": {
         ".": {
-            "types": "./dist/index.d.ts",
-            "default": "./dist/index.js"
+            "types": "./sources/index.ts",
+            "default": "./sources/index.ts"
         }
+    },
+    "publishConfig": {
+        "exports": {
+            ".": {
+                "types": "./dist/index.d.ts",
+                "default": "./dist/index.js"
+            }
+        },
+        "access": "public"
     },
     "scripts": {
         "build": "tsc -p tsconfig.build.json",
