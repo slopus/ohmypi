@@ -59,9 +59,11 @@ kimi login
 grok login
 ```
 
-Rig then uses the credentials already managed by those installations. Kimi and
-Grok credentials are hot-reloaded from their local auth stores, so later logins
-are picked up without copying tokens into Rig.
+Rig then uses the credentials already managed by those installations. The daemon
+checks local credential presence when it starts without contacting provider
+servers. Restart the daemon after a new login so the provider enters the model
+catalog. Once enabled, Kimi and Grok credential rotations are hot-reloaded from
+their local auth stores without copying tokens into Rig.
 
 ### Step 3: Start building
 
@@ -361,6 +363,9 @@ Provider availability is machine-wide because the local daemon owns the model
 catalog and authentication paths. Configure it in `~/.rig/config.toml`:
 
 ```toml
+[providers]
+default_enable = false
+
 [providers.codex]
 enabled = true
 
@@ -377,10 +382,18 @@ enabled = true
 enabled = true
 ```
 
+`providers.default_enable` controls provider instances that do not set their
+own `enabled` value. It remains `true` when omitted for existing configurations;
+setting it to `false` keeps every provider disabled unless that provider is
+explicitly enabled.
+
 These five built-in instances use the normal Codex, Claude Code, Kimi Code,
-Grok, and Bedrock credential locations, so their `type` is inferred. Disabling
-one removes that provider and its native authentication path from the model
-picker.
+Grok, and Bedrock credential locations, so their `type` is inferred. At daemon
+startup, a provider disabled here or missing local authentication remains a
+disabled catalog entry with no models. Its models are omitted from both the
+model picker and agent system prompts; the prompt includes only the provider's
+disabled reason. This availability check reads local credential state and does
+not ping provider servers.
 
 Add any number of named instances when you need separate accounts. For custom
 instances, the section suffix is the provider ID shown in the model picker and
@@ -391,27 +404,32 @@ provider ID is `claude`:
 ```toml
 [providers.work_codex]
 type = "codex"
+enabled = true
 auth_file = "/Users/me/.codex-work/auth.json"
 transport = "auto"
 include_models = ["openai/gpt-5.6-sol", "openai/gpt-5.6-terra"]
 
 [providers.personal_claude]
 type = "claude"
+enabled = true
 config_dir = "/Users/me/.claude-personal"
 exclude_models = ["anthropic/haiku-4-5"]
 
 [providers.work_kimi]
 type = "kimi"
+enabled = true
 auth_file = "/Users/me/.kimi-code-work/credentials/kimi-code.json"
 include_models = ["moonshot/kimi-k3"]
 
 [providers.work_grok]
 type = "grok"
+enabled = true
 auth_file = "/Users/me/.grok-work/auth.json"
 include_models = ["xai/grok-build"]
 
 [providers.west_bedrock]
 type = "bedrock"
+enabled = true
 region = "us-west-2"
 bearer_token_env_var = "WEST_BEDROCK_TOKEN"
 
@@ -606,14 +624,8 @@ machine-wide config and select a Bedrock default:
 provider = "bedrock"
 model = "openai/gpt-5.6-sol"
 
-[providers.codex]
-enabled = false
-
-[providers.claude]
-enabled = false
-
-[providers.grok]
-enabled = false
+[providers]
+default_enable = false
 
 [providers.bedrock]
 enabled = true

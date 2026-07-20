@@ -69,8 +69,8 @@ export async function writeRuntimeConfig(path: string, config: PartialRigConfig)
         if (settings.showUsage !== undefined) document.settings.show_usage = settings.showUsage;
     }
 
-    if (providers !== undefined) {
-        document.providers = serializeProviders(providers);
+    if (providers !== undefined || config.providerDefaultEnable !== undefined) {
+        document.providers = serializeProviders(providers ?? {}, config.providerDefaultEnable);
     }
 
     if (theme !== undefined) {

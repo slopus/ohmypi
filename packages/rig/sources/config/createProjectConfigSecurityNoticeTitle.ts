@@ -3,7 +3,7 @@ import type { PartialRigConfig } from "./types.js";
 export function createProjectConfigSecurityNoticeTitle(config: PartialRigConfig): string {
     const permission = config.defaults?.permissionMode !== undefined;
     const docker = config.docker !== undefined;
-    const providers = config.providers !== undefined;
+    const providers = config.providerDefaultEnable !== undefined || config.providers !== undefined;
     const durableEventQueue = config.settings?.durableGlobalEventQueue !== undefined;
     if (durableEventQueue && (permission || docker || providers)) {
         return "Project machine settings ignored";

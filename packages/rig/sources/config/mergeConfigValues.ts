@@ -1,13 +1,23 @@
-import type { RigConfig, PartialRigConfig } from "./types.js";
+import type { PartialConfigProvider, RigConfig, PartialRigConfig } from "./types.js";
 
-export function mergeConfigValues(base: RigConfig, ...configs: PartialRigConfig[]): RigConfig {
-    let docker = base.docker;
-    const defaults = { ...base.defaults };
-    const features = { ...base.features };
-    const mcpServers = { ...base.mcpServers };
-    const providers = { ...base.providers };
-    const settings = { ...base.settings };
-    const theme = { ...base.theme };
+export function mergeConfigValues(
+    baseDefaults: RigConfig,
+    ...configs: PartialRigConfig[]
+): RigConfig {
+    let docker = baseDefaults.docker;
+    const defaults = { ...baseDefaults.defaults };
+    const features = { ...baseDefaults.features };
+    const mcpServers = { ...baseDefaults.mcpServers };
+    let providerDefaultEnable = baseDefaults.providerDefaultEnable;
+    const providers: Record<string, PartialConfigProvider> = Object.fromEntries(
+        Object.entries(baseDefaults.providers).map(([id, provider]) => {
+            const { enabled: _enabled, ...settings } = provider;
+            return [id, settings];
+        }),
+    );
+    const providerEnabledOverrides = new Map<string, boolean>();
+    const settings = { ...baseDefaults.settings };
+    const theme = { ...baseDefaults.theme };
 
     for (const config of configs) {
         if (config.docker !== undefined) docker = config.docker;
@@ -48,7 +58,19 @@ export function mergeConfigValues(base: RigConfig, ...configs: PartialRigConfig[
         if (config.features?.workflows !== undefined) {
             features.workflows = config.features.workflows;
         }
-        if (config.providers !== undefined) Object.assign(providers, config.providers);
+        if (config.providerDefaultEnable !== undefined) {
+            providerDefaultEnable = config.providerDefaultEnable;
+        }
+        if (config.providers !== undefined) {
+            for (const [id, provider] of Object.entries(config.providers)) {
+                providers[id] = provider;
+                if (provider.enabled !== undefined) {
+                    providerEnabledOverrides.set(id, provider.enabled);
+                } else {
+                    providerEnabledOverrides.delete(id);
+                }
+            }
+        }
         if (config.theme !== undefined) Object.assign(theme, config.theme);
         if (config.mcpServers !== undefined) {
             Object.assign(mcpServers, config.mcpServers);
@@ -59,7 +81,16 @@ export function mergeConfigValues(base: RigConfig, ...configs: PartialRigConfig[
         defaults,
         features,
         mcpServers,
-        providers,
+        providerDefaultEnable,
+        providers: Object.fromEntries(
+            Object.entries(providers).map(([id, provider]) => [
+                id,
+                {
+                    ...provider,
+                    enabled: providerEnabledOverrides.get(id) ?? providerDefaultEnable,
+                },
+            ]),
+        ),
         settings,
         theme,
         ...(docker === undefined ? {} : { docker }),

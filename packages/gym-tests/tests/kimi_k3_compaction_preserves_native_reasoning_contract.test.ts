@@ -16,6 +16,7 @@ describe("Kimi K3 conversation compaction", () => {
         const releaseFirstResponse = deferred<void>();
         const gym = await createGym({
             contextWindow: 500,
+            environment: { KIMI_API_KEY: "kimi-test-key" },
             async inference(request) {
                 if (request.options.sessionId?.endsWith(":title") === true) {
                     return { content: [{ text: "Kimi compaction", type: "text" }] };

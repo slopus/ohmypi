@@ -12,6 +12,7 @@ afterEach(async () => {
 describe("Auto-reviewed home-relative file paths", () => {
     it("executes the same home path that the user approved", async () => {
         const gym = await createGym({
+            environment: { ANTHROPIC_API_KEY: "claude-test-key" },
             inference(request, callIndex) {
                 if (request.context.systemPrompt?.includes("independent permission reviewer")) {
                     expect(callIndex).toBe(1);

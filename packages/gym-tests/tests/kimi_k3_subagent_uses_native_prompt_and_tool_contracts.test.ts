@@ -15,6 +15,12 @@ describe("Kimi K3 subagent contracts", () => {
         let childVerified = false;
         let parentCompleted = false;
         const gym = await createGym({
+            homeFiles: {
+                ".kimi-code/credentials/kimi-code.json": JSON.stringify({
+                    access_token: "kimi-test-token",
+                    refresh_token: "kimi-refresh-token",
+                }),
+            },
             inference(request) {
                 if (request.options.sessionId?.endsWith(":title") === true) {
                     return { content: [{ text: "Kimi subagent", type: "text" }] };

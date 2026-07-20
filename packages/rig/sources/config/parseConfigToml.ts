@@ -1,7 +1,7 @@
 import { parse, TomlDate, type TomlTable, type TomlValue } from "smol-toml";
 
 import type {
-    ConfigProvider,
+    PartialConfigProvider,
     PartialConfigDefaults,
     PartialConfigFeatures,
     PartialConfigSettings,
@@ -142,7 +142,7 @@ export function parseConfigToml(source: string): PartialRigConfig {
         if (showUsage !== undefined) settings.showUsage = showUsage;
     }
 
-    const providers = readProviders(table.providers);
+    const providerSettings = readProviders(table.providers);
 
     const mcpServers = readMcpServers(table.mcp_servers);
     const featuresTable = readTable(table.features, "features");
@@ -157,18 +157,27 @@ export function parseConfigToml(source: string): PartialRigConfig {
         ...(Object.keys(defaults).length > 0 ? { defaults } : {}),
         ...(Object.keys(features).length > 0 ? { features } : {}),
         ...(mcpServers !== undefined ? { mcpServers } : {}),
-        ...(providers !== undefined ? { providers } : {}),
+        ...(providerSettings?.defaultEnable === undefined
+            ? {}
+            : { providerDefaultEnable: providerSettings.defaultEnable }),
+        ...(providerSettings !== undefined && Object.keys(providerSettings.providers).length > 0
+            ? { providers: providerSettings.providers }
+            : {}),
         ...(Object.keys(settings).length > 0 ? { settings } : {}),
         ...(Object.keys(theme).length > 0 ? { theme } : {}),
     };
 }
 
-function readProviders(value: TomlValue | undefined): Record<string, ConfigProvider> | undefined {
+function readProviders(
+    value: TomlValue | undefined,
+): { defaultEnable?: boolean; providers: Record<string, PartialConfigProvider> } | undefined {
     if (value === undefined) return undefined;
     if (!isTomlTable(value)) throw new Error("providers must be a TOML table.");
 
-    const providers: Record<string, ConfigProvider> = {};
+    const defaultEnable = readBoolean(value, "default_enable", "providers.default_enable");
+    const providers: Record<string, PartialConfigProvider> = {};
     for (const [id, rawProvider] of Object.entries(value)) {
+        if (id === "default_enable") continue;
         if (!isTomlTable(rawProvider)) {
             throw new Error(`Provider "${id}" must be a TOML table.`);
         }
@@ -178,7 +187,7 @@ function readProviders(value: TomlValue | undefined): Record<string, ConfigProvi
             throw new Error(`providers.${id}.enabled must be a boolean.`);
         }
         const common = {
-            enabled: enabledValue ?? true,
+            ...(enabledValue === undefined ? {} : { enabled: enabledValue }),
             ...readOptionalStringArray(rawProvider, "exclude_models", "excludeModels"),
             ...readOptionalStringArray(rawProvider, "include_models", "includeModels"),
         };
@@ -277,7 +286,10 @@ function readProviders(value: TomlValue | undefined): Record<string, ConfigProvi
             type,
         };
     }
-    return providers;
+    return {
+        ...(defaultEnable === undefined ? {} : { defaultEnable }),
+        providers,
+    };
 }
 
 function readProviderType(

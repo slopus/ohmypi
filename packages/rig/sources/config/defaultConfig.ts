@@ -9,6 +9,7 @@ export const DEFAULT_RIG_CONFIG: RigConfig = {
         workflows: true,
     },
     mcpServers: {},
+    providerDefaultEnable: true,
     providers: {
         codex: {
             enabled: true,

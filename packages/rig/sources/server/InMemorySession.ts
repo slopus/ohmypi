@@ -3231,6 +3231,11 @@ export class InMemorySession {
                 ),
                 canSpawn: this.#agentMetadata.depth < agentManager.maxDepth,
                 depth: this.#agentMetadata.depth,
+                disabledProviders: this.#modelCatalog.providers.flatMap((provider) =>
+                    provider.disabledReason === undefined
+                        ? []
+                        : [{ id: provider.providerId, reason: provider.disabledReason }],
+                ),
                 followUp: (target, message) => agentManager.followUp(this.id, target, message),
                 interrupt: (target) => agentManager.interrupt(this.id, target),
                 list: (pathPrefix) => agentManager.list(this.id, pathPrefix),

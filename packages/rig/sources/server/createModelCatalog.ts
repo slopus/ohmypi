@@ -15,6 +15,10 @@ import { uniqueModelsById } from "./uniqueModelsById.js";
 
 export interface CreateModelCatalogOptions {
     cwd?: string;
+    disabledProviderReasons?: ReadonlyMap<
+        string,
+        "not_authenticated" | "not_enabled" | "no_models"
+    >;
     env?: NodeJS.ProcessEnv;
     providers?: ConfigProviders;
 }
@@ -28,16 +32,36 @@ export function createModelCatalog(options: CreateModelCatalogOptions = {}): Mod
         processManager: new NativeProcessManager(),
     });
     const providers: Provider[] = [];
+    const providerCatalogs: ModelCatalog["providers"][number][] = [];
     const emptyModelProviderIds: string[] = [];
     const missingCredentialVariables = new Set<string>();
     const gymProvider = createGymProviderFromEnvironment(env);
     const gymEnabled = gymProvider !== undefined;
-    if (gymProvider !== undefined) providers.unshift(gymProvider);
+    if (gymProvider !== undefined) {
+        providers.unshift(gymProvider);
+        providerCatalogs.unshift({
+            models: gymProvider.models,
+            providerId: gymProvider.id,
+            ...(gymProvider.serviceTiers === undefined
+                ? {}
+                : { serviceTiers: gymProvider.serviceTiers }),
+        });
+    }
     for (const [configuredId, config] of Object.entries(providerSettings)) {
-        if (!config.enabled) continue;
         const id = configuredId;
-        if (providers.some((provider) => provider.id === id)) {
+        if (providerCatalogs.some((provider) => provider.providerId === id)) {
             throw new Error(`Inference provider '${id}' is configured more than once.`);
+        }
+        const configuredDisabledReason = options.disabledProviderReasons?.get(id);
+        const disabledReason = !config.enabled
+            ? "not_enabled"
+            : configuredDisabledReason === "not_enabled"
+              ? "not_enabled"
+              : configuredDisabledReason;
+        if (disabledReason !== undefined) {
+            if (disabledReason === "no_models") emptyModelProviderIds.push(id);
+            providerCatalogs.push({ disabledReason, models: [], providerId: id });
+            continue;
         }
 
         const result = createConfiguredProvider({
@@ -49,14 +73,25 @@ export function createModelCatalog(options: CreateModelCatalogOptions = {}): Mod
         });
         if (result.status === "missing_credential") {
             missingCredentialVariables.add(result.variable);
+            providerCatalogs.push({
+                disabledReason: "not_authenticated",
+                models: [],
+                providerId: id,
+            });
             continue;
         }
         const provider = result.provider;
         if (provider.models.length === 0) {
             emptyModelProviderIds.push(id);
+            providerCatalogs.push({ disabledReason: "no_models", models: [], providerId: id });
             continue;
         }
         providers.push(provider);
+        providerCatalogs.push({
+            models: provider.models,
+            providerId: provider.id,
+            ...(provider.serviceTiers === undefined ? {} : { serviceTiers: provider.serviceTiers }),
+        });
     }
 
     const defaultProvider = providers[0];
@@ -67,6 +102,14 @@ export function createModelCatalog(options: CreateModelCatalogOptions = {}): Mod
             );
         }
         const unavailableReasons: string[] = [];
+        const unauthenticatedProviderIds = [...(options.disabledProviderReasons ?? [])].flatMap(
+            ([id, reason]) => (reason === "not_authenticated" ? [id] : []),
+        );
+        if (unauthenticatedProviderIds.length > 0) {
+            unavailableReasons.push(
+                `${unauthenticatedProviderIds.length === 1 ? "Provider" : "Providers"} ${unauthenticatedProviderIds.map((id) => `'${id}'`).join(", ")} ${unauthenticatedProviderIds.length === 1 ? "has" : "have"} no local authentication. Sign in through the corresponding coding assistant or configure its credential.`,
+            );
+        }
         if (emptyModelProviderIds.length > 0) {
             unavailableReasons.push(
                 `${emptyModelProviderIds.length === 1 ? "Provider" : "Providers"} ${emptyModelProviderIds.map((id) => `'${id}'`).join(", ")} ${emptyModelProviderIds.length === 1 ? "has" : "have"} no models after applying model filters and regional availability.`,
@@ -78,7 +121,9 @@ export function createModelCatalog(options: CreateModelCatalogOptions = {}): Mod
                 `Set ${credentialVariables.join(", ")} for the enabled Amazon Bedrock provider${credentialVariables.length === 1 ? "" : "s"}, or enable Codex or Claude Code.`,
             );
         }
-        throw new Error(`No inference providers are available. ${unavailableReasons.join(" ")}`);
+        throw new Error(
+            `No inference providers are available.${unavailableReasons.length === 0 ? "" : ` ${unavailableReasons.join(" ")}`}`,
+        );
     }
     const defaultModel = gymEnabled
         ? (defaultProvider.models.find((model) => model.id === "openai/gym") ??
@@ -95,10 +140,6 @@ export function createModelCatalog(options: CreateModelCatalogOptions = {}): Mod
         defaultModelId: defaultModel.id,
         defaultProviderId: defaultProvider.id,
         models: uniqueModelsById(providers.flatMap((provider) => provider.models)),
-        providers: providers.map((provider) => ({
-            providerId: provider.id,
-            models: provider.models,
-            ...(provider.serviceTiers === undefined ? {} : { serviceTiers: provider.serviceTiers }),
-        })),
+        providers: providerCatalogs,
     };
 }

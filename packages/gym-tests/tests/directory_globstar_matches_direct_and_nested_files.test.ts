@@ -13,6 +13,7 @@ describe("directory globstar matching", () => {
     it("returns files directly below the directory and in nested directories", async () => {
         let globResult = "";
         const gym = await createGym({
+            environment: { ANTHROPIC_API_KEY: "claude-test-key" },
             files: {
                 "src/direct.ts": "direct\n",
                 "src/nested/child.ts": "nested\n",

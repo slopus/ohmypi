@@ -12,6 +12,7 @@ afterEach(async () => {
 describe("file tool locks", () => {
     it("serializes parallel edits to the same file so neither change is lost", async () => {
         const gym = await createGym({
+            environment: { ANTHROPIC_API_KEY: "claude-test-key" },
             files: { "shared.txt": "alpha\nbeta\n" },
             inference(request, callIndex) {
                 if (callIndex === 0) {

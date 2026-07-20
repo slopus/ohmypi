@@ -65,6 +65,7 @@ export interface SessionInterruption {
 }
 
 export interface ProviderModelCatalog {
+    disabledReason?: "not_authenticated" | "not_enabled" | "no_models";
     providerId: string;
     models: readonly Model[];
     serviceTiers?: readonly ServiceTier[];

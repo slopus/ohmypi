@@ -145,7 +145,9 @@ describe("createSystemPrompt", () => {
             context: contextFor(cwd),
         });
 
-        expect(prompt).toBe(GPT_5_4_SYSTEM_PROMPT);
+        expect(prompt).toBe(
+            `${GPT_5_4_SYSTEM_PROMPT}\n\n${modelIdentityInstructions(model.id, "codex")}`,
+        );
         expect(prompt).toContain("You are Codex, a coding agent based on GPT-5.");
         expect(prompt).not.toContain("You are GPT-5.2 running in the Codex CLI");
         expect(prompt).not.toContain("IGN-CMD");
@@ -167,7 +169,9 @@ describe("createSystemPrompt", () => {
                 messages: [],
                 context: contextFor(cwd),
             }),
-        ).resolves.toBe(GPT_5_6_SOL_SYSTEM_PROMPT);
+        ).resolves.toBe(
+            `${GPT_5_6_SOL_SYSTEM_PROMPT}\n\n${modelIdentityInstructions(model.id, "codex")}`,
+        );
     });
 
     it("uses Terra's current Codex prompt for GPT-5.6 Terra and Luna", async () => {
@@ -188,7 +192,9 @@ describe("createSystemPrompt", () => {
                     messages: [],
                     context: contextFor(cwd),
                 }),
-            ).resolves.toBe(GPT_5_6_TERRA_SYSTEM_PROMPT);
+            ).resolves.toBe(
+                `${GPT_5_6_TERRA_SYSTEM_PROMPT}\n\n${modelIdentityInstructions(model.id, "codex")}`,
+            );
         }
     });
 
@@ -209,7 +215,7 @@ describe("createSystemPrompt", () => {
                 messages: [],
                 context: contextFor(cwd),
             }),
-        ).resolves.toBe("Base instructions.");
+        ).resolves.toBe(`${modelIdentityInstructions(model.id, "codex")}\n\nBase instructions.`);
     });
 
     it("tells the model which permission boundary is active", async () => {
@@ -320,6 +326,53 @@ describe("createSystemPrompt", () => {
         expect(prompt).toContain("without asking for confirmation");
     });
 
+    it("names disabled providers without exposing any of their model names", async () => {
+        const cwd = await makeTempDir();
+        const model = defineModel({
+            id: "openai/gpt-test",
+            name: "GPT Test",
+            thinkingLevels: ["off"],
+            defaultThinkingLevel: "off",
+        });
+        const context = contextFor(cwd);
+        context.subagents = {
+            availableModels: [{ id: model.id, name: model.name, providerId: "codex" }],
+            canSpawn: true,
+            depth: 0,
+            disabledProviders: [
+                { id: "grok", reason: "not_enabled" },
+                { id: "kimi", reason: "not_authenticated" },
+            ],
+            followUp: () => {
+                throw new Error("not used");
+            },
+            interrupt: () => {
+                throw new Error("not used");
+            },
+            list: () => [],
+            maxDepth: 3,
+            resume: () => {
+                throw new Error("not used");
+            },
+            spawn: async () => {
+                throw new Error("not used");
+            },
+            wait: async () => ({ agents: [], timedOut: false }),
+        };
+
+        const prompt = await createSystemPrompt({
+            provider: providerFor("codex", model),
+            model,
+            messages: [],
+            context,
+        });
+
+        expect(prompt).toContain("- grok: disabled in configuration");
+        expect(prompt).toContain("- kimi: no local authentication was found");
+        expect(prompt).not.toContain("Grok Build");
+        expect(prompt).not.toContain("Kimi K3");
+    });
+
     it("adds the active shell tool's provider-specific Auto escalation instructions", async () => {
         const cwd = await makeTempDir();
         const model = defineModel({
@@ -426,7 +479,9 @@ describe("createSystemPrompt", () => {
                 messages: [],
                 context: contextFor(cwd),
             }),
-        ).resolves.toBe(CLAUDE_CODE_SYSTEM_PROMPT);
+        ).resolves.toBe(
+            `${CLAUDE_CODE_SYSTEM_PROMPT}\n\n${modelIdentityInstructions(model.id, "anthropic")}`,
+        );
     });
 
     it("uses Moonshot's official Kimi identity prompt", async () => {
@@ -445,7 +500,9 @@ describe("createSystemPrompt", () => {
                 messages: [],
                 context: contextFor(cwd),
             }),
-        ).resolves.toBe(KIMI_SYSTEM_PROMPT);
+        ).resolves.toBe(
+            `${KIMI_SYSTEM_PROMPT}\n\n${modelIdentityInstructions(model.id, "bedrock")}`,
+        );
     });
 
     it("assembles explicit instructions for unsupported test models", async () => {
@@ -472,7 +529,9 @@ describe("createSystemPrompt", () => {
                 messages,
                 context: contextFor(cwd),
             }),
-        ).resolves.toBe("Base instructions.\n\nKeep answers short.");
+        ).resolves.toBe(
+            `${modelIdentityInstructions(model.id, "codex")}\n\nBase instructions.\n\nKeep answers short.`,
+        );
     });
 
     it("does not load CLAUDE.md when AGENTS.md is absent", async () => {
@@ -494,7 +553,7 @@ describe("createSystemPrompt", () => {
                 messages: [],
                 context: contextFor(cwd),
             }),
-        ).resolves.toBe("Base instructions.");
+        ).resolves.toBe(`${modelIdentityInstructions(model.id, "mock")}\n\nBase instructions.`);
     });
 
     it("adds available skills from Codex roots and ignores Pi skill roots", async () => {
@@ -633,6 +692,10 @@ function providerFor(id: string, model: Model): Provider {
             throw new Error("stream is not used by createSystemPrompt tests");
         },
     });
+}
+
+function modelIdentityInstructions(modelId: string, providerId: string): string {
+    return `# Runtime model\nModel ID: ${modelId}\nProvider ID: ${providerId}`;
 }
 
 function contextFor(

@@ -14,6 +14,12 @@ describe("Kimi K3 model switching", () => {
     it("rebuilds provider prompts and tools, persists Codex, then switches back to Kimi", async () => {
         let agentCallIndex = 0;
         const gym = await createGym({
+            environment: { KIMI_API_KEY: "kimi-test-key" },
+            homeFiles: {
+                ".codex/auth.json": JSON.stringify({
+                    tokens: { access_token: "codex-test-token" },
+                }),
+            },
             mode: "docker",
             entrypoint: [
                 "bash",

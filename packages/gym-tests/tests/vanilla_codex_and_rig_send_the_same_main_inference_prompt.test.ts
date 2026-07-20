@@ -466,6 +466,7 @@ function expectExactRigPayload(
     const { prompt_cache_key: _promptCacheKey, ...stablePayload } = payload;
     const systemPrompt = [
         modelCase.systemPrompt,
+        `# Runtime model\nModel ID: ${modelCase.rigModelId}\nProvider ID: codex`,
         createDefaultInstructions("/workspace"),
         createPermissionInstructions("full_access"),
         ...(thinking === "ultra" ? [CODEX_ULTRA_INSTRUCTIONS] : []),

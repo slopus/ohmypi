@@ -15,10 +15,14 @@ import {
 import { createModelCatalog } from "./createModelCatalog.js";
 
 describe("createModelCatalog", () => {
-    it("does not expose Amazon Bedrock without a bearer token", () => {
+    it("keeps Amazon Bedrock disabled without exposing models when its token is absent", () => {
         const catalog = createModelCatalog({ env: {} });
 
-        expect(catalog.providers.map((provider) => provider.providerId)).not.toContain("bedrock");
+        expect(catalog.providers.find((provider) => provider.providerId === "bedrock")).toEqual({
+            disabledReason: "not_authenticated",
+            models: [],
+            providerId: "bedrock",
+        });
         expect(
             catalog.providers.find((provider) => provider.providerId === "codex")?.serviceTiers,
         ).toEqual(["fast"]);
@@ -65,7 +69,11 @@ describe("createModelCatalog", () => {
             env: { AWS_BEARER_TOKEN_BEDROCK: "   " },
         });
 
-        expect(catalog.providers.map((provider) => provider.providerId)).not.toContain("bedrock");
+        expect(catalog.providers.find((provider) => provider.providerId === "bedrock")).toEqual({
+            disabledReason: "not_authenticated",
+            models: [],
+            providerId: "bedrock",
+        });
     });
 
     it("can expose Bedrock without native Codex or Claude Code authentication", () => {
@@ -81,7 +89,15 @@ describe("createModelCatalog", () => {
             },
         });
 
-        expect(catalog.providers.map((provider) => provider.providerId)).toEqual(["bedrock"]);
+        expect(catalog.providers.map((provider) => provider.providerId)).toEqual([
+            "bedrock",
+            "claude",
+            "codex",
+        ]);
+        expect(catalog.providers.slice(1)).toEqual([
+            { disabledReason: "not_enabled", models: [], providerId: "claude" },
+            { disabledReason: "not_enabled", models: [], providerId: "codex" },
+        ]);
         expect(catalog.defaultProviderId).toBe("bedrock");
         expect(catalog.defaultModelId).toBe(modelOpenaiGpt56Sol.id);
         expect(
@@ -105,7 +121,13 @@ describe("createModelCatalog", () => {
         expect(catalog.providers.map((provider) => provider.providerId)).toEqual([
             "codex",
             "claude",
+            "bedrock",
         ]);
+        expect(catalog.providers[2]).toEqual({
+            disabledReason: "not_enabled",
+            models: [],
+            providerId: "bedrock",
+        });
     });
 
     it("supports multiple named Codex and Claude Code accounts with model filters", () => {
@@ -186,7 +208,15 @@ describe("createModelCatalog", () => {
             },
         });
 
-        expect(catalog.providers.map((provider) => provider.providerId)).toEqual(["codex"]);
+        expect(catalog.providers.map((provider) => provider.providerId)).toEqual([
+            "codex",
+            "west_bedrock",
+        ]);
+        expect(catalog.providers[1]).toEqual({
+            disabledReason: "no_models",
+            models: [],
+            providerId: "west_bedrock",
+        });
     });
 
     it("explains empty model filters when no other provider is available", () => {
@@ -236,6 +266,34 @@ describe("createModelCatalog", () => {
             }),
         ).toThrow(
             "Set WORK_BEDROCK_TOKEN for the enabled Amazon Bedrock provider, or enable Codex or Claude Code.",
+        );
+    });
+
+    it("explains when direct daemon auth checks disable every provider", () => {
+        expect(() =>
+            createModelCatalog({
+                disabledProviderReasons: new Map([
+                    ["codex", "not_authenticated"],
+                    ["grok", "not_authenticated"],
+                ]),
+                providers: {
+                    codex: { enabled: true, type: "codex" },
+                    grok: { enabled: true, type: "grok" },
+                },
+            }),
+        ).toThrow(
+            "No inference providers are available. Providers 'codex', 'grok' have no local authentication. Sign in through the corresponding coding assistant or configure its credential.",
+        );
+    });
+
+    it("explains providers pre-disabled because their model filters are empty", () => {
+        expect(() =>
+            createModelCatalog({
+                disabledProviderReasons: new Map([["codex", "no_models"]]),
+                providers: { codex: { enabled: true, type: "codex" } },
+            }),
+        ).toThrow(
+            "No inference providers are available. Provider 'codex' has no models after applying model filters and regional availability.",
         );
     });
 

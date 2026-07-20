@@ -14,6 +14,7 @@ describe("Claude background commands without an explicit timeout", () => {
         const completionMarker = "CLAUDE_BACKGROUND_SURVIVED_FOREGROUND_TIMEOUT";
         let taskResultText = "";
         const gym = await createGym({
+            environment: { ANTHROPIC_API_KEY: "claude-test-key" },
             mode: "docker",
             inference(request, callIndex) {
                 const lastMessage = request.context.messages.at(-1);

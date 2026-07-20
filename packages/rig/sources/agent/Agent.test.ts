@@ -257,10 +257,10 @@ describe("Agent", () => {
         await agent.run();
 
         expect(contexts[0]?.systemPrompt).toBe(
-            "Base instructions.\n\nYou are in Full access mode. Filesystem, shell, and network access are unrestricted.\n\nInitial API instructions.",
+            "# Runtime model\nModel ID: openai/gpt-test\nProvider ID: codex\n\nBase instructions.\n\nYou are in Full access mode. Filesystem, shell, and network access are unrestricted.\n\nInitial API instructions.",
         );
         expect(contexts[1]?.systemPrompt).toBe(
-            "Base instructions.\n\nYou are in Full access mode. Filesystem, shell, and network access are unrestricted.\n\nUpdated API instructions.",
+            "# Runtime model\nModel ID: openai/gpt-test\nProvider ID: codex\n\nBase instructions.\n\nYou are in Full access mode. Filesystem, shell, and network access are unrestricted.\n\nUpdated API instructions.",
         );
     });
 
@@ -335,7 +335,7 @@ describe("Agent", () => {
         expect(agent.queue).toEqual([]);
         expect(agent.messages.map((message) => message.id)).toEqual(["id-2", "id-4", "id-7"]);
         expect(contexts[0]?.systemPrompt).toBe(
-            "Base instructions.\n\nKeep answers short.\n\nYou are in Full access mode. Filesystem, shell, and network access are unrestricted.",
+            "# Runtime model\nModel ID: openai/gpt-test\nProvider ID: codex\n\nBase instructions.\n\nKeep answers short.\n\nYou are in Full access mode. Filesystem, shell, and network access are unrestricted.",
         );
         expect(logs.map((entry) => entry[0])).toEqual([
             "[system:id-2] Keep answers short.",

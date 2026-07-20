@@ -13,6 +13,7 @@ describe("glob directory symlink handling", () => {
     it("returns workspace files without following a directory symlink cycle", async () => {
         let globResult = "";
         const gym = await createGym({
+            environment: { ANTHROPIC_API_KEY: "claude-test-key" },
             files: { "src/direct.ts": "direct\n" },
             inference(request, callIndex) {
                 if (callIndex === 0) {

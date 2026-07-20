@@ -16,6 +16,8 @@ import { removeStaleSocket } from "./removeStaleSocket.js";
 import { McpClientManager } from "../mcp/index.js";
 import { loadConfig, writeDaemonSettings } from "../config/index.js";
 import { createProviderQuotaService } from "../providers/createProviderQuotaService.js";
+import { disableUnavailableProviders } from "../providers/disableUnavailableProviders.js";
+import { resolveProviderDisabledReasons } from "../providers/resolveProviderDisabledReasons.js";
 import { createCodingAssistantAgent } from "../runtime/createCodingAssistantAgent.js";
 import { getDaemonIdentity } from "../daemon/index.js";
 import { errorToMessage } from "../errorToMessage.js";
@@ -152,8 +154,18 @@ export async function runLocalProtocolServer(
         if (stopping) return;
 
         const providerQuotaService = createProviderQuotaService({ cwd: process.cwd() });
+        const disabledProviderReasons = await resolveProviderDisabledReasons(
+            loadedConfig.config.providers,
+            process.env,
+        );
+        if (stopping) return;
+        const availableProviders = disableUnavailableProviders(
+            loadedConfig.config.providers,
+            disabledProviderReasons,
+        );
         const modelCatalog = createModelCatalog({
             cwd: process.cwd(),
+            disabledProviderReasons,
             providers: loadedConfig.config.providers,
         });
         mcpToolProvider = new McpClientManager();
@@ -162,7 +174,7 @@ export async function runLocalProtocolServer(
             createRuntime: (options) =>
                 createCodingAssistantAgent({
                     ...options,
-                    providers: loadedConfig.config.providers,
+                    providers: availableProviders,
                 }),
             databasePath: paths.databasePath,
             durableGlobalEventQueue: loadedConfig.config.settings.durableGlobalEventQueue,

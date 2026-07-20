@@ -14,6 +14,85 @@ import { writeRuntimeConfigDefaults } from "./writeRuntimeConfigDefaults.js";
 import { writeDaemonSettings } from "./writeDaemonSettings.js";
 
 describe("config", () => {
+    it("parses a provider default without treating it as a provider", () => {
+        expect(
+            parseConfigToml(`
+[providers]
+default_enable = false
+
+[providers.codex]
+enabled = true
+
+[providers.grok]
+`),
+        ).toEqual({
+            providerDefaultEnable: false,
+            providers: {
+                codex: { enabled: true, type: "codex" },
+                grok: { type: "grok" },
+            },
+        });
+    });
+
+    it("rejects a non-boolean provider default", () => {
+        expect(() => parseConfigToml('[providers]\ndefault_enable = "false"\n')).toThrow(
+            "providers.default_enable must be a boolean.",
+        );
+    });
+
+    it("uses the provider default unless a provider is explicitly enabled", async () => {
+        const root = await mkdtemp(join(tmpdir(), "rig-provider-default-"));
+        try {
+            const configHome = join(root, "config-home");
+            await mkdir(configHome, { recursive: true });
+            await writeFile(
+                join(configHome, "config.toml"),
+                `
+[providers]
+default_enable = false
+
+[providers.codex]
+enabled = true
+
+[providers.claude]
+enabled = true
+`,
+                "utf8",
+            );
+            await writeFile(
+                join(configHome, "runtime.toml"),
+                `
+[providers.codex]
+enabled = true
+transport = "sse"
+
+[providers.claude]
+executable = "/opt/claude"
+
+[providers.grok]
+enabled = true
+`,
+                "utf8",
+            );
+
+            const loaded = await loadConfig({
+                cwd: root,
+                env: { RIG_HOME: configHome } as NodeJS.ProcessEnv,
+            });
+
+            expect(loaded.config.providerDefaultEnable).toBe(false);
+            expect(loaded.config.providers).toEqual({
+                bedrock: { enabled: false, type: "bedrock" },
+                claude: { enabled: false, executable: "/opt/claude", type: "claude" },
+                codex: { enabled: true, transport: "sse", type: "codex" },
+                grok: { enabled: true, type: "grok" },
+                kimi: { enabled: false, type: "kimi" },
+            });
+        } finally {
+            await rm(root, { recursive: true, force: true });
+        }
+    });
+
     it("parses a standalone theme table", () => {
         expect(parseConfigToml('[theme]\nprimary = "#123456"\n')).toEqual({
             theme: { primary: "#123456" },
@@ -148,7 +227,6 @@ bearer_token_env_var = "WORK_BEDROCK_TOKEN"
                 codex: { enabled: false, type: "codex" },
                 eu_bedrock: {
                     bearerTokenEnvVar: "WORK_BEDROCK_TOKEN",
-                    enabled: true,
                     modelOverrides: {
                         "openai/gpt-5.6-sol": {
                             endpoint: "https://mantle.example/openai/v1",
@@ -160,14 +238,12 @@ bearer_token_env_var = "WORK_BEDROCK_TOKEN"
                 },
                 work_claude: {
                     configDir: "/Users/me/.claude-work",
-                    enabled: true,
                     executable: "/opt/claude",
                     type: "claude",
                 },
                 work_codex: {
                     authFile: "/Users/me/.codex-work/auth.json",
                     baseUrl: "https://chatgpt.example/backend-api",
-                    enabled: true,
                     excludeModels: ["openai/gpt-5.4"],
                     includeModels: ["openai/gpt-5.6-sol"],
                     transport: "sse",
@@ -176,13 +252,11 @@ bearer_token_env_var = "WORK_BEDROCK_TOKEN"
                 work_grok: {
                     authFile: "/Users/me/.grok-work/auth.json",
                     baseUrl: "https://grok.example/v1",
-                    enabled: true,
                     type: "grok",
                 },
                 work_kimi: {
                     authFile: "/Users/me/.kimi-work/credentials/kimi-code.json",
                     baseUrl: "https://kimi.example/coding/v1",
-                    enabled: true,
                     type: "kimi",
                 },
             },
@@ -349,6 +423,8 @@ show_reasoning = true
 show_usage = true
 [features]
 workflows = true
+[providers]
+default_enable = false
 [providers.codex]
 enabled = false
 [providers.claude]
@@ -390,6 +466,7 @@ effort = "minimal"
                 showUsage: true,
             });
             expect(loaded.config.features.workflows).toBe(true);
+            expect(loaded.config.providerDefaultEnable).toBe(true);
             expect(loaded.config.providers).toEqual({
                 bedrock: { enabled: true, type: "bedrock" },
                 claude: { enabled: true, type: "claude" },
@@ -452,6 +529,7 @@ effort = "minimal"
                     workflows: false,
                 },
                 mcpServers: {},
+                providerDefaultEnable: false,
                 providers: {
                     codex: { enabled: false, type: "codex" },
                     claude: { enabled: false, type: "claude" },
@@ -474,6 +552,7 @@ effort = "minimal"
                     showReasoning: false,
                     showUsage: false,
                 },
+                providerDefaultEnable: false,
                 providers: {
                     codex: { enabled: false, type: "codex" },
                     claude: { enabled: false, type: "claude" },
@@ -499,6 +578,9 @@ effort = "minimal"
                     "",
                     "[features]",
                     "workflows = false",
+                    "",
+                    "[providers]",
+                    "default_enable = false",
                     "",
                     "[providers.codex]",
                     "enabled = false",
@@ -531,6 +613,9 @@ effort = "minimal"
                     "[settings]",
                     "show_reasoning = false",
                     "show_usage = false",
+                    "",
+                    "[providers]",
+                    "default_enable = false",
                     "",
                     "[providers.codex]",
                     "enabled = false",
@@ -626,6 +711,9 @@ effort = "minimal"
                     "[settings]",
                     "show_usage = true",
                     "",
+                    "[providers]",
+                    "default_enable = false",
+                    "",
                     "[providers.codex]",
                     "enabled = false",
                     "",
@@ -657,6 +745,7 @@ effort = "minimal"
                     durableGlobalEventQueue: true,
                     showUsage: true,
                 },
+                providerDefaultEnable: false,
                 providers: {
                     bedrock: { enabled: true, type: "bedrock" },
                     claude: { enabled: false, type: "claude" },

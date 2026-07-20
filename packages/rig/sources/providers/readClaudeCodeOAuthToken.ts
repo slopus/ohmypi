@@ -16,7 +16,7 @@ interface ClaudeCodeCredentials {
 export async function readClaudeCodeOAuthToken(
     env: NodeJS.ProcessEnv = process.env,
 ): Promise<string | undefined> {
-    if (env.CLAUDE_CODE_OAUTH_TOKEN) {
+    if (env.CLAUDE_CODE_OAUTH_TOKEN?.trim()) {
         return env.CLAUDE_CODE_OAUTH_TOKEN;
     }
 
@@ -64,7 +64,7 @@ function parseAccessToken(value: string): string | undefined {
     try {
         const credentials = JSON.parse(value) as ClaudeCodeCredentials;
         const token = credentials.claudeAiOauth?.accessToken;
-        return typeof token === "string" && token.length > 0 ? token : undefined;
+        return typeof token === "string" && token.trim().length > 0 ? token : undefined;
     } catch {
         return undefined;
     }

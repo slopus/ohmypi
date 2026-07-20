@@ -1,25 +1,36 @@
-import type { ConfigProvider, ConfigProviders } from "./types.js";
+import type {
+    ConfigProvider,
+    ConfigProviders,
+    PartialConfigProvider,
+    PartialConfigProviders,
+} from "./types.js";
 
-export function serializeProviders(providers: ConfigProviders): Record<string, unknown> {
-    return Object.fromEntries(
-        Object.entries(providers).map(([id, provider]) => [
-            id,
-            {
-                ...(isBuiltInProvider(id, provider) ? {} : { type: provider.type }),
-                enabled: provider.enabled,
-                ...(provider.includeModels === undefined
-                    ? {}
-                    : { include_models: provider.includeModels }),
-                ...(provider.excludeModels === undefined
-                    ? {}
-                    : { exclude_models: provider.excludeModels }),
-                ...serializeProviderFields(provider),
-            },
-        ]),
-    );
+export function serializeProviders(
+    providers: ConfigProviders | PartialConfigProviders,
+    defaultEnable?: boolean,
+): Record<string, unknown> {
+    return {
+        ...(defaultEnable === undefined ? {} : { default_enable: defaultEnable }),
+        ...Object.fromEntries(
+            Object.entries(providers).map(([id, provider]) => [
+                id,
+                {
+                    ...(isBuiltInProvider(id, provider) ? {} : { type: provider.type }),
+                    ...(provider.enabled === undefined ? {} : { enabled: provider.enabled }),
+                    ...(provider.includeModels === undefined
+                        ? {}
+                        : { include_models: provider.includeModels }),
+                    ...(provider.excludeModels === undefined
+                        ? {}
+                        : { exclude_models: provider.excludeModels }),
+                    ...serializeProviderFields(provider),
+                },
+            ]),
+        ),
+    };
 }
 
-function isBuiltInProvider(id: string, provider: ConfigProvider): boolean {
+function isBuiltInProvider(id: string, provider: Pick<ConfigProvider, "type">): boolean {
     return (
         (id === "codex" && provider.type === "codex") ||
         (id === "claude" && provider.type === "claude") ||
@@ -29,7 +40,7 @@ function isBuiltInProvider(id: string, provider: ConfigProvider): boolean {
     );
 }
 
-function serializeProviderFields(provider: ConfigProvider): Record<string, unknown> {
+function serializeProviderFields(provider: PartialConfigProvider): Record<string, unknown> {
     if (provider.type === "codex") {
         return {
             ...(provider.authFile === undefined ? {} : { auth_file: provider.authFile }),

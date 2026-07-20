@@ -4,6 +4,7 @@ export function withoutProjectMachineSettings(config: PartialRigConfig): Partial
     const {
         defaults: projectDefaults,
         docker: _docker,
+        providerDefaultEnable: _providerDefaultEnable,
         providers: _providers,
         settings: projectSettings,
         ...rest

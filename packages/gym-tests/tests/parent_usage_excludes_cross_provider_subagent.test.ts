@@ -17,6 +17,7 @@ describe("parent session usage", () => {
     it("excludes a cross-provider subagent's inference", async () => {
         await mkdir(artifacts, { recursive: true });
         const gym = await createGym({
+            environment: { ANTHROPIC_API_KEY: "claude-test-key" },
             inference(request) {
                 const isParent = request.providerId === "gym";
                 const last = JSON.stringify(request.context.messages.at(-1));

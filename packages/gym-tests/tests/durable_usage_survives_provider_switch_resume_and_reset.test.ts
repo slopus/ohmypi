@@ -22,6 +22,7 @@ describe("durable session usage", () => {
         await mkdir(artifacts, { recursive: true });
         const gym = await createGym({
             cols: 58,
+            environment: { ANTHROPIC_API_KEY: "claude-test-key" },
             mode: "docker",
             entrypoint: [
                 "bash",

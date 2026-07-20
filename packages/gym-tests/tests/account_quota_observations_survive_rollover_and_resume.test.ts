@@ -40,6 +40,7 @@ describe("account quota observations", () => {
             mode: "docker",
             entrypoint: ["bash", "-lc", `${rig}; echo QUOTA_RESUMED; exec ${rig} resume --last`],
             environment: {
+                ANTHROPIC_API_KEY: "claude-test-key",
                 NO_PROXY: "host.docker.internal",
                 RIG_CLAUDE_CODE_EXECUTABLE: `/workspace/${claudeQuotaExecutable}`,
                 RIG_CODEX_BASE_URL: "{{HTTP_PROXY_URL}}/backend-api",

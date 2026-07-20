@@ -14,6 +14,7 @@ describe("Claude Read default line limit", () => {
         let readResult = "";
         const content = Array.from({ length: 2_001 }, (_, index) => `line-${index + 1}`).join("\n");
         const gym = await createGym({
+            environment: { ANTHROPIC_API_KEY: "claude-test-key" },
             files: { "long.txt": content },
             inference(request, callIndex) {
                 if (callIndex === 0) {

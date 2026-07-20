@@ -9,6 +9,11 @@ export interface AvailableSubagentModel {
     providerId: string;
 }
 
+export interface DisabledSubagentProvider {
+    id: string;
+    reason: "not_authenticated" | "not_enabled" | "no_models";
+}
+
 export interface ManagedSubagent {
     description: string;
     path: string;
@@ -47,6 +52,7 @@ export interface SubagentContext {
     availableModels?: readonly AvailableSubagentModel[];
     canSpawn: boolean;
     depth: number;
+    disabledProviders?: readonly DisabledSubagentProvider[];
     followUp(target: string, message: string): ManagedSubagent;
     interrupt(target: string): ManagedSubagent;
     list(pathPrefix?: string): readonly ManagedSubagent[];

@@ -15,6 +15,7 @@ describe("Grep patterns are always search text", () => {
         let preprocessorCheckResult = "";
         let arrowPatternResult = "";
         const gym = await createGym({
+            environment: { ANTHROPIC_API_KEY: "claude-test-key" },
             files: {
                 "arrow.txt": "left -> right\n",
                 "preprocessor.sh": {

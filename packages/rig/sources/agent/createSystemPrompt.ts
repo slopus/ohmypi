@@ -37,6 +37,9 @@ export async function createSystemPrompt(
     if (modelPrompt !== undefined && modelPrompt.length > 0) {
         parts.push(modelPrompt);
     }
+    parts.push(
+        `# Runtime model\nModel ID: ${options.model.id}\nProvider ID: ${options.provider.id}`,
+    );
 
     if (options.instructions !== undefined && options.instructions.length > 0) {
         parts.push(options.instructions);
@@ -64,6 +67,7 @@ export async function createSystemPrompt(
     if (options.context.subagents?.canSpawn === true) {
         const availableModelsInstructions = createAvailableModelsInstructions(
             options.context.subagents.availableModels ?? [],
+            options.context.subagents.disabledProviders ?? [],
         );
         if (availableModelsInstructions !== undefined) {
             parts.push(availableModelsInstructions);

@@ -52,11 +52,14 @@ const rigTools = [
     ...goalTools,
 ] as const;
 
-const rigSystemPrompt = [
-    CLAUDE_CODE_SYSTEM_PROMPT,
-    createDefaultInstructions("/workspace"),
-    createPermissionInstructions("full_access"),
-].join("\n\n");
+function rigSystemPrompt(modelCase: ClaudeModelCase): string {
+    return [
+        CLAUDE_CODE_SYSTEM_PROMPT,
+        `# Runtime model\nModel ID: ${modelCase.rigModelId}\nProvider ID: claude`,
+        createDefaultInstructions("/workspace"),
+        createPermissionInstructions("full_access"),
+    ].join("\n\n");
+}
 
 afterEach(async () => {
     await Promise.all([...running].map((gym) => gym.dispose()));
@@ -94,7 +97,7 @@ describe("vanilla ClaudeSDK and Rig main inference prompts", () => {
             expect(mainInferencePayload(directExchange.request)).toEqual(
                 mainInferencePayload(rigExchange.request),
             );
-            expectExactRigPayload(requestPayload(rigExchange.request), modelCase.wireModelId);
+            expectExactRigPayload(requestPayload(rigExchange.request), modelCase);
         },
         120_000,
     );
@@ -130,7 +133,7 @@ describe("vanilla ClaudeSDK and Rig main inference prompts", () => {
         );
         const payload = requestPayload(rigExchange.request);
         expect(payload.output_config).toMatchObject({ effort: "xhigh" });
-        expectExactRigPayload(payload, modelCase.wireModelId, "xhigh", ULTRACODE_PROMPT);
+        expectExactRigPayload(payload, modelCase, "xhigh", ULTRACODE_PROMPT);
     }, 120_000);
 });
 
@@ -154,7 +157,7 @@ async function createBlockedClaudeGym(
                 mcpInstructions: RIG_MCP_INSTRUCTIONS,
                 model: modelCase.sdkModelId,
                 effort,
-                systemPrompt: rigSystemPrompt,
+                systemPrompt: rigSystemPrompt(modelCase),
                 tools: rigTools.map((tool) => ({
                     description: tool.description,
                     inputSchema: tool.arguments,
@@ -441,11 +444,11 @@ function isMainInference(request: InterceptedHttpRequest, wireModelId: string): 
 
 function expectExactRigPayload(
     payload: AnthropicRequestPayload,
-    wireModelId: string,
+    modelCase: ClaudeModelCase,
     effort = "medium",
     userPrompt = USER_PROMPT,
 ): void {
-    expect(payload.model).toBe(wireModelId);
+    expect(payload.model).toBe(modelCase.wireModelId);
     expect(payload.output_config).toMatchObject({ effort });
     expect(payload.system).toEqual([
         {
@@ -461,7 +464,7 @@ function expectExactRigPayload(
         },
         {
             type: "text",
-            text: rigSystemPrompt,
+            text: rigSystemPrompt(modelCase),
             cache_control: { type: "ephemeral" },
         },
     ]);

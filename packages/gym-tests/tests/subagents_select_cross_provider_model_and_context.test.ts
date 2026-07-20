@@ -17,6 +17,7 @@ describe("subagent provider, model, and context selection", () => {
         let taskOnlyContextVerified = false;
         const gym = await createGym({
             cols: 90,
+            environment: { ANTHROPIC_API_KEY: "claude-test-key" },
             inference(request) {
                 const sessionId = request.options.sessionId;
                 expect(sessionId).toBeTypeOf("string");

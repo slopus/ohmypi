@@ -39,7 +39,7 @@ export async function createConfigFile(
             features: {
                 workflows: config.features.workflows,
             },
-            providers: serializeProviders(config.providers),
+            providers: serializeProviders(config.providers, config.providerDefaultEnable),
             theme: config.theme,
             ...(config.docker === undefined
                 ? {}

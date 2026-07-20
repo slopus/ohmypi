@@ -93,7 +93,13 @@ export type ConfigProvider =
 
 export type ConfigProviders = Readonly<Record<string, ConfigProvider>>;
 
-export type PartialConfigProviders = ConfigProviders;
+type WithOptionalEnabled<Provider extends ConfigProvider> = Provider extends ConfigProvider
+    ? Omit<Provider, "enabled"> & { enabled?: boolean }
+    : never;
+
+export type PartialConfigProvider = WithOptionalEnabled<ConfigProvider>;
+
+export type PartialConfigProviders = Readonly<Record<string, PartialConfigProvider>>;
 
 export interface ConfigTheme {
     accent: string;
@@ -112,6 +118,7 @@ export interface RigConfig {
     defaults: ConfigDefaults;
     features: ConfigFeatures;
     mcpServers: Readonly<Record<string, McpServerConfig>>;
+    providerDefaultEnable: boolean;
     providers: ConfigProviders;
     settings: ConfigSettings;
     theme: ConfigTheme;
@@ -122,6 +129,7 @@ export interface PartialRigConfig {
     defaults?: PartialConfigDefaults;
     features?: PartialConfigFeatures;
     mcpServers?: Readonly<Record<string, McpServerConfig>>;
+    providerDefaultEnable?: boolean;
     providers?: PartialConfigProviders;
     settings?: PartialConfigSettings;
     theme?: PartialConfigTheme;

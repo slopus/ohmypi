@@ -3,7 +3,7 @@ import type { PartialRigConfig } from "./types.js";
 export function createProjectConfigSecurityNotice(config: PartialRigConfig): string | undefined {
     const permission = config.defaults?.permissionMode !== undefined;
     const docker = config.docker !== undefined;
-    const providers = config.providers !== undefined;
+    const providers = config.providerDefaultEnable !== undefined || config.providers !== undefined;
     const durableEventQueue = config.settings?.durableGlobalEventQueue !== undefined;
     if (!durableEventQueue) {
         if (!permission && !docker && !providers) return undefined;
