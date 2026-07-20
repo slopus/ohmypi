@@ -85,7 +85,7 @@ describe("subagent observability across a nested lifecycle", () => {
                     await releaseTop.promise;
                     return {
                         content: [{ text: "TOP_OBSERVER_DONE", type: "text" }],
-                        usage: usage(1_200),
+                        usage: usage(1_200, 300),
                     };
                 }
 
@@ -94,7 +94,7 @@ describe("subagent observability across a nested lifecycle", () => {
                         expect(lastText).toContain("NESTED_OBSERVER_DONE");
                         return {
                             content: [{ text: "TOP_ACKNOWLEDGED_NESTED", type: "text" }],
-                            usage: usage(100),
+                            usage: usage(1_700, 1_200),
                         };
                     }
                     expect(lastText).toContain("Task: top_observer");
@@ -134,21 +134,20 @@ describe("subagent observability across a nested lifecycle", () => {
         submit(gym, "/agents");
         const active = await gym.terminal.waitUntil(
             (snapshot) =>
-                /Running · Top observer · [1-9]\d*s · 300 tokens/u.test(snapshot.text) &&
-                snapshot.text.includes("  Running · Nested observer · 0s · 0 tokens") &&
-                snapshot.text.includes("/agents to view ·") &&
-                snapshot.text.includes("300 tokens") &&
+                snapshot.text.includes("Running · Top observer · Gym · 300 context tokens") &&
+                snapshot.text.includes("Running · Nested observer · Gym · 0 context tokens") &&
                 snapshot.scroll.atBottom,
             "running nested agents with live metrics",
             30_000,
         );
         await screenshot(active, "running-agents.png");
+        gym.terminal.press("escape");
 
         releaseTop.resolve();
         const parentWaitingForDescendant = await gym.terminal.waitUntil(
             (snapshot) =>
                 snapshot.text.includes("1 agent running") &&
-                snapshot.text.includes("1.5k tokens") &&
+                snapshot.text.includes("1.2k context tokens") &&
                 !snapshot.text.includes('"Top observer" completed in'),
             "top-level completion delayed for its active descendant",
             30_000,
@@ -159,7 +158,7 @@ describe("subagent observability across a nested lifecycle", () => {
         const completion = await gym.terminal.waitUntil(
             (snapshot) =>
                 snapshot.text.includes("PARENT_ACKNOWLEDGED_TOP") &&
-                /"Top observer" completed in \d+s · 1\.6k tokens\./u.test(snapshot.text) &&
+                /"Top observer" completed in \d+s · 1\.7k context tokens\./u.test(snapshot.text) &&
                 !snapshot.text.includes("agent running ·") &&
                 snapshot.scroll.atBottom,
             "all nested agent work completed",
@@ -167,17 +166,15 @@ describe("subagent observability across a nested lifecycle", () => {
         );
         expect(completion.text.match(/"Top observer" completed in/gu)).toHaveLength(1);
         expect(completion.text.match(/"Nested observer" completed in/gu)).toHaveLength(1);
-        expect(completion.text).not.toMatch(
-            /"Top observer" completed in [^.\n]+ · 1\.5k tokens\./u,
-        );
+        expect(completion.text).not.toContain("3.2k context tokens");
         await screenshot(completion, "completion-notice.png");
         submit(gym, "/agents");
         const completed = await gym.terminal.waitUntil(
             (snapshot) =>
                 snapshot.text.includes("Completed · Top observer") &&
                 snapshot.text.includes("Completed · Nested observer") &&
-                snapshot.text.includes("1.6k tokens") &&
-                snapshot.text.includes("600 tokens") &&
+                snapshot.text.includes("1.7k context tokens") &&
+                snapshot.text.includes("600 context tokens") &&
                 snapshot.scroll.atBottom,
             "completed nested agents with persisted metrics",
             30_000,
@@ -186,10 +183,11 @@ describe("subagent observability across a nested lifecycle", () => {
         expect(completed.text.match(/Completed · Nested observer/gu)).toHaveLength(1);
         expect(completed.text.match(/"Top observer" completed in/gu)).toHaveLength(1);
         expect(completed.text.match(/"Nested observer" completed in/gu)).toHaveLength(1);
-        expect(completed.text).not.toMatch(/"Top observer" completed in [^.\n]+ · 1\.5k tokens\./u);
+        expect(completed.text).not.toContain("3.2k context tokens");
         expect(topSessionId).toBeTypeOf("string");
         expect(nestedSessionId).toBeTypeOf("string");
         await screenshot(completed, "completed-agents.png");
+        gym.terminal.press("escape");
 
         submit(gym, "Show wrapped tool output.");
         const wrappedTool = await gym.terminal.waitUntil(
@@ -237,9 +235,9 @@ function messageText(content: unknown): string {
         .join("");
 }
 
-function usage(totalTokens: number): Usage {
+function usage(totalTokens: number, cacheRead = 0): Usage {
     return {
-        cacheRead: 0,
+        cacheRead,
         cacheWrite: 0,
         cost: { cacheRead: 0, cacheWrite: 0, input: 0, output: 0, total: 0 },
         input: totalTokens,

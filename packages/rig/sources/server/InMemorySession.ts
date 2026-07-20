@@ -93,6 +93,7 @@ import { createSessionMetadataTranscript } from "./createSessionMetadataTranscri
 import { generateSessionMetadata } from "./generateSessionMetadata.js";
 import { createAbortRequestKey } from "./createAbortRequestKey.js";
 import { createGoalTitle } from "./createGoalTitle.js";
+import { createdContextTokens } from "./createdContextTokens.js";
 import { getProviderIdForModel } from "./getProviderIdForModel.js";
 import { resolveInitialModelSelection } from "./resolveInitialModelSelection.js";
 import { resolveSteeringContinuationMessageIds } from "./resolveSteeringContinuationMessageIds.js";
@@ -3009,11 +3010,16 @@ export class InMemorySession {
                 position: undefined,
                 runId,
             };
+        } else if (event.type === "context_compacted") {
+            this.#totalTokens = event.estimatedTokensAfter;
         } else if ("partial" in event) {
             this.#storePartialMessage(runId, event.partial);
         }
 
         this.#append("agent_event", { event, runId });
+        if (event.type === "context_compacted" && this.isSubagent()) {
+            this.#agentManager?.recordChanged(this);
+        }
     }
 
     #appendAgentMessage(runId: string, message: Message): void {
@@ -3066,10 +3072,13 @@ export class InMemorySession {
         }
         if (message.role === "agent") {
             const previousTokens =
-                existingMessage?.message.role === "agent"
-                    ? (existingMessage.message.usage?.totalTokens ?? 0)
+                existingMessage?.message.role === "agent" &&
+                existingMessage.message.usage !== undefined
+                    ? createdContextTokens(existingMessage.message.usage)
                     : 0;
-            this.#totalTokens += (message.usage?.totalTokens ?? 0) - previousTokens;
+            this.#totalTokens +=
+                (message.usage === undefined ? 0 : createdContextTokens(message.usage)) -
+                previousTokens;
         }
         this.#append("agent_message", { message, runId });
         if (this.isSubagent()) this.#agentManager?.recordChanged(this);

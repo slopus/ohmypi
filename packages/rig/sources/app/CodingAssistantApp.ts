@@ -56,6 +56,7 @@ import type {
 } from "./CodingAssistantAgentBackend.js";
 import { createEditorTheme } from "./createEditorTheme.js";
 import { createSelectionPanel } from "./createSelectionPanel.js";
+import { createSubagentMonitor, type SubagentMonitor } from "./createSubagentMonitor.js";
 import { createWorkflowMonitor } from "./createWorkflowMonitor.js";
 import { containsMarkdownTable } from "./containsMarkdownTable.js";
 import { compactCompletedTurnEntries } from "./compactCompletedTurnEntries.js";
@@ -71,7 +72,6 @@ import { formatCodexMcpToolResult } from "./formatCodexMcpToolResult.js";
 import { FileMentionAutocomplete } from "./FileMentionAutocomplete.js";
 import type { FileMentionContext } from "./findFileMentionContext.js";
 import { formatFileMention } from "./formatFileMention.js";
-import { formatSubagentRows } from "./formatSubagentRows.js";
 import { formatSessionUsageSummary } from "./formatSessionUsageSummary.js";
 import { formatToolResultForDisplay } from "./formatToolResultForDisplay.js";
 import { humanizeReasoningLevel } from "./humanizeReasoningLevel.js";
@@ -171,6 +171,11 @@ export interface CodingAssistantAppOptions {
     onUserActivity?: () => void;
     onSettingsChange?: (settings: AppSettings) => void | Promise<void>;
     onStopWorkflow?: (runId: string) => void | Promise<void>;
+    watchSubagentEvents?: (
+        sessionId: string,
+        signal: AbortSignal,
+        onEvent: (event: SessionEvent) => void,
+    ) => Promise<void>;
     onExit?: () => void | Promise<void>;
     respondUserInput?: (requestId: string, response: UserInputResponse) => void | Promise<void>;
     now?: () => number;
@@ -319,6 +324,7 @@ export class CodingAssistantApp implements Component, Focusable {
     readonly #onSettingsChange: ((settings: AppSettings) => void | Promise<void>) | undefined;
     readonly #onUserActivity: (() => void) | undefined;
     readonly #onStopWorkflow: ((runId: string) => void | Promise<void>) | undefined;
+    readonly #watchSubagentEvents: CodingAssistantAppOptions["watchSubagentEvents"];
     readonly #onExit: (() => void | Promise<void>) | undefined;
     readonly #respondUserInput:
         | ((requestId: string, response: UserInputResponse) => void | Promise<void>)
@@ -443,6 +449,7 @@ export class CodingAssistantApp implements Component, Focusable {
         this.#onSettingsChange = options.onSettingsChange;
         this.#onUserActivity = options.onUserActivity;
         this.#onStopWorkflow = options.onStopWorkflow;
+        this.#watchSubagentEvents = options.watchSubagentEvents;
         this.#onExit = options.onExit;
         this.#respondUserInput = options.respondUserInput;
         this.#processManager = options.processManager;
@@ -594,6 +601,7 @@ export class CodingAssistantApp implements Component, Focusable {
         this.#abortController?.abort();
         this.#stopActivityAnimation();
         this.#stopSubagentRefreshTimer();
+        this.#setSelectionPanel(undefined);
         this.#stopCursorBlink();
         this.#activeToolCallIds.clear();
         this.#awaitingApprovalToolCallIds.clear();
@@ -1675,7 +1683,7 @@ export class CodingAssistantApp implements Component, Focusable {
         }
 
         if (prompt === "/agents") {
-            this.#showSubagents();
+            this.#openSubagentMonitor();
             return true;
         }
 
@@ -2054,21 +2062,33 @@ export class CodingAssistantApp implements Component, Focusable {
         });
     }
 
-    #showSubagents(): void {
-        if (this.#subagents.length === 0) {
-            this.#appendEntry({
-                role: "event",
-                title: "Subagents",
-                text: "No delegated work has been started in this session.",
-            });
-            return;
-        }
-        this.#appendEntry({
-            childText: true,
-            role: "event",
-            title: "Subagents",
-            text: formatSubagentRows(this.#subagents, this.#now()).join("\n"),
+    #openSubagentMonitor(): void {
+        const monitor = createSubagentMonitor({
+            getHeight: () => Math.max(1, this.#tui.terminal.rows - 4),
+            getSubagents: () => this.#subagents,
+            modelName: (modelId) =>
+                this.#agent.modelChoices?.find((choice) => choice.model.id === modelId)?.model
+                    .name ??
+                (modelId === this.#agent.model.id ? this.#agent.model.name : undefined) ??
+                modelId
+                    .split("/")
+                    .at(-1)
+                    ?.split(/[-_]/u)
+                    .map((part) => `${part[0]?.toUpperCase() ?? ""}${part.slice(1)}`)
+                    .join(" ") ??
+                "Unknown model",
+            now: this.#now,
+            onCancel: () => this.#closeSelectionPanel(),
+            onRequestRender: () => this.#requestRender(),
+            theme: this.#theme,
+            watchSubagent: async (sessionId, signal, onEvent) => {
+                if (this.#watchSubagentEvents === undefined) {
+                    throw new Error("Live subagent logs are unavailable in this session.");
+                }
+                await this.#watchSubagentEvents(sessionId, signal, onEvent);
+            },
         });
+        this.#showSelectionPanel(monitor);
     }
 
     #showBackgroundTerminals(): void {
@@ -3626,7 +3646,7 @@ export class CodingAssistantApp implements Component, Focusable {
     }
 
     #subagentMetrics(subagent: SubagentSummary): string {
-        return `${formatActivityElapsedTime(subagentElapsedMs(subagent, this.#now()))} · ${formatTokens(subagent.totalTokens ?? 0)} tokens`;
+        return `${formatActivityElapsedTime(subagentElapsedMs(subagent, this.#now()))} · ${formatTokens(subagent.totalTokens ?? 0)} context tokens`;
     }
 
     #renderQueuedPrompts(width: number): string[] {
@@ -4213,6 +4233,9 @@ export class CodingAssistantApp implements Component, Focusable {
 
     #setSelectionPanel(component: Component | undefined): void {
         this.#lastEscapeAtMs = undefined;
+        if (this.#selectionPanel !== component) {
+            (this.#selectionPanel as Partial<SubagentMonitor> | undefined)?.dispose?.();
+        }
         this.#selectionPanel = component;
     }
 

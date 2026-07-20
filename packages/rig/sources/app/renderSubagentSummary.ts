@@ -15,6 +15,6 @@ export function renderSubagentSummary(options: {
     if (options.count === 0) return undefined;
 
     const plural = options.count === 1 ? "" : "s";
-    const summary = `  ${String(options.count)} agent${plural} running · /agents to view · ${formatActivityElapsedTime(options.elapsedMs)} · ${formatCompactTokens(options.totalTokens)} tokens`;
+    const summary = `  ${String(options.count)} agent${plural} running · /agents to view · ${formatActivityElapsedTime(options.elapsedMs)} · ${formatCompactTokens(options.totalTokens)} context tokens`;
     return truncateToWidth(`${DIM}${summary}${RESET}`, Math.max(1, options.width), "", true);
 }

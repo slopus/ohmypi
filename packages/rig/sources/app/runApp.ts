@@ -288,6 +288,8 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
         },
         onStopWorkflow: (runId) =>
             localServer.client.stopWorkflow(session.session.id, runId).then(() => undefined),
+        watchSubagentEvents: (sessionId, signal, onEvent) =>
+            localServer.client.watchSessionEvents({ onEvent, sessionId, signal }),
         processManager,
         registerSecret: (registration) =>
             localServer.client.registerSecret(registration).then((response) => response.secret),

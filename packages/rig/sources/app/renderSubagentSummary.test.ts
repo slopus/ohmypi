@@ -17,7 +17,7 @@ describe("renderSubagentSummary", () => {
                     width: 80,
                 }) ?? "",
             ).trimEnd(),
-        ).toBe("  1 agent running · /agents to view · 1m 5s · 1.3k tokens");
+        ).toBe("  1 agent running · /agents to view · 1m 5s · 1.3k context tokens");
         expect(
             stripAnsi(
                 renderSubagentSummary({

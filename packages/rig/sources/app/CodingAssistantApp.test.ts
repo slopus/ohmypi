@@ -3013,7 +3013,7 @@ describe("CodingAssistantApp", () => {
         expect(statusTransition.split("\n").map((line) => line.trimEnd())).toEqual(
             expect.arrayContaining([
                 "• Background work",
-                '  └ "Inspect the implementation" completed in 1m 5s · 1.3k tokens.',
+                '  └ "Inspect the implementation" completed in 1m 5s · 1.3k context tokens.',
             ]),
         );
         app.applySessionEvent({
@@ -3044,8 +3044,8 @@ describe("CodingAssistantApp", () => {
                 .map((line) => line.trimEnd()),
         ).toEqual(
             expect.arrayContaining([
-                "• Subagents",
-                "  └ Completed · Inspect the implementation · 1m 5s · 1.3k tokens",
+                "  Subagents",
+                "  → Completed · Inspect the implementation · GPT Test · 1.3k context tokens · 1m 5s",
             ]),
         );
     });
