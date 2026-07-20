@@ -428,7 +428,7 @@ describe("CodingAssistantApp", () => {
         );
     });
 
-    it("uses pending-aware abort without stopping the local run on Escape", async () => {
+    it("clears a draft before using a later Escape to deliver pending steering", async () => {
         const model = defineModel({
             id: "openai/gpt-test",
             name: "GPT Test",
@@ -500,7 +500,7 @@ describe("CodingAssistantApp", () => {
 
         const rendered = stripAnsi(app.render(100).join("\n"));
         expect(rendered).toContain("esc to interrupt");
-        expect(rendered).toContain("› Keep this pending-run draft");
+        expect(rendered).toContain("› Ask Rig to do anything");
         expect(rendered).not.toContain("Session interrupted");
     });
 
@@ -584,7 +584,7 @@ describe("CodingAssistantApp", () => {
         expect(abort).toHaveBeenCalledWith({ expectedRunId: "current-run" });
     });
 
-    it("interrupts a running session before an open selection panel handles Escape", async () => {
+    it("lets an open selection panel handle Escape before a running session", () => {
         const model = defineModel({
             id: "openai/gpt-test",
             name: "GPT Test",
@@ -627,11 +627,128 @@ describe("CodingAssistantApp", () => {
 
         app.handleInput("\x1b");
 
-        await vi.waitFor(() => expect(abort).toHaveBeenCalledOnce());
-        expect(abort).toHaveBeenCalledWith({ expectedRunId: "run-1" });
+        expect(stripAnsi(app.render(100).join("\n"))).not.toContain("Choose Model");
+        expect(abort).not.toHaveBeenCalled();
     });
 
-    it("treats both rapid Escapes as stop actions while running without pending steering", async () => {
+    it("keeps Escape inside a structured question instead of aborting its run", () => {
+        const model = defineModel({
+            id: "openai/gpt-test",
+            name: "GPT Test",
+            thinkingLevels: ["off"],
+            defaultThinkingLevel: "off",
+        });
+        const provider = defineProvider({
+            id: "codex",
+            models: [model],
+            stream() {
+                return streamText("unused");
+            },
+        });
+        const harness = createJustBashToolHarness();
+        const abort = vi.fn(async () => ({ aborted: true }));
+        const app = new CodingAssistantApp({
+            agent: Object.assign(
+                new Agent({
+                    provider,
+                    modelId: model.id,
+                    context: harness.context,
+                    printToConsole: false,
+                }),
+                { abort },
+            ),
+            cwd: harness.context.fs.cwd,
+            processManager: new NativeProcessManager(),
+            sessionBacked: true,
+            tui: fakeTui(),
+        });
+        app.applySessionEvent({
+            createdAt: 1,
+            data: { runId: "run-1" },
+            id: "run-started",
+            sessionId: "session-1",
+            type: "run_started",
+        });
+        app.applySessionEvent({
+            createdAt: 2,
+            data: {
+                questions: [
+                    {
+                        header: "Choice",
+                        id: "choice",
+                        multiSelect: false,
+                        options: [{ description: "Use this answer.", label: "Answer" }],
+                        question: "Choose an answer.",
+                    },
+                ],
+                requestId: "request-1",
+            },
+            id: "input-requested",
+            sessionId: "session-1",
+            type: "user_input_requested",
+        });
+
+        app.handleInput("\x1b");
+
+        expect(stripAnsi(app.render(100).join("\n"))).toContain("Choose an answer.");
+        expect(abort).not.toHaveBeenCalled();
+    });
+
+    it("dismisses autocomplete and clears its draft before Escape can abort", async () => {
+        const model = defineModel({
+            id: "openai/gpt-test",
+            name: "GPT Test",
+            thinkingLevels: ["off"],
+            defaultThinkingLevel: "off",
+        });
+        const provider = defineProvider({
+            id: "codex",
+            models: [model],
+            stream() {
+                return streamText("unused");
+            },
+        });
+        const harness = createJustBashToolHarness();
+        const abort = vi.fn(async () => ({ aborted: true }));
+        const app = new CodingAssistantApp({
+            agent: Object.assign(
+                new Agent({
+                    provider,
+                    modelId: model.id,
+                    context: harness.context,
+                    printToConsole: false,
+                }),
+                { abort },
+            ),
+            cwd: harness.context.fs.cwd,
+            processManager: new NativeProcessManager(),
+            sessionBacked: true,
+            tui: fakeTui(),
+        });
+        app.applySessionEvent({
+            createdAt: 1,
+            data: { runId: "run-1" },
+            id: "run-started",
+            sessionId: "session-1",
+            type: "run_started",
+        });
+        app.handleInput("/");
+        expect(stripAnsi(app.render(100).join("\n"))).toContain("/model");
+
+        app.handleInput("\x1b");
+        expect(stripAnsi(app.render(100).join("\n"))).not.toContain("/model");
+        expect(stripAnsi(app.render(100).join("\n"))).toContain("› /");
+        expect(abort).not.toHaveBeenCalled();
+
+        app.handleInput("\x1b");
+        expect(stripAnsi(app.render(100).join("\n"))).toContain("› Ask Rig to do anything");
+        expect(abort).not.toHaveBeenCalled();
+
+        app.handleInput("\x1b");
+        await vi.waitFor(() => expect(abort).toHaveBeenCalledOnce());
+    });
+
+    it("clears non-empty running drafts before a later empty Escape stops the turn", async () => {
         const model = defineModel({
             id: "openai/gpt-test",
             name: "GPT Test",
@@ -674,11 +791,15 @@ describe("CodingAssistantApp", () => {
 
         app.handleInput("Keep this stopping-run draft");
         app.handleInput("\x1b");
+        expect(abort).not.toHaveBeenCalled();
+        app.handleInput("  ");
+        app.handleInput("\x1b");
+        expect(abort).not.toHaveBeenCalled();
         app.handleInput("\x1b");
 
         await vi.waitFor(() => expect(abort).toHaveBeenCalledTimes(1));
         expect(abort).toHaveBeenCalledWith({ expectedRunId: "run-1" });
-        expect(stripAnsi(app.render(100).join("\n"))).toContain("› Keep this stopping-run draft");
+        expect(stripAnsi(app.render(100).join("\n"))).toContain("› Ask Rig to do anything");
     });
 
     it("queues an immediate post-Escape submit until the interrupted run settles", async () => {
@@ -762,63 +883,7 @@ describe("CodingAssistantApp", () => {
         expect(steer).not.toHaveBeenCalled();
     });
 
-    it("resets idle double-Escape timing across a running transition", () => {
-        const model = defineModel({
-            id: "openai/gpt-test",
-            name: "GPT Test",
-            thinkingLevels: ["off"],
-            defaultThinkingLevel: "off",
-        });
-        const provider = defineProvider({
-            id: "codex",
-            models: [model],
-            stream() {
-                return streamText("unused");
-            },
-        });
-        const harness = createJustBashToolHarness();
-        const app = new CodingAssistantApp({
-            agent: new Agent({
-                provider,
-                modelId: model.id,
-                context: harness.context,
-                printToConsole: false,
-            }),
-            cwd: harness.context.fs.cwd,
-            now: () => 100,
-            processManager: new NativeProcessManager(),
-            tui: fakeTui(),
-        });
-
-        app.handleInput("Keep this transition draft");
-        app.handleInput("\x1b");
-        app.applySessionEvent({
-            createdAt: 1,
-            data: { runId: "run-1" },
-            id: "event-started",
-            sessionId: "session-1",
-            type: "run_started",
-        });
-        app.applySessionEvent({
-            createdAt: 2,
-            data: {
-                agentRunId: "agent-run-1",
-                modelLocked: true,
-                runId: "run-1",
-                stopReason: "stop",
-            },
-            id: "event-finished",
-            sessionId: "session-1",
-            type: "run_finished",
-        });
-
-        app.handleInput("\x1b");
-        expect(stripAnsi(app.render(100).join("\n"))).toContain("› Keep this transition draft");
-        app.handleInput("\x1b");
-        expect(stripAnsi(app.render(100).join("\n"))).toContain("› Ask Rig to do anything");
-    });
-
-    it("does not pair a running Escape with the first idle Escape after completion", async () => {
+    it("keeps a running draft recoverable after clearing it before interrupting", async () => {
         const model = defineModel({
             id: "openai/gpt-test",
             name: "GPT Test",
@@ -857,7 +922,10 @@ describe("CodingAssistantApp", () => {
             sessionId: "session-1",
             type: "run_started",
         });
-        app.handleInput("Never add this running draft to history");
+        app.handleInput("Recover this running draft from history");
+        app.handleInput("\x1b");
+        expect(abort).not.toHaveBeenCalled();
+        expect(stripAnsi(app.render(100).join("\n"))).toContain("› Ask Rig to do anything");
         app.handleInput("\x1b");
         await vi.waitFor(() => expect(abort).toHaveBeenCalledOnce());
         app.applySessionEvent({
@@ -873,73 +941,10 @@ describe("CodingAssistantApp", () => {
             type: "run_finished",
         });
 
-        app.handleInput("\x1b");
-        expect(stripAnsi(app.render(100).join("\n"))).toContain(
-            "› Never add this running draft to history",
-        );
-        app.handleInput("\x03");
         app.handleInput("\x1b[A");
-        expect(stripAnsi(app.render(100).join("\n"))).not.toContain(
-            "› Never add this running draft to history",
+        expect(stripAnsi(app.render(100).join("\n"))).toContain(
+            "› Recover this running draft from history",
         );
-    });
-
-    it("resets double-Escape timing across reset and rewind events", () => {
-        const model = defineModel({
-            id: "openai/gpt-test",
-            name: "GPT Test",
-            thinkingLevels: ["off"],
-            defaultThinkingLevel: "off",
-        });
-        const provider = defineProvider({
-            id: "codex",
-            models: [model],
-            stream() {
-                return streamText("unused");
-            },
-        });
-        const harness = createJustBashToolHarness();
-        const agent = new Agent({
-            provider,
-            modelId: model.id,
-            context: harness.context,
-            printToConsole: false,
-        });
-        const app = new CodingAssistantApp({
-            agent,
-            cwd: harness.context.fs.cwd,
-            now: () => 100,
-            processManager: new NativeProcessManager(),
-            tui: fakeTui(),
-        });
-
-        app.handleInput("Keep across reset");
-        app.handleInput("\x1b");
-        app.applySessionEvent({
-            createdAt: 1,
-            data: { snapshot: agent.snapshot() },
-            id: "event-reset",
-            sessionId: "session-1",
-            type: "session_reset",
-        });
-        app.handleInput("\x1b");
-        expect(stripAnsi(app.render(100).join("\n"))).toContain("› Keep across reset");
-        app.handleInput("\x1b");
-        expect(stripAnsi(app.render(100).join("\n"))).toContain("› Ask Rig to do anything");
-
-        app.handleInput("Keep across rewind");
-        app.handleInput("\x1b");
-        app.applySessionEvent({
-            createdAt: 2,
-            data: { messageId: "rewind-target", snapshot: agent.snapshot() },
-            id: "event-rewound",
-            sessionId: "session-1",
-            type: "session_rewound",
-        });
-        app.handleInput("\x1b");
-        expect(stripAnsi(app.render(100).join("\n"))).toContain("› Keep across rewind");
-        app.handleInput("\x1b");
-        expect(stripAnsi(app.render(100).join("\n"))).toContain("› Ask Rig to do anything");
     });
 
     it.each(["session_reset", "session_rewound"] as const)(
@@ -1062,7 +1067,7 @@ describe("CodingAssistantApp", () => {
         },
     );
 
-    it("does not let selection-panel Escape arm the composer chain", () => {
+    it("closes a selection panel before a later Escape clears the composer", () => {
         const model = defineModel({
             id: "openai/gpt-test",
             name: "GPT Test",
@@ -1094,13 +1099,12 @@ describe("CodingAssistantApp", () => {
         app.handleInput("\x1bm");
         expect(stripAnsi(app.render(100).join("\n"))).toContain("Choose Model");
         app.handleInput("\x1b");
-        app.handleInput("\x1b");
         expect(stripAnsi(app.render(100).join("\n"))).toContain("› Keep after closing overlay");
         app.handleInput("\x1b");
         expect(stripAnsi(app.render(100).join("\n"))).toContain("› Ask Rig to do anything");
     });
 
-    it("resets the composer Escape chain when terminal focus changes", () => {
+    it("clears a draft normally after terminal focus changes", () => {
         const model = defineModel({
             id: "openai/gpt-test",
             name: "GPT Test",
@@ -1129,16 +1133,13 @@ describe("CodingAssistantApp", () => {
         });
 
         app.handleInput("Keep across terminal focus");
-        app.handleInput("\x1b");
         app.handleInput("\x1b[O");
         app.handleInput("\x1b[I");
-        app.handleInput("\x1b");
-        expect(stripAnsi(app.render(100).join("\n"))).toContain("› Keep across terminal focus");
         app.handleInput("\x1b");
         expect(stripAnsi(app.render(100).join("\n"))).toContain("› Ask Rig to do anything");
     });
 
-    it("does not let freeform Escape or exit arm the composer chain", () => {
+    it("keeps Escape local to freeform and structured question inputs", () => {
         const model = defineModel({
             id: "openai/gpt-test",
             name: "GPT Test",
@@ -1187,7 +1188,11 @@ describe("CodingAssistantApp", () => {
         app.handleInput("\r");
         app.handleInput("Keep this freeform answer");
         app.handleInput("\x1b");
-        expect(stripAnsi(app.render(100).join("\n"))).toContain("› Keep this freeform answer");
+        expect(stripAnsi(app.render(100).join("\n"))).toContain("› Type another answer");
+        app.handleInput("\x1b");
+        expect(stripAnsi(app.render(100).join("\n"))).toContain("Choose an answer.");
+        app.handleInput("\x1b");
+        expect(stripAnsi(app.render(100).join("\n"))).toContain("Choose an answer.");
         app.applySessionEvent({
             createdAt: 2,
             data: { requestId: "request-1", status: "cancelled" },
@@ -1198,12 +1203,10 @@ describe("CodingAssistantApp", () => {
 
         app.handleInput("Keep after freeform exit");
         app.handleInput("\x1b");
-        expect(stripAnsi(app.render(100).join("\n"))).toContain("› Keep after freeform exit");
-        app.handleInput("\x1b");
         expect(stripAnsi(app.render(100).join("\n"))).toContain("› Ask Rig to do anything");
     });
 
-    it("clears a draft on double Escape and retrieves it with Up", () => {
+    it("clears a draft on Escape and retrieves it with Up", () => {
         const model = defineModel({
             id: "openai/gpt-test",
             name: "GPT Test",
@@ -1232,8 +1235,6 @@ describe("CodingAssistantApp", () => {
         });
 
         app.handleInput("Recover this draft");
-        app.handleInput("\x1b");
-        expect(stripAnsi(app.render(100).join("\n"))).toContain("› Recover this draft");
         app.handleInput("\x1b");
         expect(stripAnsi(app.render(100).join("\n"))).toContain("› Ask Rig to do anything");
         app.handleInput("\x1b[A");
@@ -3885,6 +3886,8 @@ describe("CodingAssistantApp", () => {
         app.handleInput("/");
         expect(stripAnsi(app.render(80).join("\n"))).toContain("/model");
         app.handleInput("\x1b");
+        app.handleInput("\x1b");
+        app.handleInput("\x1b");
         await app.waitForIdle();
 
         const raw = app.render(80).join("\n");
@@ -3896,7 +3899,7 @@ describe("CodingAssistantApp", () => {
         expect(rendered).not.toContain("message aborted");
         expect(rendered).not.toContain("Run aborted.");
         expect(rendered).not.toContain("Stopped: aborted");
-        expect(rendered).toContain("› /");
+        expect(rendered).toContain("› Ask Rig to do anything");
     });
 
     it("uses Enter to steer and Tab to queue while a run is active", async () => {
@@ -3989,12 +3992,13 @@ describe("CodingAssistantApp", () => {
         app.handleInput("\t");
         app.handleInput("current draft");
         app.handleInput("\x1b");
+        app.handleInput("\x1b");
         await app.waitForIdle();
 
         const rendered = stripAnsi(app.render(100).join("\n"));
         expect(requests).toBe(1);
         expect(rendered).toContain("› queued follow-up");
-        expect(rendered).toContain("  current draft");
+        expect(rendered).not.toContain("  current draft");
         expect(rendered).not.toContain("↳ queued");
     });
 

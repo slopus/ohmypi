@@ -11,7 +11,7 @@ afterEach(async () => {
     running.clear();
 });
 
-describe("double Escape in the composer", () => {
+describe("Escape in the composer", () => {
     it("clears the current draft without submitting it and keeps it in local history", async () => {
         const draft = "Recover this cleared draft.";
         const gym = await createGym({ inference: [] });
@@ -20,12 +20,10 @@ describe("double Escape in the composer", () => {
         gym.terminal.type(draft);
         await waitForComposer(gym, draft);
         gym.terminal.press("escape");
-        await waitForComposer(gym, draft);
-        gym.terminal.press("escape");
 
         await waitForComposer(gym, "Ask Rig to do anything");
         expect(agentRequests(gym)).toHaveLength(0);
-        await screenshot(gym, "revised-double-escape-cleared.png");
+        await screenshot(gym, "escape-cleared-draft.png");
 
         gym.terminal.press("up");
         await waitForComposer(gym, draft);
@@ -35,7 +33,7 @@ describe("double Escape in the composer", () => {
         await waitForComposer(gym, draft);
     }, 60_000);
 
-    it("splits one raw coalesced Escape chunk into the same two idle presses", async () => {
+    it("splits one raw coalesced Escape chunk into two idle presses", async () => {
         const draft = "Recover this raw-chunk draft.";
         const gym = await createGym({ inference: [] });
         running.add(gym);

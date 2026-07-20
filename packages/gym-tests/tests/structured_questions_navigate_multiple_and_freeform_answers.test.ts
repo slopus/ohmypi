@@ -90,6 +90,19 @@ describe("structured questions navigate multiple and free-form answers", () => {
             30_000,
         );
         assertHealthySmallTerminal(firstQuestion, baseline);
+        expect(firstQuestion.text).toContain("Use ↑/↓ to move and Enter to select.");
+        expect(firstQuestion.text).not.toContain("Esc to cancel");
+
+        gym.terminal.press("escape");
+        const retainedQuestion = await gym.terminal.waitUntil(
+            (snapshot) =>
+                snapshot.text.includes("Which data store? · 1 of 2") &&
+                !snapshot.text.includes("Session interrupted"),
+            "Escape to remain inside the structured question without interrupting inference",
+            30_000,
+        );
+        assertHealthySmallTerminal(retainedQuestion, baseline);
+        expect(agentRequests(gym)).toHaveLength(1);
 
         gym.terminal.press("down");
         gym.terminal.press("enter");
@@ -117,6 +130,18 @@ describe("structured questions navigate multiple and free-form answers", () => {
             30_000,
         );
         assertHealthySmallTerminal(freeform, baseline);
+
+        gym.terminal.type("Discard this answer");
+        gym.terminal.press("escape");
+        const clearedFreeform = await gym.terminal.waitUntil(
+            (snapshot) =>
+                snapshot.text.includes("Type another answer") &&
+                !snapshot.text.includes("Discard this answer") &&
+                !snapshot.text.includes("Session interrupted"),
+            "Escape to clear the focused free-form answer without interrupting inference",
+            30_000,
+        );
+        assertHealthySmallTerminal(clearedFreeform, baseline);
 
         gym.terminal.type("Europe West");
         gym.terminal.press("enter");

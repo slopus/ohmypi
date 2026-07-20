@@ -9,8 +9,8 @@ afterEach(async () => {
     running.clear();
 });
 
-describe("escape interrupts a delayed response and restores queued input", () => {
-    it("returns queued and draft text to the composer, ignores stale output, and recovers", async () => {
+describe("Escape clears a draft before interrupting a delayed response", () => {
+    it("clears the draft, restores queued input on the next Escape, and ignores stale output", async () => {
         const gym = await createGym({
             cols: 66,
             inference: [
@@ -37,12 +37,23 @@ describe("escape interrupts a delayed response and restores queued input", () =>
 
         gym.terminal.type("draft tail");
         gym.terminal.press("escape");
+        const cleared = await gym.terminal.waitUntil(
+            (snapshot) =>
+                snapshot.text.includes("Ask Rig to do anything") &&
+                snapshot.text.includes("esc to interrupt") &&
+                !snapshot.text.includes("draft tail"),
+            "the first Escape to clear the draft while inference continues",
+            30_000,
+        );
+        expect(cleared.text).not.toContain("Session interrupted");
+
+        gym.terminal.press("escape");
         const restored = await gym.terminal.waitUntil(
             (snapshot) =>
                 snapshot.text.includes("Session interrupted") &&
                 snapshot.text.includes("queued prompt") &&
-                snapshot.text.includes("draft tail"),
-            "interruption notice and restored queued draft",
+                !snapshot.text.includes("draft tail"),
+            "interruption notice and restored queued input",
             30_000,
         );
         expect(restored.text).not.toContain("STALE_DELAYED_OUTPUT");
@@ -58,7 +69,7 @@ describe("escape interrupts a delayed response and restores queued input", () =>
         expect(recovered.scroll.bottomDepartureCount).toBe(baseline.bottomDepartureCount);
         expect(recovered.scroll.topArrivalCount).toBe(baseline.topArrivalCount);
         expect(lastUserText(agentRequests(gym).at(1)?.context.messages ?? [])).toBe(
-            "queued prompt\ndraft tail",
+            "queued prompt",
         );
     }, 120_000);
 });

@@ -62,7 +62,6 @@ describe("image draft input history", () => {
         await gym.terminal.waitForText("[Image #1 PNG]", 30_000);
 
         gym.terminal.press("escape");
-        gym.terminal.press("escape");
         await waitForComposer(gym, "Ask Rig to do anything");
         gym.terminal.press("up");
         await waitForComposer(gym, `${prompt}[Image #1 PNG]`);

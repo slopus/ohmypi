@@ -12,7 +12,7 @@ afterEach(async () => {
 });
 
 describe("local composer input history", () => {
-    it("cycles submitted messages and double-Escape-cleared drafts in recency order", async () => {
+    it("cycles submitted messages and Escape-cleared drafts in recency order", async () => {
         const submittedFirst = "First submitted message.";
         const clearedFirst = "First cleared draft.";
         const submittedSecond = "Second submitted message.";
@@ -68,7 +68,6 @@ function submit(gym: Gym, text: string): void {
 async function clearDraft(gym: Gym, text: string): Promise<void> {
     gym.terminal.type(text);
     await waitForComposer(gym, text);
-    gym.terminal.press("escape");
     gym.terminal.press("escape");
     await waitForComposer(gym, "Ask Rig to do anything");
 }

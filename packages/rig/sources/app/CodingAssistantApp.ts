@@ -123,7 +123,6 @@ const INPUT_PLACEHOLDER = "Ask Rig to do anything";
 const INPUT_PROMPT = "› ";
 const INPUT_LINE_INDENT = "  ";
 const PENDING_TOOL_CALL_TITLE = "Working";
-const DOUBLE_ESCAPE_WINDOW_MS = 750;
 const ACTIVITY_ANIMATION_MS = 120;
 const REASONING_DOWN_RAW_KEYS = new Set(["\x1b,", "\x1b[1;2B"]);
 const REASONING_UP_RAW_KEYS = new Set(["\x1b.", "\x1b[1;2A"]);
@@ -372,7 +371,6 @@ export class CodingAssistantApp implements Component, Focusable {
     #activeTurnEntryStart: number | undefined;
     #interruptRequestInFlight = false;
     #interruptSettlementRunId: string | undefined;
-    #lastEscapeAtMs: number | undefined;
     #compacting = false;
     #pastedImagesById = new Map<number, PastedImage>();
     #selectionPanel: Component | undefined;
@@ -907,7 +905,6 @@ export class CodingAssistantApp implements Component, Focusable {
             }
             const discardedQueuedPrompts = this.#discardLocalPromptsForBoundary();
             this.#sessionMutationBoundaryApplied = true;
-            this.#lastEscapeAtMs = undefined;
             this.#activeSessionRunId = undefined;
             this.#activeTurnEntryStart = undefined;
             this.#interruptSettlementRunId = undefined;
@@ -950,7 +947,6 @@ export class CodingAssistantApp implements Component, Focusable {
             }
             const discardedQueuedPrompts = this.#discardLocalPromptsForBoundary();
             this.#sessionMutationBoundaryApplied = true;
-            this.#lastEscapeAtMs = undefined;
             this.#activeSessionRunId = undefined;
             this.#interruptSettlementRunId = undefined;
             this.#setRunning(false);
@@ -1053,22 +1049,14 @@ export class CodingAssistantApp implements Component, Focusable {
         }
 
         if (data === TERMINAL_FOCUS_IN || data === TERMINAL_FOCUS_OUT) {
-            this.#lastEscapeAtMs = undefined;
             this.#setTerminalFocused(data === TERMINAL_FOCUS_IN);
             return;
         }
 
         const escapePressed = matchesKey(data, "escape");
-        if (!escapePressed) this.#lastEscapeAtMs = undefined;
         this.#onUserActivity?.();
 
         if (this.#sessionMutationInFlight) {
-            this.#requestRender();
-            return;
-        }
-
-        if (escapePressed && this.#running) {
-            this.#handleEscape();
             this.#requestRender();
             return;
         }
@@ -1080,7 +1068,6 @@ export class CodingAssistantApp implements Component, Focusable {
                 return;
             }
             this.#selectionPanel.handleInput?.(data);
-            this.#lastEscapeAtMs = undefined;
             this.#requestRender();
             return;
         }
@@ -1096,8 +1083,12 @@ export class CodingAssistantApp implements Component, Focusable {
                 return;
             }
             if (matchesKey(data, "escape")) {
-                this.#handleEscape();
-                this.#lastEscapeAtMs = undefined;
+                if (this.#editor.getText().length > 0) {
+                    this.#editor.setText("");
+                } else {
+                    this.#freeformUserInput = undefined;
+                    this.#openUserInputQuestion();
+                }
                 this.#requestRender();
                 return;
             }
@@ -1122,12 +1113,6 @@ export class CodingAssistantApp implements Component, Focusable {
 
         if (matchesKey(data, "ctrl+d") && this.#editor.getText().length === 0) {
             void this.stop();
-            return;
-        }
-
-        if (this.#running && escapePressed) {
-            this.#handleEscape();
-            this.#requestRender();
             return;
         }
 
@@ -1160,8 +1145,8 @@ export class CodingAssistantApp implements Component, Focusable {
 
         if (escapePressed) {
             this.#markTypingActivity();
-            if (this.#editor.getText().trim().length > 0 || !this.#openBacktrackMenu()) {
-                this.#handleEscape();
+            if (this.#editor.getText().length > 0 || !this.#openBacktrackMenu()) {
+                this.#handleMainComposerEscape();
             }
             this.#requestRender();
             return;
@@ -2206,7 +2191,6 @@ export class CodingAssistantApp implements Component, Focusable {
         }
         this.#sessionMutationInFlight = true;
         this.#sessionMutationBoundaryApplied = false;
-        this.#lastEscapeAtMs = undefined;
         this.#statusText = "Resetting session";
         this.#requestRender();
         const mutation = Promise.resolve(this.#agent.reset())
@@ -2394,9 +2378,13 @@ export class CodingAssistantApp implements Component, Focusable {
         }
     }
 
-    #handleEscape(): void {
+    #handleMainComposerEscape(): void {
+        if (this.#editor.getText().length > 0) {
+            this.#clearComposerDraftToHistory();
+            return;
+        }
+
         if (this.#running) {
-            this.#lastEscapeAtMs = undefined;
             if (this.#interruptRequestInFlight) return;
             if (
                 this.#sessionBacked &&
@@ -2416,28 +2404,14 @@ export class CodingAssistantApp implements Component, Focusable {
             return;
         }
 
-        const doubleEscape = this.#registerEscapePress();
-        if (doubleEscape) this.#clearComposerDraftToHistory();
-        if (!doubleEscape && this.#editor.getText().trim().length > 0) {
-            return;
-        }
-
         this.#restoreQueuedPromptsToComposer();
     }
 
-    #registerEscapePress(): boolean {
-        const now = this.#now();
-        const doubleEscape =
-            this.#lastEscapeAtMs !== undefined &&
-            now - this.#lastEscapeAtMs <= DOUBLE_ESCAPE_WINDOW_MS;
-        this.#lastEscapeAtMs = doubleEscape ? undefined : now;
-        return doubleEscape;
-    }
-
     #clearComposerDraftToHistory(): void {
-        const draft = this.#editor.getText().trim();
-        if (draft.length === 0) return;
-        this.#editor.addToHistory(draft);
+        const editorText = this.#editor.getText();
+        if (editorText.length === 0) return;
+        const draft = editorText.trim();
+        if (draft.length > 0) this.#editor.addToHistory(draft);
         this.#editor.setText("");
         this.#fileMentionAutocomplete?.clear();
         this.#dismissedSlashCommandText = undefined;
@@ -2592,7 +2566,6 @@ export class CodingAssistantApp implements Component, Focusable {
                     this.#discardLocalPromptsForBoundary();
                     this.#sessionMutationInFlight = true;
                     this.#sessionMutationBoundaryApplied = false;
-                    this.#lastEscapeAtMs = undefined;
                     this.#statusText = "Rewinding";
                     this.#requestRender();
                     const mutation = this.#agent
@@ -4078,6 +4051,7 @@ export class CodingAssistantApp implements Component, Focusable {
 
         this.#showSelectionPanel(
             createSelectionPanel({
+                cancelDisabled: true,
                 theme: this.#theme,
                 title: question.header,
                 subtitle: `${question.question} · ${active.questionIndex + 1} of ${active.request.questions.length}`,
@@ -4115,10 +4089,7 @@ export class CodingAssistantApp implements Component, Focusable {
                     this.#openUserInputQuestion();
                     this.#requestRender();
                 },
-                onCancel: () => {
-                    this.#closeSelectionPanel();
-                    this.#handleEscape();
-                },
+                onCancel: () => {},
             }),
         );
         this.#requestRender();
@@ -4150,7 +4121,6 @@ export class CodingAssistantApp implements Component, Focusable {
         if (active.request.questions[active.questionIndex]?.id !== freeform.questionId) return;
 
         this.#freeformUserInput = undefined;
-        this.#lastEscapeAtMs = undefined;
         this.#editor.setText("");
         this.#commitUserInputAnswer([...freeform.existingAnswers, answer]);
         this.#requestRender();
@@ -4165,7 +4135,7 @@ export class CodingAssistantApp implements Component, Focusable {
                 text: "This client cannot send interactive answers.",
             });
             this.#removeUserInputRequest(request.requestId);
-            this.#handleEscape();
+            this.#handleMainComposerEscape();
             return;
         }
 
@@ -4198,7 +4168,6 @@ export class CodingAssistantApp implements Component, Focusable {
         if (wasActive) this.#activeUserInput = undefined;
         if (wasFreeform) {
             this.#freeformUserInput = undefined;
-            this.#lastEscapeAtMs = undefined;
             this.#editor.setText("");
         }
         if (this.#answeringUserInputRequestId === requestId) {
@@ -4217,7 +4186,6 @@ export class CodingAssistantApp implements Component, Focusable {
         this.#answeringUserInputRequestId = undefined;
         if (this.#freeformUserInput !== undefined) this.#editor.setText("");
         this.#freeformUserInput = undefined;
-        if (hadVisibleRequest) this.#lastEscapeAtMs = undefined;
         if (hadVisibleRequest) this.#closeSelectionPanel();
     }
 
@@ -4232,7 +4200,6 @@ export class CodingAssistantApp implements Component, Focusable {
     }
 
     #setSelectionPanel(component: Component | undefined): void {
-        this.#lastEscapeAtMs = undefined;
         if (this.#selectionPanel !== component) {
             (this.#selectionPanel as Partial<SubagentMonitor> | undefined)?.dispose?.();
         }
@@ -5519,7 +5486,6 @@ export class CodingAssistantApp implements Component, Focusable {
     }
 
     #setRunning(running: boolean): void {
-        this.#lastEscapeAtMs = undefined;
         this.#running = running;
     }
 }

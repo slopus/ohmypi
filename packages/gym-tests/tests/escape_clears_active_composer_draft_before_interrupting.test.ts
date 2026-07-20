@@ -11,9 +11,9 @@ afterEach(async () => {
     running.clear();
 });
 
-describe("single Escape without pending steering", () => {
-    it("stops the active interaction without clearing the composer draft", async () => {
-        const draft = "Keep this unsent draft.";
+describe("Escape with an active composer draft", () => {
+    it("clears the draft before a later empty-composer Escape stops inference", async () => {
+        const draft = "Clear this unsent draft first.";
         const gym = await createGym({
             inference: [
                 {
@@ -27,20 +27,31 @@ describe("single Escape without pending steering", () => {
         submit(gym, "Start a response that I will stop.");
         await gym.terminal.waitForText("esc to interrupt", 30_000);
         gym.terminal.type(draft);
-        await waitForComposer(gym, draft);
+        await gym.terminal.waitForText(draft, 30_000);
 
         gym.terminal.press("escape");
-        await gym.terminal.waitUntil(
+        const cleared = await gym.terminal.waitUntil(
+            (snapshot) =>
+                snapshot.text.includes("Ask Rig to do anything") &&
+                snapshot.text.includes("esc to interrupt"),
+            "the first Escape to clear the draft without stopping inference",
+            30_000,
+        );
+        expect(cleared.text).not.toContain("Session interrupted");
+        expect(agentRequests(gym)).toHaveLength(1);
+
+        gym.terminal.press("escape");
+        const stopped = await gym.terminal.waitUntil(
             (snapshot) =>
                 snapshot.text.includes("Session interrupted") &&
                 !snapshot.text.includes("esc to interrupt") &&
-                composerText(snapshot) === draft,
-            "one Escape stopping interaction while preserving its draft",
+                snapshot.text.includes("Ask Rig to do anything"),
+            "the empty-composer Escape to stop inference",
             30_000,
         );
-
         expect(agentRequests(gym)).toHaveLength(1);
-        await screenshot(gym, "revised-single-escape-stopped.png");
+        await screenshot(gym, "escape-cleared-draft-then-stopped.png");
+        expect(stopped.text).not.toContain("UNREACHABLE_DELAYED_RESPONSE");
     }, 90_000);
 });
 
@@ -53,20 +64,6 @@ function agentRequests(gym: Gym) {
     return gym.inference.requests.filter(
         (request) => !request.options.sessionId?.endsWith(":title"),
     );
-}
-
-async function waitForComposer(gym: Gym, text: string) {
-    return gym.terminal.waitUntil(
-        (snapshot) => composerText(snapshot) === text,
-        `composer text ${JSON.stringify(text)}`,
-        30_000,
-    );
-}
-
-function composerText(snapshot: { rows: readonly string[] }): string | undefined {
-    const footer = snapshot.rows.findIndex((row) => row.includes("gym off · /workspace"));
-    const row = footer >= 2 ? snapshot.rows[footer - 2] : undefined;
-    return row?.replace(/^\s*›\s?/u, "").trimEnd();
 }
 
 async function screenshot(gym: Gym, name: string): Promise<void> {

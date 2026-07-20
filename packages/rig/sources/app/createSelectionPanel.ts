@@ -1,4 +1,5 @@
 import {
+    matchesKey,
     SelectList,
     truncateToWidth,
     visibleWidth,
@@ -17,6 +18,7 @@ const DIM = "\x1b[2m";
 const NOT_BOLD_OR_DIM = "\x1b[22m";
 
 export interface CreateSelectionPanelOptions {
+    cancelDisabled?: boolean;
     title: string;
     subtitle: string;
     items: readonly SelectItem[];
@@ -31,12 +33,14 @@ export function createSelectionPanel(options: CreateSelectionPanelOptions): Comp
 }
 
 class SelectionPanel implements Component {
+    readonly #cancelDisabled: boolean;
     readonly #list: SelectList;
     readonly #subtitle: string;
     readonly #title: string;
     readonly #theme: TerminalTheme;
 
     constructor(options: CreateSelectionPanelOptions) {
+        this.#cancelDisabled = options.cancelDisabled === true;
         this.#title = sanitizeTerminalText(options.title);
         this.#subtitle = sanitizeTerminalText(options.subtitle);
         this.#theme = options.theme ?? DEFAULT_TERMINAL_THEME;
@@ -89,7 +93,11 @@ class SelectionPanel implements Component {
             "",
             ...this.#list.render(contentWidth).map((line) => `  ${line}`),
             "",
-            `  ${DIM}${this.#theme.secondary}Use ↑/↓ to move, Enter to select, Esc to cancel.${this.#theme.primary}`,
+            `  ${DIM}${this.#theme.secondary}${
+                this.#cancelDisabled
+                    ? "Use ↑/↓ to move and Enter to select."
+                    : "Use ↑/↓ to move, Enter to select, Esc to cancel."
+            }${this.#theme.primary}`,
             "",
         ];
 
@@ -97,6 +105,7 @@ class SelectionPanel implements Component {
     }
 
     handleInput(data: string): void {
+        if (this.#cancelDisabled && matchesKey(data, "escape")) return;
         this.#list.handleInput(data);
     }
 

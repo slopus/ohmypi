@@ -67,7 +67,7 @@ describe("CodingAssistantApp steering submit and Escape race", () => {
         });
     });
 
-    it("restores rejected steering and leaves a later Escape able to stop normally", async () => {
+    it("restores rejected steering for one Escape to clear before the next stops", async () => {
         const acceptance = deferred<void>();
         const steer = vi.fn(() => acceptance.promise);
         const abort = vi.fn(async () => ({ aborted: true }));
@@ -82,6 +82,9 @@ describe("CodingAssistantApp steering submit and Escape race", () => {
         expect(abort).not.toHaveBeenCalled();
         expect(stripAnsi(app.render(100).join("\n"))).toContain(`› ${rejected}`);
 
+        app.handleInput("\x1b");
+        expect(abort).not.toHaveBeenCalled();
+        expect(stripAnsi(app.render(100).join("\n"))).toContain("› Ask Rig to do anything");
         app.handleInput("\x1b");
         await vi.waitFor(() => expect(abort).toHaveBeenCalledOnce());
         expect(abort).toHaveBeenCalledWith({ expectedRunId: "run-1" });

@@ -12,7 +12,7 @@ afterEach(async () => {
 });
 
 describe("rapid double Escape while inference is running", () => {
-    it("continues pending steering once without clearing the composer draft", async () => {
+    it("clears the draft and continues pending steering once", async () => {
         const pendingMessage = "Apply this direction before continuing.";
         const draft = "Keep this unsent draft during continuation.";
         const gym = await createGym({
@@ -52,8 +52,8 @@ describe("rapid double Escape while inference is running", () => {
                 agentRequests(gym).length === 2 &&
                 snapshot.text.includes("esc to interrupt") &&
                 !snapshot.text.includes("Messages to be submitted after next tool call") &&
-                composerText(snapshot) === draft,
-            "both running Escapes to preserve the draft while pending steering continues",
+                composerText(snapshot) === "Ask Rig to do anything",
+            "the first Escape to clear the draft and the second to continue pending steering",
             30_000,
         );
         expect(continued.text).not.toContain("Session interrupted");
@@ -64,14 +64,14 @@ describe("rapid double Escape while inference is running", () => {
             (snapshot) =>
                 snapshot.text.includes("Session interrupted") &&
                 !snapshot.text.includes("esc to interrupt") &&
-                composerText(snapshot) === draft,
+                composerText(snapshot) === "Ask Rig to do anything",
             "a later Escape without pending steering to stop",
             30_000,
         );
         expect(agentRequests(gym)).toHaveLength(2);
     }, 120_000);
 
-    it("stops without pending steering and preserves the composer draft", async () => {
+    it("clears the draft before stopping without pending steering", async () => {
         const draft = "Keep this draft when both Escapes interrupt.";
         const gym = await createGym({
             inference: [
@@ -96,8 +96,8 @@ describe("rapid double Escape while inference is running", () => {
             (snapshot) =>
                 snapshot.text.includes("Session interrupted") &&
                 !snapshot.text.includes("esc to interrupt") &&
-                composerText(snapshot) === draft,
-            "both running Escapes to retain ordinary stop semantics",
+                composerText(snapshot) === "Ask Rig to do anything",
+            "the first Escape to clear the draft and the second to stop",
             30_000,
         );
         expect(stopped.text).not.toContain("Messages to be submitted after next tool call");

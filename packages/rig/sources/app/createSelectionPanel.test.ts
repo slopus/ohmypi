@@ -1,5 +1,5 @@
 import { visibleWidth } from "@earendil-works/pi-tui";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { createSelectionPanel } from "./createSelectionPanel.js";
 import { stripAnsi } from "./testing/stripAnsi.js";
@@ -65,5 +65,24 @@ describe("createSelectionPanel", () => {
         expect(text).toContain("Question  remains visible");
         expect(text).toContain("Allow  once");
         expect(text).toContain("Before  after");
+    });
+
+    it("keeps Escape inside a selection when cancellation is disabled", () => {
+        const onCancel = vi.fn();
+        const panel = createSelectionPanel({
+            cancelDisabled: true,
+            items: [{ label: "Continue", value: "continue" }],
+            onCancel,
+            onSelect: () => {},
+            subtitle: "Choose an answer.",
+            title: "Required question",
+        });
+
+        panel.handleInput?.("\x1b");
+
+        expect(onCancel).not.toHaveBeenCalled();
+        expect(stripAnsi(panel.render(80).join("\n"))).toContain(
+            "Use ↑/↓ to move and Enter to select.",
+        );
     });
 });

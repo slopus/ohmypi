@@ -26,7 +26,7 @@ This file tracks known defects, verified coverage gaps, and concrete follow-up w
 - [x] Dedent pending steering messages by one terminal cell.
     - The pending heading and single-connector child block render one cell left with an `(esc to send now)` hint at normal and narrow widths.
     - Escape with pending messages interrupts, promotes every message exactly once, and immediately continues; without pending messages it stops interaction normally.
-    - Double Escape clears the draft into local history, and Up/Down cycles submitted messages and cleared drafts for editing.
+    - Escape clears a non-empty draft into local history; only Escape on the empty main composer interrupts. Up/Down cycles submitted messages and cleared drafts for editing.
     - Real PTY regressions cover the original message-loss path, exact row positions, immediate continuation, and input-history behavior.
 
 - [ ] Show active agents first with elapsed time and token usage.
