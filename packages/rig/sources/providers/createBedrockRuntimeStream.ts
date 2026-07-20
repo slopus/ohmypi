@@ -27,7 +27,10 @@ export function createBedrockRuntimeStream(options: {
     const streamOptions: BedrockOptions = {
         bearerToken: options.bearerToken,
         region: options.region,
-        maxTokens: Math.min(options.modelRoute.maxTokens, 32_000),
+        maxTokens:
+            options.modelRoute.reasoningMode === "adaptive"
+                ? options.modelRoute.maxTokens
+                : Math.min(options.modelRoute.maxTokens, 32_000),
         ...(options.streamOptions?.signal !== undefined
             ? { signal: options.streamOptions.signal }
             : {}),

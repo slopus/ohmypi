@@ -241,6 +241,7 @@ const stream = query({
             ...process.env,
             CLAUDE_CODE_DISABLE_BUNDLED_SKILLS: "1",
             CLAUDE_AGENT_SDK_MCP_NO_PREFIX: "1",
+            CLAUDE_CODE_MAX_OUTPUT_TOKENS: "128000",
             ...(options.ultracode
                 ? { CLAUDE_CODE_EFFORT_LEVEL: "ultracode" }
                 : {}),
@@ -248,7 +249,6 @@ const stream = query({
         extraArgs: { "disable-slash-commands": null },
         effort: options.ultracode ? "xhigh" : options.effort,
         includePartialMessages: true,
-        maxTurns: 1,
         permissionMode: "dontAsk",
         persistSession: false,
         settingSources: [],

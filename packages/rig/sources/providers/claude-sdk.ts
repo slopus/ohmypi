@@ -27,6 +27,7 @@ import {
     modelAnthropicSonnet46,
     modelAnthropicSonnet461m,
 } from "./models.js";
+import { CLAUDE_SDK_PRIVACY_ENVIRONMENT } from "./claudeSdkPrivacyEnvironment.js";
 import { resolveClaudeCodeExecutablePath } from "./resolveClaudeCodeExecutablePath.js";
 import { createProviderQuotaCache } from "./createProviderQuotaCache.js";
 import { createInferenceStream } from "./createInferenceStream.js";
@@ -78,8 +79,13 @@ export function createClaudeSdkProvider(options: ClaudeSdkProviderOptions) {
                     prompt: idleClaudeSdkPrompt(),
                     options: {
                         cwd: options.agentContext.fs.cwd,
+                        env: {
+                            ...(options.env ?? process.env),
+                            ...CLAUDE_SDK_PRIVACY_ENVIRONMENT,
+                        },
                         pathToClaudeCodeExecutable,
                         persistSession: false,
+                        settings: { env: CLAUDE_SDK_PRIVACY_ENVIRONMENT },
                         settingSources: [],
                     },
                 });
@@ -296,8 +302,10 @@ function toClaudeSdkOptions(options: {
         pathToClaudeCodeExecutable: options.pathToClaudeCodeExecutable,
         env: {
             ...options.env,
+            ...CLAUDE_SDK_PRIVACY_ENVIRONMENT,
             CLAUDE_CODE_DISABLE_BUNDLED_SKILLS: "1",
             CLAUDE_AGENT_SDK_MCP_NO_PREFIX: "1",
+            CLAUDE_CODE_MAX_OUTPUT_TOKENS: "128000",
             ...(options.streamOptions?.thinking === "ultra"
                 ? { CLAUDE_CODE_EFFORT_LEVEL: "ultracode" }
                 : {}),
@@ -306,11 +314,11 @@ function toClaudeSdkOptions(options: {
             "disable-slash-commands": null,
         },
         includePartialMessages: true,
-        maxTurns: 1,
         permissionMode: "dontAsk",
         ...(options.sessionId === undefined ? {} : { sessionId: options.sessionId }),
         // Rig persists the conversation. Claude only needs a stable live-session identity.
         persistSession: false,
+        settings: { env: CLAUDE_SDK_PRIVACY_ENVIRONMENT },
         settingSources: [],
         skills: [],
         strictMcpConfig: true,
@@ -571,13 +579,13 @@ function toClaudeSdkThinkingOptions(
     if (thinking === "ultra") {
         return {
             effort: "xhigh",
-            thinking: { type: "adaptive" },
+            thinking: { type: "adaptive", display: "summarized" },
         };
     }
     if (isClaudeSdkEffortLevel(thinking)) {
         return {
             effort: thinking,
-            thinking: { type: "adaptive" },
+            thinking: { type: "adaptive", display: "summarized" },
         };
     }
 

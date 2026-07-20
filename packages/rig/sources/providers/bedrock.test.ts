@@ -89,6 +89,7 @@ describe("Amazon Bedrock provider", () => {
         });
         expect(streamOptions).toMatchObject({
             bearerToken: "bedrock-token",
+            maxTokens: 128_000,
             region: "us-east-1",
         });
         const payload = await streamOptions?.onPayload?.({ messages: [] }, piModel!);

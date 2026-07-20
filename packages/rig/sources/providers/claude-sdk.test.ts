@@ -55,6 +55,10 @@ describe("Claude SDK provider", () => {
         let closes = 0;
         const provider = createClaudeSdkProvider({
             agentContext: harness.context,
+            env: {
+                CLAUDE_CODE_ENABLE_TELEMETRY: "1",
+                OTEL_LOGS_EXPORTER: "otlp",
+            },
             now: () => 1_000,
             pathToClaudeCodeExecutable: "/test/claude",
             query: ((params) => {
@@ -87,8 +91,27 @@ describe("Claude SDK provider", () => {
         expect(calls).toHaveLength(1);
         expect(calls[0]?.options).toMatchObject({
             cwd: harness.context.fs.cwd,
+            env: {
+                CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
+                CLAUDE_CODE_ENABLE_TELEMETRY: "0",
+                DISABLE_ERROR_REPORTING: "1",
+                DISABLE_TELEMETRY: "1",
+                OTEL_LOGS_EXPORTER: "none",
+                OTEL_METRICS_EXPORTER: "none",
+                OTEL_TRACES_EXPORTER: "none",
+            },
             pathToClaudeCodeExecutable: "/test/claude",
             persistSession: false,
+            settings: {
+                env: {
+                    CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
+                    DISABLE_ERROR_REPORTING: "1",
+                    DISABLE_TELEMETRY: "1",
+                    OTEL_LOGS_EXPORTER: "none",
+                    OTEL_METRICS_EXPORTER: "none",
+                    OTEL_TRACES_EXPORTER: "none",
+                },
+            },
             settingSources: [],
         });
         expect(closes).toBe(1);
@@ -119,7 +142,13 @@ describe("Claude SDK provider", () => {
         const calls: Parameters<ClaudeSdkQuery>[0][] = [];
         const provider = createClaudeSdkProvider({
             agentContext: harness.context,
-            env: { CLAUDE_CONFIG_DIR: "/test/claude-config" },
+            env: {
+                BETA_TRACING_ENDPOINT: "https://telemetry.example.test",
+                CLAUDE_CODE_ENABLE_TELEMETRY: "1",
+                CLAUDE_CONFIG_DIR: "/test/claude-config",
+                ENABLE_BETA_TRACING_DETAILED: "1",
+                OTEL_LOGS_EXPORTER: "otlp",
+            },
             pathToClaudeCodeExecutable: "/test/claude",
             sessionId: "11111111-1111-4111-8111-111111111111",
             tools: [
@@ -195,9 +224,36 @@ describe("Claude SDK provider", () => {
         expect(calls[0]?.options?.extraArgs).toEqual({ "disable-slash-commands": null });
         expect(calls[0]?.options?.env?.CLAUDE_CODE_DISABLE_BUNDLED_SKILLS).toBe("1");
         expect(calls[0]?.options?.env?.CLAUDE_AGENT_SDK_MCP_NO_PREFIX).toBe("1");
+        expect(calls[0]?.options?.env).toMatchObject({
+            ANT_OTEL_LOGS_EXPORTER: "none",
+            ANT_OTEL_METRICS_EXPORTER: "none",
+            ANT_OTEL_TRACES_EXPORTER: "none",
+            BETA_TRACING_ENDPOINT: "",
+            CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY: "1",
+            CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
+            CLAUDE_CODE_ENABLE_TELEMETRY: "0",
+            CLAUDE_CODE_ENHANCED_TELEMETRY_BETA: "0",
+            CLAUDE_CODE_PERFETTO_TRACE: "0",
+            DISABLE_AUTOUPDATER: "1",
+            DISABLE_BUG_COMMAND: "1",
+            DISABLE_ERROR_REPORTING: "1",
+            DISABLE_FEEDBACK_COMMAND: "1",
+            DISABLE_TELEMETRY: "1",
+            ENABLE_BETA_TRACING_DETAILED: "0",
+            ENABLE_ENHANCED_TELEMETRY_BETA: "0",
+            FORCE_AUTOUPDATE_PLUGINS: "0",
+            OTEL_LOG_TOOL_CONTENT: "0",
+            OTEL_LOG_TOOL_DETAILS: "0",
+            OTEL_LOG_USER_PROMPTS: "0",
+            OTEL_LOGS_EXPORTER: "none",
+            OTEL_METRICS_EXPORTER: "none",
+            OTEL_SDK_DISABLED: "true",
+            OTEL_TRACES_EXPORTER: "none",
+        });
         expect(calls[0]?.options?.env?.CLAUDE_CONFIG_DIR).toBe("/test/claude-config");
         expect(calls[0]?.options?.includePartialMessages).toBe(true);
-        expect(calls[0]?.options?.maxTurns).toBe(1);
+        expect(calls[0]?.options?.maxTurns).toBeUndefined();
+        expect(calls[0]?.options?.env?.CLAUDE_CODE_MAX_OUTPUT_TOKENS).toBe("128000");
         expect(calls[0]?.options?.permissionMode).toBe("dontAsk");
         expect(calls[0]?.options?.pathToClaudeCodeExecutable).toBe("/test/claude");
         expect(calls[0]?.options?.persistSession).toBe(false);
@@ -205,6 +261,17 @@ describe("Claude SDK provider", () => {
         expect(calls[0]?.options?.settingSources).toEqual([]);
         expect(calls[0]?.options?.strictMcpConfig).toBe(true);
         expect(calls[0]?.options?.mcpServers).toHaveProperty("rig");
+        expect(calls[0]?.options?.settings).toMatchObject({
+            env: {
+                CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
+                CLAUDE_CODE_ENABLE_TELEMETRY: "0",
+                DISABLE_ERROR_REPORTING: "1",
+                DISABLE_TELEMETRY: "1",
+                OTEL_LOGS_EXPORTER: "none",
+                OTEL_METRICS_EXPORTER: "none",
+                OTEL_TRACES_EXPORTER: "none",
+            },
+        });
     });
 
     it("exposes tools added to the agent after the provider is created", async () => {
@@ -641,9 +708,16 @@ describe("Claude SDK provider", () => {
 
         expect(calls[0]?.options?.model).toBe("sonnet[1m]");
         expect(calls[0]?.options?.effort).toBe("xhigh");
-        expect(calls[0]?.options?.thinking).toEqual({ type: "adaptive" });
+        expect(calls[0]?.options?.thinking).toEqual({
+            type: "adaptive",
+            display: "summarized",
+        });
         expect(calls[1]?.options?.model).toBe("sonnet[1m]");
         expect(calls[1]?.options?.effort).toBe("xhigh");
+        expect(calls[1]?.options?.thinking).toEqual({
+            type: "adaptive",
+            display: "summarized",
+        });
         expect(calls[1]?.options?.env?.CLAUDE_CODE_EFFORT_LEVEL).toBe("ultracode");
         expect(calls[2]?.options?.model).toBe("opus[1m]");
         expect(calls[3]?.options?.model).toBe("claude-fable-5[1m]");
