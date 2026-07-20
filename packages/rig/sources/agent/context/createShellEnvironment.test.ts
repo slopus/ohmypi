@@ -14,6 +14,7 @@ describe("createShellEnvironment", () => {
             DATABASE_URL: "postgres://secret.invalid/database",
             DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/501/bus",
             DOCKER_HOST: "unix:///var/run/docker.sock",
+            GEMINI_API_KEY: "gemini-key",
             GITHUB_TOKEN: "github-secret",
             GIT_ASKPASS: "/secret/askpass",
             HOME: "/safe/home",
@@ -42,6 +43,7 @@ describe("createShellEnvironment", () => {
         expect(environment).toMatchObject({
             AWS_ACCESS_KEY_ID: "aws-key",
             AWS_SECRET_ACCESS_KEY: "aws-secret",
+            GEMINI_API_KEY: "gemini-key",
             GITHUB_TOKEN: "github-secret",
             HOME: "/safe/home",
             HTTPS_PROXY: "https://user:secret@proxy.invalid",

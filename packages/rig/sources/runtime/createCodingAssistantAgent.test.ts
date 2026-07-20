@@ -18,6 +18,7 @@ describe("createCodingAssistantAgent", () => {
 
         const runtime = createCodingAssistantAgent({
             cwd,
+            env: {},
             effort: "medium",
             processManager,
         });
@@ -32,12 +33,29 @@ describe("createCodingAssistantAgent", () => {
         expect(runtime.agent.snapshot().effort).toBe("medium");
     });
 
+    it("automatically enables universal Gemini tools from the daemon environment", () => {
+        const runtime = createCodingAssistantAgent({
+            cwd: "/tmp/rig-app-test",
+            env: { GEMINI_API_KEY: "gemini-key" },
+        });
+
+        expect(runtime.agent.tools.map((tool) => tool.name)).toEqual(
+            expect.arrayContaining([
+                "gemini_search",
+                "gemini_generate_image",
+                "gemini_generate_music",
+                "gemini_analyze_media",
+            ]),
+        );
+    });
+
     it("creates a Claude SDK agent for Anthropic models", () => {
         const cwd = "/tmp/rig-app-test";
         const processManager = new NativeProcessManager();
 
         const runtime = createCodingAssistantAgent({
             cwd,
+            env: {},
             modelId: modelAnthropicFable5.id,
             processManager,
         });

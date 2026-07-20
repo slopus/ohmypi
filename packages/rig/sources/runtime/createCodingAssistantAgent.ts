@@ -36,6 +36,7 @@ import { createDefaultInstructions } from "./createDefaultInstructions.js";
 import { createGymJustBashAgentContext } from "./createGymJustBashAgentContext.js";
 import { selectToolsForModel } from "./selectToolsForModel.js";
 import type { DurableSkillDefinition } from "../external-skills/types.js";
+import { resolveGeminiApiKey } from "../tools/webSearch/resolveGeminiApiKey.js";
 
 export interface CreateCodingAssistantAgentOptions {
     appendSystemPrompt?: string;
@@ -156,7 +157,12 @@ export function createCodingAssistantAgent(
     const usesCodexTools = toolProfile === "codex";
     const usesGrokTools = toolProfile === "grok";
     const usesKimiTools = toolProfile === "kimi";
-    const baseTools = selectToolsForModel({ model, provider });
+    const geminiApiKey = resolveGeminiApiKey(env);
+    const baseTools = selectToolsForModel({
+        ...(geminiApiKey === undefined ? {} : { geminiApiKey }),
+        model,
+        provider,
+    });
     const collaborationTools = (
         usesCodexTools
             ? codexCollaborationTools

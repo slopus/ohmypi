@@ -440,6 +440,13 @@ Use `/configure` for common settings. Environment variables such as `RIG_MODEL`,
 `RIG_PROVIDER`, `RIG_EFFORT`, and `RIG_PERMISSION_MODE` override the corresponding
 default for a newly created session.
 
+Set `GEMINI_API_KEY` in the daemon environment to add the universal
+`gemini_search`, `gemini_generate_image`, `gemini_generate_music`, and
+`gemini_analyze_media` tools to every model. No other Gemini or Google credential
+variable is used. These tools are additional to each provider's native tools,
+including Claude's unchanged `WebSearch` tool. Restart the local daemon after
+adding or changing the key.
+
 <details>
 <summary><strong>Docker-backed sessions</strong></summary>
 
