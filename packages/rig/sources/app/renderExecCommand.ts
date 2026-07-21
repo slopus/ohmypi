@@ -10,6 +10,13 @@ const BOLD = "\x1b[1m";
 const NOT_BOLD = "\x1b[22m";
 const DIM = "\x1b[2m";
 const MAX_OUTPUT_EDGE_LINES = 5;
+const MAX_OUTPUT_EDGE_ROWS = 5;
+const MIN_OUTPUT_EDGE_CHARACTERS = 256;
+
+interface OutputLineRange {
+    readonly end: number;
+    readonly start: number;
+}
 
 export function renderExecCommand(
     presentation: ExecCommandPresentation,
@@ -48,13 +55,13 @@ export function renderExecCommand(
         childRows.push({ prefix: DIM, suffix: RESET, text: options.detail });
     }
     if (options.active !== true) {
-        const outputLines = selectOutputLines(presentation.output);
+        const outputLines = selectOutputLines(presentation.output, Math.max(1, width - 4));
         childRows.push(
             ...outputLines.map((output) => ({
                 prefix: DIM,
                 suffix: RESET,
                 text: output,
-                wrap: true,
+                wrap: false,
             })),
         );
     }
@@ -64,15 +71,90 @@ export function renderExecCommand(
     return lines;
 }
 
-function selectOutputLines(output: string): string[] {
-    const sanitized = sanitizeTerminalText(output).replaceAll("\t", "    ");
-    const lines = sanitized.replace(/\n+$/u, "").split("\n");
-    if (lines.length === 1 && lines[0]?.length === 0) return ["(no output)"];
-    if (lines.length <= MAX_OUTPUT_EDGE_LINES * 2) return lines;
-    const omitted = lines.length - MAX_OUTPUT_EDGE_LINES * 2;
+function selectOutputLines(output: string, width: number): string[] {
+    let end = output.length;
+    while (end > 0 && (output[end - 1] === "\n" || output[end - 1] === "\r")) end -= 1;
+    if (end === 0) return ["(no output)"];
+
+    const { first, last, lineCount } = outputLineRanges(output, end);
+    const edgeCharacterLimit = Math.max(
+        MIN_OUTPUT_EDGE_CHARACTERS,
+        width * MAX_OUTPUT_EDGE_ROWS * 2,
+    );
+
+    if (lineCount <= MAX_OUTPUT_EDGE_LINES * 2) {
+        if (end <= edgeCharacterLimit * 2) {
+            const rows = wrapOutputText(output.slice(0, end), width);
+            if (rows.length <= MAX_OUTPUT_EDGE_ROWS * 2) return rows;
+            return [
+                ...rows.slice(0, MAX_OUTPUT_EDGE_ROWS),
+                "… output truncated",
+                ...rows.slice(-MAX_OUTPUT_EDGE_ROWS),
+            ];
+        }
+
+        return [
+            ...wrapOutputText(output.slice(0, edgeCharacterLimit), width).slice(
+                0,
+                MAX_OUTPUT_EDGE_ROWS,
+            ),
+            "… output truncated",
+            ...wrapOutputText(output.slice(end - edgeCharacterLimit, end), width).slice(
+                -MAX_OUTPUT_EDGE_ROWS,
+            ),
+        ];
+    }
+
+    const firstEnd = first.at(-1)?.end ?? 0;
+    const lastStart = last[0]?.start ?? end;
+    const headRows = wrapOutputText(output.slice(0, Math.min(firstEnd, edgeCharacterLimit)), width);
+    const tailRows = wrapOutputText(
+        output.slice(Math.max(lastStart, end - edgeCharacterLimit), end),
+        width,
+    );
+    const previewTruncated =
+        firstEnd > edgeCharacterLimit ||
+        end - lastStart > edgeCharacterLimit ||
+        headRows.length > MAX_OUTPUT_EDGE_ROWS ||
+        tailRows.length > MAX_OUTPUT_EDGE_ROWS;
+    const omitted = lineCount - MAX_OUTPUT_EDGE_LINES * 2;
     return [
-        ...lines.slice(0, MAX_OUTPUT_EDGE_LINES),
-        `… +${omitted} lines`,
-        ...lines.slice(-MAX_OUTPUT_EDGE_LINES),
+        ...headRows.slice(0, MAX_OUTPUT_EDGE_ROWS),
+        `… +${omitted} lines${previewTruncated ? "; output truncated" : ""}`,
+        ...tailRows.slice(-MAX_OUTPUT_EDGE_ROWS),
     ];
+}
+
+function outputLineRanges(
+    output: string,
+    end: number,
+): {
+    readonly first: readonly OutputLineRange[];
+    readonly last: readonly OutputLineRange[];
+    readonly lineCount: number;
+} {
+    const first: OutputLineRange[] = [];
+    const last: OutputLineRange[] = [];
+    let lineStart = 0;
+    let lineCount = 0;
+
+    for (let index = 0; index <= end; index += 1) {
+        if (index !== end && output[index] !== "\n") continue;
+        const range = { end: index, start: lineStart };
+        if (first.length < MAX_OUTPUT_EDGE_LINES) first.push(range);
+        last.push(range);
+        if (last.length > MAX_OUTPUT_EDGE_LINES) last.shift();
+        lineCount += 1;
+        lineStart = index + 1;
+    }
+
+    return { first, last, lineCount };
+}
+
+function wrapOutputText(text: string, width: number): string[] {
+    const sanitized = sanitizeTerminalText(text).replaceAll("\t", "    ");
+    return sanitized.split("\n").flatMap((line) => {
+        const wrapped = wrapTextWithAnsi(line, width);
+        return wrapped.length === 0 ? [""] : wrapped;
+    });
 }

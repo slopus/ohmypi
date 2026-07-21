@@ -49,4 +49,27 @@ describe("renderExecCommand", () => {
             "    ok",
         ]);
     });
+
+    it("bounds a giant single-line output while retaining useful edges", () => {
+        const rendered = renderExecCommand(
+            {
+                command: "sqlite3 sessions.sqlite 'select * from sessions'",
+                output: `OUTPUT_HEAD_${"a".repeat(2_000_000)}_MIDDLE_SENTINEL_${"z".repeat(2_000_000)}_OUTPUT_TAIL`,
+                type: "exec_command",
+            },
+            {
+                brand: "",
+                primary: "",
+                status: "",
+                verb: "Ran",
+                width: 80,
+            },
+        ).map((line) => stripAnsi(line).trimEnd());
+
+        expect(rendered.length).toBeLessThanOrEqual(12);
+        expect(rendered.join("\n")).toContain("OUTPUT_HEAD_");
+        expect(rendered.join("\n")).toContain("OUTPUT_TAIL");
+        expect(rendered.join("\n")).toContain("output truncated");
+        expect(rendered.join("\n")).not.toContain("MIDDLE_SENTINEL");
+    });
 });

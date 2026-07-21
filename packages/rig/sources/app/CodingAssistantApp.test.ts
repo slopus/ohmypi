@@ -5244,6 +5244,83 @@ describe("CodingAssistantApp", () => {
         });
     });
 
+    it("caps giant shell output in the transcript without truncating model context", async () => {
+        const model = defineModel({
+            id: "openai/gpt-test",
+            name: "GPT Test",
+            thinkingLevels: ["off"],
+            defaultThinkingLevel: "off",
+        });
+        const contexts: Context[] = [];
+        let streamCalls = 0;
+        const provider = defineProvider({
+            id: "codex",
+            models: [model],
+            stream(_model, context) {
+                contexts.push(context);
+                streamCalls += 1;
+                if (streamCalls === 1) {
+                    return streamMessage({
+                        role: "assistant",
+                        content: [
+                            {
+                                type: "toolCall",
+                                id: "tool-call-giant-output",
+                                name: "exec_command",
+                                arguments: {
+                                    cmd: "printf 'MODEL_%s_HEAD_' OUTPUT; printf '%05000d' 0; printf '_MODEL_%s_SENTINEL_' MIDDLE; printf '%05000d' 0; printf '_MODEL_%s_TAIL' OUTPUT",
+                                },
+                            },
+                        ],
+                        api: "test",
+                        provider: "codex",
+                        model: "openai/gpt-test",
+                        usage: zeroUsage(),
+                        stopReason: "toolUse",
+                        timestamp: 1,
+                    });
+                }
+
+                return streamText("done");
+            },
+        });
+        const harness = createJustBashToolHarness();
+        const app = new CodingAssistantApp({
+            agent: new Agent({
+                provider,
+                modelId: model.id,
+                context: harness.context,
+                toolSelector: selectToolsForModel,
+                printToConsole: false,
+            }),
+            cwd: harness.context.fs.cwd,
+            processManager: new NativeProcessManager(),
+            tui: fakeTui(),
+        });
+
+        submit(app, "inspect sessions");
+        await app.waitForIdle();
+
+        const renderedLines = app.render(80).map(stripAnsi);
+        const toolStart = renderedLines.findIndex((line) => line.includes("• Ran printf"));
+        const finalAnswer = renderedLines.findIndex((line) => line.includes("• done"));
+        const renderedTool = renderedLines.slice(toolStart, finalAnswer).join("\n");
+        expect(toolStart).toBeGreaterThanOrEqual(0);
+        expect(finalAnswer).toBeGreaterThan(toolStart);
+        expect(finalAnswer - toolStart).toBeLessThanOrEqual(15);
+        expect(renderedTool).toContain("MODEL_OUTPUT_HEAD_");
+        expect(renderedTool).toContain("MODEL_OUTPUT_TAIL");
+        expect(renderedTool).toContain("output truncated");
+        expect(renderedTool).not.toContain("MODEL_MIDDLE_SENTINEL");
+
+        const modelContext = JSON.stringify(contexts[1]?.messages);
+        expect(modelContext).toContain("MODEL_OUTPUT_HEAD_");
+        expect(modelContext).toContain("MODEL_MIDDLE_SENTINEL");
+        expect(modelContext).toContain("MODEL_OUTPUT_TAIL");
+        expect(modelContext).toContain("0".repeat(5_000));
+        expect(modelContext).not.toContain("output truncated");
+    });
+
     it("renders structured MCP calls, replayed results, errors, and approval detail", () => {
         const model = defineModel({
             id: "openai/gpt-test",
