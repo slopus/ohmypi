@@ -1,6 +1,7 @@
 import type { BashContext, BashSessionSnapshot } from "../../agent/index.js";
 
 const PROGRESS_POLL_MS = 100;
+const MAX_PROGRESS_DISPLAY_CHARACTERS = 2_000;
 
 export async function readSessionWithProgress(options: {
     bash: BashContext;
@@ -12,6 +13,7 @@ export async function readSessionWithProgress(options: {
     const deadline = options.waitMs === undefined ? undefined : Date.now() + options.waitMs;
     let stderrDelta = "";
     let stdoutDelta = "";
+    let lastProgressDisplay = "";
     let snapshot: BashSessionSnapshot | undefined;
 
     do {
@@ -25,7 +27,11 @@ export async function readSessionWithProgress(options: {
         stdoutDelta += snapshot.stdoutDelta;
         stderrDelta += snapshot.stderrDelta;
         const progress = [stdoutDelta, stderrDelta].filter(Boolean).join("\n");
-        if (progress.length > 0) options.onProgress?.(progress.slice(-2_000));
+        const progressDisplay = progress.slice(0, MAX_PROGRESS_DISPLAY_CHARACTERS);
+        if (progressDisplay.length > 0 && progressDisplay !== lastProgressDisplay) {
+            lastProgressDisplay = progressDisplay;
+            options.onProgress?.(progressDisplay);
+        }
         if (
             snapshot.status !== "running" ||
             options.signal?.aborted ||
