@@ -78,6 +78,7 @@ import { formatCodexMcpToolResult } from "./formatCodexMcpToolResult.js";
 import { FileMentionAutocomplete } from "./FileMentionAutocomplete.js";
 import type { FileMentionContext } from "./findFileMentionContext.js";
 import { formatFileMention } from "./formatFileMention.js";
+import { formatProviderError } from "./formatProviderError.js";
 import { formatSessionUsageSummary } from "./formatSessionUsageSummary.js";
 import { formatToolResultForDisplay } from "./formatToolResultForDisplay.js";
 import { humanizeReasoningLevel } from "./humanizeReasoningLevel.js";
@@ -3220,7 +3221,13 @@ export class CodingAssistantApp implements Component, Focusable {
             this.#statusText = "Error";
             this.#appendEntry({
                 role: "error",
-                text: event.error.errorMessage ?? "Provider returned an error.",
+                text: formatProviderError(event.error.providerError, {
+                    ...(event.error.errorMessage === undefined
+                        ? {}
+                        : { fallbackMessage: event.error.errorMessage }),
+                    now: this.#now(),
+                    providerId: this.#agent.provider.id,
+                }),
             });
         }
 

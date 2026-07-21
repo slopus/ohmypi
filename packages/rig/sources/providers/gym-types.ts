@@ -1,4 +1,11 @@
-import type { AssistantContent, Context, StopReason, StreamOptions, Usage } from "./types.js";
+import type {
+    AssistantContent,
+    Context,
+    ProviderError,
+    StopReason,
+    StreamOptions,
+    Usage,
+} from "./types.js";
 
 export interface GymInferenceRequest {
     context: Context;
@@ -15,6 +22,7 @@ export interface GymInferenceResponse {
     errorAfterContentStart?: boolean;
     errorAfterTextDeltas?: number;
     errorMessage?: string;
+    providerError?: ProviderError;
     responseModel?: string;
     stopReason?: StopReason;
     thinkingDeltaChunkSize?: number;

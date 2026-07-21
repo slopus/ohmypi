@@ -5,6 +5,8 @@ import {
     type EffortLevel,
     type Options as ClaudeSdkOptions,
     type SDKPartialAssistantMessage,
+    type SDKAssistantMessageError,
+    type SDKRateLimitInfo,
     type SDKResultMessage,
     type SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk";
@@ -28,6 +30,7 @@ import {
     modelAnthropicSonnet461m,
 } from "./models.js";
 import { CLAUDE_SDK_PRIVACY_ENVIRONMENT } from "./claudeSdkPrivacyEnvironment.js";
+import { classifyClaudeProviderError } from "./classifyClaudeProviderError.js";
 import { resolveClaudeCodeExecutablePath } from "./resolveClaudeCodeExecutablePath.js";
 import { createProviderQuotaCache } from "./createProviderQuotaCache.js";
 import { createInferenceStream } from "./createInferenceStream.js";
@@ -42,6 +45,7 @@ import {
     type AssistantMessageEvent,
     type Context,
     type Model,
+    type ProviderError,
     type StopReason,
     type StreamOptions,
     type Tool as ProviderTool,
@@ -140,6 +144,8 @@ export function createClaudeSdkProvider(options: ClaudeSdkProviderOptions) {
                     now,
                     stopReason: "stop",
                 });
+                let assistantError: SDKAssistantMessageError | undefined;
+                let rateLimitInfo: SDKRateLimitInfo | undefined;
                 yield { type: "start", partial };
 
                 try {
@@ -148,6 +154,16 @@ export function createClaudeSdkProvider(options: ClaudeSdkProviderOptions) {
                     let result: SDKResultMessage | undefined;
 
                     for await (const message of sdkStream) {
+                        if (message.type === "rate_limit_event") {
+                            rateLimitInfo = message.rate_limit_info;
+                            continue;
+                        }
+
+                        if (message.type === "assistant" && message.error !== undefined) {
+                            assistantError = message.error;
+                            continue;
+                        }
+
                         if (message.type === "stream_event") {
                             for (const event of applyClaudeStreamEvent(
                                 streamState,
@@ -190,20 +206,32 @@ export function createClaudeSdkProvider(options: ClaudeSdkProviderOptions) {
                     }
 
                     if (result === undefined) {
+                        const errorMessage = "Claude SDK finished without returning a result.";
                         const error = createErrorAssistantMessage({
                             model,
                             now,
-                            errorMessage: "Claude SDK finished without returning a result.",
+                            errorMessage,
+                            providerError: classifyClaudeProviderError({
+                                ...(assistantError === undefined ? {} : { assistantError }),
+                                message: errorMessage,
+                                ...(rateLimitInfo === undefined ? {} : { rateLimitInfo }),
+                            }),
                         });
                         yield { type: "error", reason: "error", error };
                         return error;
                     }
 
                     if (result.subtype !== "success") {
+                        const errorMessage = sdkResultErrorMessage(result);
                         const error = createErrorAssistantMessage({
                             model,
                             now,
-                            errorMessage: sdkResultErrorMessage(result),
+                            errorMessage,
+                            providerError: classifyClaudeProviderError({
+                                ...(assistantError === undefined ? {} : { assistantError }),
+                                message: errorMessage,
+                                ...(rateLimitInfo === undefined ? {} : { rateLimitInfo }),
+                            }),
                             responseId: result.uuid,
                             usage: usageFromClaudeSdkResult(result),
                         });
@@ -240,10 +268,20 @@ export function createClaudeSdkProvider(options: ClaudeSdkProviderOptions) {
                     return message;
                 } catch (error) {
                     const isAborted = streamOptions?.signal?.aborted === true;
+                    const errorMessage = errorToMessage(error);
                     const assistantMessage = createErrorAssistantMessage({
                         model,
                         now,
-                        errorMessage: errorToMessage(error),
+                        errorMessage,
+                        ...(isAborted
+                            ? {}
+                            : {
+                                  providerError: classifyClaudeProviderError({
+                                      ...(assistantError === undefined ? {} : { assistantError }),
+                                      message: errorMessage,
+                                      ...(rateLimitInfo === undefined ? {} : { rateLimitInfo }),
+                                  }),
+                              }),
                         stopReason: isAborted ? "aborted" : "error",
                     });
                     yield {
@@ -1022,6 +1060,7 @@ function createErrorAssistantMessage(options: {
     model: Model;
     now: () => number;
     errorMessage: string;
+    providerError?: ProviderError;
     responseId?: string;
     stopReason?: Extract<StopReason, "aborted" | "error">;
     usage?: Usage;
@@ -1035,6 +1074,7 @@ function createErrorAssistantMessage(options: {
         usage: options.usage ?? zeroUsage(),
         stopReason: options.stopReason ?? "error",
         errorMessage: options.errorMessage,
+        ...(options.providerError === undefined ? {} : { providerError: options.providerError }),
         timestamp: options.now(),
         ...(options.responseId !== undefined ? { responseId: options.responseId } : {}),
     };

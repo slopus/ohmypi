@@ -809,7 +809,12 @@ async function appendInferenceCrashContinuation(options: {
 }
 
 function toResumableAssistantMessage(message: ProviderAssistantMessage): ProviderAssistantMessage {
-    const { errorCode: _errorCode, errorMessage: _errorMessage, ...rest } = message;
+    const {
+        errorCode: _errorCode,
+        errorMessage: _errorMessage,
+        providerError: _providerError,
+        ...rest
+    } = message;
     const content = message.content.map((block) =>
         block.type === "toolCall" ? { ...block, arguments: { ...block.arguments } } : { ...block },
     );

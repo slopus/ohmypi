@@ -410,6 +410,7 @@ interface GymInferenceResponse {
     errorAfterContentStart?: boolean;
     errorAfterTextDeltas?: number;
     errorMessage?: string;
+    providerError?: ProviderError;
     responseModel?: string;
     stopReason?: StopReason;
     thinkingDeltaChunkSize?: number;
@@ -435,6 +436,7 @@ interface GymInferenceResponse {
 - `toolCallDeltaDelayMs` pauses after `toolcall_start` and before the arguments delta. Use it to exercise the live streamed-tool-call UI deterministically.
 - `stopReason` defaults to `toolUse` when any content block is a tool call, otherwise `stop`.
 - `errorMessage` populates the assistant message error field.
+- `providerError` supplies the provider-neutral error category and optional reset timestamp.
 - `responseModel` simulates a provider reporting a different concrete model.
 - `usage` supplies token and cost accounting. Omitted usage is zeroed.
 

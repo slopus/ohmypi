@@ -10,6 +10,11 @@ import type { ProviderQuota } from "./providerQuota.js";
 
 export type StopReason = "stop" | "length" | "toolUse" | "error" | "aborted";
 export type ProviderErrorCode = "incomplete_response" | "invalid_image_request";
+/** `resetAt` is a Unix timestamp in milliseconds when present. */
+export type ProviderError =
+    | { type: "out_of_tokens"; resetAt?: number }
+    | { type: "rate_limit"; resetAt?: number }
+    | { type: "unclassified" };
 export type ProviderImageProfile = "claude" | "codex";
 export type ProviderToolProfile = "claude" | "codex" | "grok" | "kimi" | "pi";
 export type ModelContextCompatibilityGroup = "claude" | "codex" | "grok";
@@ -71,6 +76,7 @@ export interface AssistantMessage {
     stopReason: StopReason;
     errorCode?: ProviderErrorCode;
     errorMessage?: string;
+    providerError?: ProviderError;
     timestamp: number;
 }
 

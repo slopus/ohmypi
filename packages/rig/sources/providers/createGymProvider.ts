@@ -113,6 +113,9 @@ export function createGymProvider(options: CreateGymProviderOptions) {
                     ...(reply.errorMessage === undefined
                         ? {}
                         : { errorMessage: reply.errorMessage }),
+                    ...(reply.providerError === undefined
+                        ? {}
+                        : { providerError: reply.providerError }),
                 };
                 yield { type: "start", partial: message };
 

@@ -18,6 +18,43 @@ import { createClaudeSdkProvider, type ClaudeSdkQuery } from "./claude-sdk.js";
 import type { Context } from "./types.js";
 
 describe("Claude SDK provider", () => {
+    it("preserves exhausted-credit classification and reset metadata from the SDK", async () => {
+        const harness = createJustBashToolHarness();
+        const provider = createClaudeSdkProvider({
+            agentContext: harness.context,
+            pathToClaudeCodeExecutable: "/test/claude",
+            query: (() =>
+                fakeClaudeQuery([
+                    {
+                        type: "rate_limit_event",
+                        rate_limit_info: {
+                            status: "rejected",
+                            resetsAt: 2_000,
+                            overageStatus: "rejected",
+                            overageResetsAt: 3_000,
+                            overageDisabledReason: "out_of_credits",
+                        },
+                        uuid: "00000000-0000-4000-8000-000000000017",
+                        session_id: "00000000-0000-4000-8000-000000000018",
+                    },
+                    failedResult(["You're out of extra usage"]),
+                ])) as ClaudeSdkQuery,
+        });
+
+        const stream = provider.stream(modelAnthropicFable5, {
+            messages: [{ role: "user", content: "Use Claude.", timestamp: 1 }],
+        });
+        for await (const _event of stream) {
+            // Drain the stream.
+        }
+
+        await expect(stream.result()).resolves.toMatchObject({
+            errorMessage: "You're out of extra usage",
+            providerError: { resetAt: 2_000_000, type: "out_of_tokens" },
+            stopReason: "error",
+        });
+    });
+
     it("keeps Claude image constraints under a custom provider key", () => {
         const harness = createJustBashToolHarness();
         const provider = createClaudeSdkProvider({
@@ -925,6 +962,33 @@ function successfulResult(result: string) {
         permission_denials: [],
         uuid: "00000000-0000-4000-8000-000000000015",
         session_id: "00000000-0000-4000-8000-000000000016",
+    };
+}
+
+function failedResult(errors: string[]) {
+    return {
+        type: "result" as const,
+        subtype: "error_during_execution" as const,
+        duration_ms: 1,
+        duration_api_ms: 1,
+        is_error: true,
+        num_turns: 1,
+        stop_reason: null,
+        total_cost_usd: 0,
+        usage: {
+            input_tokens: 0,
+            output_tokens: 0,
+            cache_creation_input_tokens: 0,
+            cache_read_input_tokens: 0,
+            server_tool_use: null,
+            service_tier: null,
+            cache_creation: null,
+        },
+        modelUsage: {},
+        permission_denials: [],
+        errors,
+        uuid: "00000000-0000-4000-8000-000000000019",
+        session_id: "00000000-0000-4000-8000-000000000020",
     };
 }
 
