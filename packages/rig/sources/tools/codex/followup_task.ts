@@ -12,11 +12,17 @@ export const codexFollowupTaskTool = defineTool({
     arguments: Type.Object({
         target: Type.String({ description: "Agent id, task name, or full task path." }),
         message: Type.String({ description: "The follow-up instructions." }),
+        effort: Type.Optional(
+            Type.String({
+                description:
+                    "New effort level for the subagent. Must be one of its model's allowed effort levels shown in the system prompt.",
+            }),
+        ),
     }),
     returnType: managedSubagentSchema,
     shouldReviewInAutoMode: () => false,
-    execute: ({ message, target }, context) =>
-        requireSubagentContext(context).followUp(target, message),
+    execute: ({ effort, message, target }, context) =>
+        requireSubagentContext(context).followUp(target, message, effort),
     toLLM: (result) => [{ type: "text", text: JSON.stringify(result) }],
     toUI: (result) => `Sent follow-up work to ${result.description}.`,
     locks: [],

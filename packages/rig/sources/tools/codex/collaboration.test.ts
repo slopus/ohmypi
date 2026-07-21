@@ -48,6 +48,7 @@ describe("Codex collaboration tools", () => {
             codexSpawnAgentTool.execute(
                 {
                     context: "task",
+                    effort: "high",
                     message: "Inspect the implementation.",
                     model: "anthropic/claude-sonnet-4.6",
                     task_name: "inspect_code",
@@ -64,6 +65,7 @@ describe("Codex collaboration tools", () => {
             background: true,
             contextMode: "task",
             description: "Inspect code",
+            effort: "high",
             modelId: "anthropic/claude-sonnet-4.6",
             parentToolCallId: "tool-1",
             prompt: "Inspect the implementation.",
@@ -72,15 +74,16 @@ describe("Codex collaboration tools", () => {
 
         expect(
             codexFollowupTaskTool.execute(
-                { message: "Check the tests too.", target: "inspect_code" },
+                { effort: "high", message: "Check the tests too.", target: "inspect_code" },
                 harness.context,
                 {},
             ),
         ).toEqual(agent);
-        expect(followUp).toHaveBeenCalledWith("inspect_code", "Check the tests too.");
+        expect(followUp).toHaveBeenCalledWith("inspect_code", "Check the tests too.", "high");
         expect(
             claudeSendMessageTool.execute(
                 {
+                    effort: "low",
                     message: "Review the final diff.",
                     summary: "Review final changes",
                     to: "inspect_code",
@@ -93,6 +96,7 @@ describe("Codex collaboration tools", () => {
             success: true,
             target: "/root/inspect_code",
         });
+        expect(followUp).toHaveBeenLastCalledWith("inspect_code", "Review the final diff.", "low");
         expect(codexListAgentsTool.execute({}, harness.context, {})).toEqual({ agents: [agent] });
         expect(codexInterruptAgentTool.execute({ target: "agent-1" }, harness.context, {})).toEqual(
             agent,

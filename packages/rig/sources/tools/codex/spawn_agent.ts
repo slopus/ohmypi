@@ -18,6 +18,12 @@ export const codexSpawnAgentTool = defineTool({
             description: "Lowercase task name using letters, numbers, and underscores.",
         }),
         message: Type.String({ description: "Complete instructions for the new agent." }),
+        effort: Type.Optional(
+            Type.String({
+                description:
+                    "Child effort level. Must be one of the allowed effort levels shown in the system prompt for the selected model.",
+            }),
+        ),
         model: Type.Optional(
             Type.String({
                 description:
@@ -35,7 +41,7 @@ export const codexSpawnAgentTool = defineTool({
     }),
     shouldReviewInAutoMode: () => false,
     execute: async (
-        { context: contextMode, message, model, provider, task_name },
+        { context: contextMode, effort, message, model, provider, task_name },
         context,
         execution,
     ) => {
@@ -46,6 +52,7 @@ export const codexSpawnAgentTool = defineTool({
                 ? { contextMessages: execution.messages.slice(0, -1) }
                 : {}),
             description: humanizeTaskName(task_name),
+            ...(effort === undefined ? {} : { effort }),
             ...(model === undefined ? {} : { modelId: model }),
             ...(execution.toolCallId === undefined
                 ? {}

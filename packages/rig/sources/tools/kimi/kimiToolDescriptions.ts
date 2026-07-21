@@ -13,6 +13,8 @@ Usage notes:
 - Once a subagent owns a scope, do not duplicate the same searches or edits in parallel.
 - Set model and provider together only when the child should use a different available model. Otherwise omit both.`;
 
+export const KIMI_SEND_MESSAGE_DESCRIPTION = `Send follow-up work to a retained subagent. The subagent resumes with its full prior context, including its earlier task and results. Use effort only when the next turn should run at a different allowed effort level.`;
+
 export const KIMI_BASH_DESCRIPTION = `Execute a shell command. Use Bash for pipes, environment inspection, processes, git, package managers, build and test runners, and other work that genuinely needs shell semantics.
 
 Use a dedicated tool instead when it fits:

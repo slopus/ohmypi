@@ -35,6 +35,12 @@ export const agentTool = defineTool({
         prompt: Type.String({
             description: "Complete instructions for the subagent.",
         }),
+        effort: Type.Optional(
+            Type.String({
+                description:
+                    "Child effort level. Must be one of the allowed effort levels shown in the system prompt for the selected model.",
+            }),
+        ),
         model: Type.Optional(
             Type.String({
                 description:
@@ -54,7 +60,7 @@ export const agentTool = defineTool({
     returnType: Type.Union([completedAgentResultSchema, backgroundAgentResultSchema]),
     shouldReviewInAutoMode: () => false,
     execute: async (
-        { context: contextMode, description, model, prompt, provider, run_in_background },
+        { context: contextMode, description, effort, model, prompt, provider, run_in_background },
         context,
         execution,
     ) => {
@@ -64,6 +70,7 @@ export const agentTool = defineTool({
         const result = await context.subagents.spawn(
             {
                 description,
+                ...(effort === undefined ? {} : { effort }),
                 ...(run_in_background === true ? { background: true } : {}),
                 contextMode,
                 ...(contextMode === "parent" && execution.messages !== undefined

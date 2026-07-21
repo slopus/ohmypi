@@ -13,6 +13,12 @@ export const grokSpawnSubagentTool = defineTool({
     arguments: Type.Object({
         prompt: Type.String({ description: "The full task prompt for the subagent to execute." }),
         description: Type.String({ description: "Short description of the task in 3-5 words." }),
+        effort: Type.Optional(
+            Type.String({
+                description:
+                    "Child effort level. Must be one of the allowed effort levels shown in the system prompt for the inherited model.",
+            }),
+        ),
         subagent_type: Type.Optional(
             Type.String({
                 description:
@@ -33,11 +39,12 @@ export const grokSpawnSubagentTool = defineTool({
         output: Type.Optional(Type.String()),
     }),
     shouldReviewInAutoMode: () => false,
-    execute: async ({ background = true, description, prompt }, context, execution) => {
+    execute: async ({ background = true, description, effort, prompt }, context, execution) => {
         const result = await requireSubagentContext(context).spawn(
             {
                 background,
                 description,
+                ...(effort === undefined ? {} : { effort }),
                 prompt,
                 taskName: toTaskName(description),
                 ...(execution.toolCallId === undefined

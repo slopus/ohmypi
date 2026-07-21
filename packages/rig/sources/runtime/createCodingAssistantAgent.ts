@@ -30,8 +30,9 @@ import { claudeCollaborationTools } from "../tools/claude/index.js";
 import { codexCollaborationTools } from "../tools/codex/index.js";
 import { grokCollaborationTools } from "../tools/grok/index.js";
 import { agentTool } from "../tools/Agent.js";
+import { sendMessageTool } from "../tools/SendMessage.js";
 import { goalTools } from "../tools/goals/index.js";
-import { kimiAgentTool, kimiGoalTools } from "../tools/kimi/index.js";
+import { kimiAgentTool, kimiGoalTools, kimiSendMessageTool } from "../tools/kimi/index.js";
 import type { CodingAssistantRuntime } from "./CodingAssistantRuntime.js";
 import { createDefaultInstructions } from "./createDefaultInstructions.js";
 import { createGymJustBashAgentContext } from "./createGymJustBashAgentContext.js";
@@ -185,10 +186,10 @@ export function createCodingAssistantAgent(
             : usesGrokTools
               ? grokCollaborationTools
               : usesKimiTools
-                ? [kimiAgentTool]
+                ? [kimiAgentTool, kimiSendMessageTool]
                 : usesClaudeTools
                   ? [agentTool, ...claudeCollaborationTools]
-                  : [agentTool]
+                  : [agentTool, sendMessageTool]
     ).filter(
         (tool) =>
             workflowsEnabled ||
@@ -214,6 +215,7 @@ export function createCodingAssistantAgent(
                         "interrupt_agent",
                         "resume_agent",
                         "SendMessage",
+                        "followup_subagent",
                     ].includes(tool.name),
                 );
     const toolsWithoutGoals = [

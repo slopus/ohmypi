@@ -6,6 +6,7 @@ export { grokReadFileTool } from "./read_file.js";
 export { grokRunTerminalCommandTool } from "./run_terminal_command.js";
 export { grokSearchReplaceTool } from "./search_replace.js";
 export { grokSpawnSubagentTool } from "./spawn_subagent.js";
+export { grokFollowupSubagentTool } from "./followup_subagent.js";
 export { grokWaitCommandsOrSubagentsTool } from "./wait_commands_or_subagents.js";
 export { createGrokXSearchTool } from "./x_search.js";
 
@@ -17,6 +18,7 @@ import { grokReadFileTool } from "./read_file.js";
 import { grokRunTerminalCommandTool } from "./run_terminal_command.js";
 import { grokSearchReplaceTool } from "./search_replace.js";
 import { grokSpawnSubagentTool } from "./spawn_subagent.js";
+import { grokFollowupSubagentTool } from "./followup_subagent.js";
 import { grokWaitCommandsOrSubagentsTool } from "./wait_commands_or_subagents.js";
 
 export const grokBuildTools = [
@@ -31,5 +33,6 @@ export const grokBuildTools = [
 
 export const grokCollaborationTools = [
     grokSpawnSubagentTool,
+    grokFollowupSubagentTool,
     grokWaitCommandsOrSubagentsTool,
 ] as const;

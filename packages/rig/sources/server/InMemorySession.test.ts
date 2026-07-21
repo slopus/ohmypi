@@ -5,6 +5,29 @@ import { defineModel } from "../providers/types.js";
 import { InMemorySessionStore } from "./InMemorySessionStore.js";
 
 describe("InMemorySession", () => {
+    it("rejects an unsupported queued effort before changing session state", () => {
+        const model = defineModel({
+            defaultThinkingLevel: "off",
+            id: "openai/queued-effort",
+            name: "Queued effort model",
+            thinkingLevels: ["off", "low"],
+        });
+        const session = new InMemorySessionStore({
+            modelCatalog: {
+                defaultModelId: model.id,
+                defaultProviderId: "codex",
+                models: [model],
+                providers: [{ providerId: "codex", models: [model] }],
+            },
+        }).create({ cwd: "/tmp/rig-session-test" });
+
+        expect(() => session.submit({ effort: "high", text: "Do not queue this." })).toThrow(
+            "Model 'openai/queued-effort' does not support 'high' reasoning.",
+        );
+        expect(session.state().messages).toEqual([]);
+        expect(session.state().queuedRuns).toEqual([]);
+    });
+
     it("treats repeated client submission IDs as one durable message", () => {
         const session = new InMemorySessionStore().create({ cwd: "/tmp/rig-session-test" });
 

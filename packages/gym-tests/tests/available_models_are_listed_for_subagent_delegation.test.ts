@@ -24,9 +24,15 @@ describe("available model guidance", () => {
             inference(request) {
                 const systemPrompt = request.context.systemPrompt;
                 expect(systemPrompt).toContain("# Available models");
-                expect(systemPrompt).toContain("- claude: Sonnet 5 (`anthropic/sonnet-5`)");
-                expect(systemPrompt).toContain("- claude: Opus 4.8 1M (`anthropic/opus-4-8`)");
-                expect(systemPrompt).toContain("- codex: GPT-5.6 Sol (`openai/gpt-5.6-sol`)");
+                expect(systemPrompt).toContain(
+                    "- claude: Sonnet 5 (`anthropic/sonnet-5`) — effort levels: off, low, medium (default), high, xhigh, max, ultra",
+                );
+                expect(systemPrompt).toContain(
+                    "- claude: Opus 4.8 1M (`anthropic/opus-4-8`) — effort levels: off, low, medium (default), high, xhigh, max, ultra",
+                );
+                expect(systemPrompt).toContain(
+                    "- codex: GPT-5.6 Sol (`openai/gpt-5.6-sol`) — effort levels: off, low (default), medium, high, xhigh, max, ultra",
+                );
                 expect(systemPrompt).toContain("bare model or family name");
                 expect(systemPrompt).toContain("spawn a subagent");
                 expect(systemPrompt).toContain("without asking for confirmation");
@@ -64,7 +70,9 @@ describe("available model guidance", () => {
                 );
                 expect(systemPrompt).toContain("- grok: disabled in configuration");
                 expect(systemPrompt).toContain("- claude: disabled in configuration");
-                expect(systemPrompt).toContain("- codex: GPT-5.6 Sol (`openai/gpt-5.6-sol`)");
+                expect(systemPrompt).toContain(
+                    "- codex: GPT-5.6 Sol (`openai/gpt-5.6-sol`) — effort levels: off, low (default), medium, high, xhigh, max, ultra",
+                );
                 expect(systemPrompt).not.toContain("Grok Build");
                 expect(systemPrompt).not.toContain("Grok 4.5");
                 expect(systemPrompt).not.toContain("Composer 2.5");

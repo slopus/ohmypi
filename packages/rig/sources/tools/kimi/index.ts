@@ -6,6 +6,7 @@ import {
     claudeGlobTool,
     claudeGrepTool,
     claudeReadTool,
+    claudeSendMessageTool,
     claudeTaskOutputTool,
     claudeTaskStopTool,
     claudeWebFetchTool,
@@ -21,6 +22,7 @@ import {
     KIMI_GLOB_DESCRIPTION,
     KIMI_GREP_DESCRIPTION,
     KIMI_READ_DESCRIPTION,
+    KIMI_SEND_MESSAGE_DESCRIPTION,
     KIMI_TASK_OUTPUT_DESCRIPTION,
     KIMI_TASK_STOP_DESCRIPTION,
     KIMI_WEB_SEARCH_DESCRIPTION,
@@ -37,6 +39,7 @@ export const kimiAgentTool = withKimiToolContract(agentTool, {
         context:
             "Use task for an isolated, fully briefed child; use parent only when substantial conversation context is required.",
         description: "Short, human-readable description of the delegated task.",
+        effort: "Optional child effort level. Use one of the selected model's allowed effort levels from the system prompt.",
         model: "Optional child model ID. Provide together with provider.",
         prompt: "Complete task brief for the child, including known paths, constraints, and expected deliverable.",
         provider: "Optional child provider ID. Provide together with model.",
@@ -44,6 +47,16 @@ export const kimiAgentTool = withKimiToolContract(agentTool, {
             "Run independently in the background. Omit when the next step needs the result.",
     },
     description: KIMI_AGENT_DESCRIPTION,
+});
+
+export const kimiSendMessageTool = withKimiToolContract(claudeSendMessageTool, {
+    argumentDescriptions: {
+        effort: "Optional new effort level. Use one of the subagent model's allowed levels from the system prompt.",
+        message: "Complete follow-up instructions for the retained subagent.",
+        summary: "Optional short human-readable summary of the follow-up.",
+        to: "Target subagent task name, full path, or agent id.",
+    },
+    description: KIMI_SEND_MESSAGE_DESCRIPTION,
 });
 
 export const kimiTaskOutputTool = withKimiToolContract(claudeTaskOutputTool, {

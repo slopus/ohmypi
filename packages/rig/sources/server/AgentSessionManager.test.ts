@@ -195,6 +195,10 @@ describe("AgentSessionManager", () => {
         const parent = {
             agentMetadata: () => ({ depth: 0, rootSessionId: "root-1", type: "primary" }),
             id: "root-1",
+            effortLevelsForModel: (modelId: string, providerId: string) =>
+                modelId === "anthropic/claude-opus-4.6" && providerId === "claude"
+                    ? ["off", "low", "medium", "high"]
+                    : undefined,
             hasModel: (modelId: string, providerId?: string) =>
                 modelId === "anthropic/claude-opus-4.6" && providerId === "claude",
             isSubagent: () => false,
@@ -221,6 +225,7 @@ describe("AgentSessionManager", () => {
         await manager.spawn(parent.id, {
             background: true,
             description: "Check another model",
+            effort: "high",
             modelId: "anthropic/claude-opus-4.6",
             providerId: "claude",
             prompt: "Inspect with the requested model.",
@@ -230,6 +235,7 @@ describe("AgentSessionManager", () => {
         expect(createSubagent).toHaveBeenCalledWith(
             expect.objectContaining({
                 cwd: "/tmp/rig-manager-test",
+                effort: "high",
                 instructions: expect.stringContaining("Inherited instructions"),
                 modelId: "anthropic/claude-opus-4.6",
                 permissionMode: "auto",
@@ -245,6 +251,19 @@ describe("AgentSessionManager", () => {
                 prompt: "This should not start.",
             }),
         ).rejects.toThrow("Model 'missing/model' is not available for provider 'claude'.");
+        expect(createSubagent).toHaveBeenCalledOnce();
+
+        await expect(
+            manager.spawn(parent.id, {
+                description: "Unsupported effort",
+                effort: "ultra",
+                modelId: "anthropic/claude-opus-4.6",
+                providerId: "claude",
+                prompt: "This should not start.",
+            }),
+        ).rejects.toThrow(
+            "Model 'anthropic/claude-opus-4.6' does not support 'ultra' effort. Allowed effort levels: off, low, medium, high.",
+        );
         expect(createSubagent).toHaveBeenCalledOnce();
     });
 
@@ -530,10 +549,20 @@ describe("AgentSessionManager", () => {
             text: expect.stringContaining("The inspection is complete."),
         });
 
-        expect(manager.followUp("root-1", "inspect_code", "Check one more file.")).toMatchObject({
-            sessionId: "child-1",
+        expect(
+            manager.followUp("root-1", "inspect_code", "Check one more file.", "high"),
+        ).toMatchObject({ sessionId: "child-1" });
+        expect(childSubmit).toHaveBeenLastCalledWith({
+            effort: "high",
+            text: "Check one more file.",
         });
-        expect(childSubmit).toHaveBeenLastCalledWith({ text: "Check one more file." });
+        childSubmit.mockImplementationOnce(() => {
+            throw new Error("Model 'openai/gpt-5.5' does not support 'ultra' reasoning.");
+        });
+        expect(() =>
+            manager.followUp("root-1", "inspect_code", "Try unsupported effort.", "ultra"),
+        ).toThrow("Model 'openai/gpt-5.5' does not support 'ultra' reasoning.");
+        expect(childSubmit).toHaveBeenCalledTimes(3);
         await vi.waitFor(() => expect(waitForRun).toHaveBeenCalledTimes(2));
         await vi.waitFor(() => expect(deliverNotification).toHaveBeenCalledTimes(2));
         expect(manager.interrupt("root-1", "/root/inspect_code")).toMatchObject({

@@ -278,16 +278,26 @@ describe("createSystemPrompt", () => {
         context.subagents = {
             availableModels: [
                 {
+                    defaultEffort: "medium",
+                    effortLevels: ["off", "low", "medium", "high"],
                     id: "anthropic/sonnet-test",
                     name: "Sonnet Test",
                     providerId: "claude",
                 },
                 {
+                    defaultEffort: "high",
+                    effortLevels: ["low", "medium", "high"],
                     id: "anthropic/opus-test",
                     name: "Opus Test",
                     providerId: "bedrock",
                 },
-                { id: model.id, name: model.name, providerId: "codex" },
+                {
+                    defaultEffort: "off",
+                    effortLevels: ["off"],
+                    id: model.id,
+                    name: model.name,
+                    providerId: "codex",
+                },
             ],
             canSpawn: true,
             depth: 0,
@@ -317,9 +327,15 @@ describe("createSystemPrompt", () => {
         });
 
         expect(prompt).toContain("# Available models");
-        expect(prompt).toContain("- claude: Sonnet Test (`anthropic/sonnet-test`)");
-        expect(prompt).toContain("- bedrock: Opus Test (`anthropic/opus-test`)");
-        expect(prompt).toContain("- codex: GPT Test (`openai/gpt-test`)");
+        expect(prompt).toContain(
+            "- claude: Sonnet Test (`anthropic/sonnet-test`) — effort levels: off, low, medium (default), high",
+        );
+        expect(prompt).toContain(
+            "- bedrock: Opus Test (`anthropic/opus-test`) — effort levels: low, medium, high (default)",
+        );
+        expect(prompt).toContain(
+            "- codex: GPT Test (`openai/gpt-test`) — effort levels: off (default)",
+        );
         expect(prompt).toContain("bare model or family name");
         expect(prompt).toContain("usually means they want you to run that model");
         expect(prompt).toContain("spawn a subagent");
@@ -336,7 +352,15 @@ describe("createSystemPrompt", () => {
         });
         const context = contextFor(cwd);
         context.subagents = {
-            availableModels: [{ id: model.id, name: model.name, providerId: "codex" }],
+            availableModels: [
+                {
+                    defaultEffort: "off",
+                    effortLevels: ["off"],
+                    id: model.id,
+                    name: model.name,
+                    providerId: "codex",
+                },
+            ],
             canSpawn: true,
             depth: 0,
             disabledProviders: [

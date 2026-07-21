@@ -14,8 +14,15 @@ export function createAvailableModelsInstructions(
         sections.push(
             [
                 "# Available models",
-                "You can run subagents with any of these models by passing the provider and model ID exactly as shown:",
-                ...models.map((model) => `- ${model.providerId}: ${model.name} (\`${model.id}\`)`),
+                "You can run subagents with any of these models by passing the provider and model ID exactly as shown. The effort value must be one of that model's listed levels:",
+                ...models.map((model) => {
+                    const efforts = model.effortLevels
+                        .map((effort) =>
+                            effort === model.defaultEffort ? `${effort} (default)` : effort,
+                        )
+                        .join(", ");
+                    return `- ${model.providerId}: ${model.name} (\`${model.id}\`) — effort levels: ${efforts}`;
+                }),
                 "",
                 "A request that gives you only a bare model or family name—such as Codex, GPT, Opus, or Sonnet—usually means they want you to run that model somehow. When the request can be handled by a subagent, spawn a subagent with the closest available model and provider. This is usually safe to do without asking for confirmation.",
             ].join("\n"),

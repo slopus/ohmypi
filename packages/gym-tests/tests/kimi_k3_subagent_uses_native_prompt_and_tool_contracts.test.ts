@@ -104,6 +104,9 @@ function assertKimiToolContracts(
     expect(tools.find((tool) => tool.name === "Bash")?.description).toContain(
         "Each call starts in a fresh shell environment",
     );
+    expect(tools.find((tool) => tool.name === "SendMessage")?.description).toContain(
+        "retained subagent",
+    );
     expect(toolArgumentDescription(tools, "Agent", "prompt")).toContain(
         "Complete task brief for the child",
     );

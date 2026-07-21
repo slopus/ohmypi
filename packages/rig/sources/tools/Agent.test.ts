@@ -29,6 +29,7 @@ describe("Agent tool", () => {
             {
                 context: "task",
                 description: "Inspect the tests",
+                effort: "high",
                 model: "anthropic/claude-sonnet-4.6",
                 prompt: "Review the test suite.",
             },
@@ -41,6 +42,7 @@ describe("Agent tool", () => {
             {
                 description: "Inspect the tests",
                 contextMode: "task",
+                effort: "high",
                 modelId: "anthropic/claude-sonnet-4.6",
                 parentToolCallId: "tool-1",
                 prompt: "Review the test suite.",

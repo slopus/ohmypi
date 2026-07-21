@@ -4,6 +4,8 @@ export type SubagentRunStatus = "aborted" | "completed" | "error" | "running" | 
 export type SubagentContextMode = "parent" | "task";
 
 export interface AvailableSubagentModel {
+    defaultEffort: string;
+    effortLevels: readonly string[];
     id: string;
     name: string;
     providerId: string;
@@ -27,6 +29,7 @@ export interface SpawnSubagentRequest {
     contextMode?: SubagentContextMode;
     contextMessages?: readonly Message[];
     description: string;
+    effort?: string;
     modelId?: string;
     providerId?: string;
     parentToolCallId?: string;
@@ -53,7 +56,7 @@ export interface SubagentContext {
     canSpawn: boolean;
     depth: number;
     disabledProviders?: readonly DisabledSubagentProvider[];
-    followUp(target: string, message: string): ManagedSubagent;
+    followUp(target: string, message: string, effort?: string): ManagedSubagent;
     interrupt(target: string): ManagedSubagent;
     list(pathPrefix?: string): readonly ManagedSubagent[];
     maxDepth: number;

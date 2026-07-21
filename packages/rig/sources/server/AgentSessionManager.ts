@@ -81,7 +81,12 @@ export class AgentSessionManager {
         );
     }
 
-    followUp(parentSessionId: string, target: string, message: string): ManagedSubagent {
+    followUp(
+        parentSessionId: string,
+        target: string,
+        message: string,
+        effort?: string,
+    ): ManagedSubagent {
         const child = this.#resolveTarget(parentSessionId, target);
         if (child.subagentSummary().status === "suspended") child.clearSuspension();
         this.#stoppedExplicitly.delete(child.id);
@@ -89,6 +94,7 @@ export class AgentSessionManager {
             ...(this.#repository.get(parentSessionId)?.activeRunDebug?.() === true
                 ? { debug: true }
                 : {}),
+            ...(effort === undefined ? {} : { effort }),
             text: message,
         });
         const parent = this.#parentFor(child);
@@ -281,6 +287,24 @@ export class AgentSessionManager {
                 }
             }
         }
+        if (request.effort !== undefined) {
+            parentRequest ??= parent.requestForSubagent();
+            const childModelId = request.modelId ?? parentRequest.modelId;
+            const effectiveChildProviderId = childProviderId ?? parentRequest.providerId;
+            if (childModelId === undefined || effectiveChildProviderId === undefined) {
+                throw new Error("A subagent effort requires a resolved model and provider.");
+            }
+            const effortLevels = parent.effortLevelsForModel(
+                childModelId,
+                effectiveChildProviderId,
+            );
+            if (effortLevels === undefined || !effortLevels.includes(request.effort)) {
+                const allowed = effortLevels?.join(", ") || "none";
+                throw new Error(
+                    `Model '${childModelId}' does not support '${request.effort}' effort. Allowed effort levels: ${allowed}.`,
+                );
+            }
+        }
 
         const parentMetadata = parent.agentMetadata();
         const depth = parentMetadata.depth + 1;
@@ -318,6 +342,7 @@ export class AgentSessionManager {
                     this.maxDepth,
                     childModelId,
                 ),
+                ...(request.effort === undefined ? {} : { effort: request.effort }),
                 ...(request.modelId === undefined ? {} : { modelId: request.modelId }),
                 ...(childProviderId === undefined ? {} : { providerId: childProviderId }),
             };

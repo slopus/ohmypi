@@ -2,7 +2,12 @@ import { describe, expect, it } from "vitest";
 
 import { InMemorySessionStore } from "../../server/InMemorySessionStore.js";
 import { agentTool } from "../Agent.js";
-import { claudeBashTool, claudeReadTool, claudeWebFetchTool } from "../claude/index.js";
+import {
+    claudeBashTool,
+    claudeReadTool,
+    claudeSendMessageTool,
+    claudeWebFetchTool,
+} from "../claude/index.js";
 import { createGoalTool } from "../goals/index.js";
 import { createJustBashToolHarness } from "../testing/createJustBashToolHarness.js";
 import {
@@ -12,6 +17,7 @@ import {
     kimiFetchUrlTool,
     kimiGoalTools,
     kimiReadTool,
+    kimiSendMessageTool,
     kimiTodoListTool,
 } from "./index.js";
 
@@ -32,6 +38,7 @@ describe("Kimi tool contracts", () => {
             "AskUserQuestion",
         ]);
         expect(kimiAgentTool.description).toContain("The subagent has its own context");
+        expect(kimiSendMessageTool.name).toBe("SendMessage");
         expect(kimiReadTool.description).toContain(
             "If the user provides a concrete file path, call Read directly",
         );
@@ -43,6 +50,7 @@ describe("Kimi tool contracts", () => {
 
     it("reuses shared executions and permission policies instead of creating a Kimi security path", () => {
         expect(kimiAgentTool.execute).toBe(agentTool.execute);
+        expect(kimiSendMessageTool.execute).toBe(claudeSendMessageTool.execute);
         expect(kimiBashTool.execute).toBe(claudeBashTool.execute);
         expect(kimiBashTool.shouldReviewInAutoMode).toBe(claudeBashTool.shouldReviewInAutoMode);
         expect(kimiReadTool.execute).toBe(claudeReadTool.execute);
@@ -61,6 +69,7 @@ describe("Kimi tool contracts", () => {
             "context",
             "description",
             "prompt",
+            "effort",
             "model",
             "provider",
             "run_in_background",
@@ -69,6 +78,9 @@ describe("Kimi tool contracts", () => {
         expect(properties).not.toContain("subagent_type");
         expect(kimiAgentTool.arguments.properties.prompt.description).toContain(
             "Complete task brief for the child",
+        );
+        expect(kimiAgentTool.arguments.properties.effort.description).toContain(
+            "allowed effort levels",
         );
         expect(kimiReadTool.arguments.properties.file_path.description).toBe(
             "Absolute path to the file to read.",

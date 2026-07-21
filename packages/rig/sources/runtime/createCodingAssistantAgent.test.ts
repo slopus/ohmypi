@@ -4,6 +4,7 @@ import { NativeProcessManager } from "../processes/index.js";
 import {
     modelAnthropicFable5,
     modelMoonshotKimiK25,
+    modelMoonshotKimiK3,
     modelOpenaiGpt55,
     modelOpenaiGpt56Sol,
     modelXaiGrok45,
@@ -419,6 +420,66 @@ describe("createCodingAssistantAgent", () => {
         expect(claudeDeepest.agent.tools.map((tool) => tool.name)).toContain("SendMessage");
         expect(claudeDeepest.agent.tools.map((tool) => tool.name)).not.toContain("Agent");
         expect(claudeDeepest.agent.tools.map((tool) => tool.name)).not.toContain("Workflow");
+
+        const grokParent = createCodingAssistantAgent({
+            cwd: "/tmp/rig-app-test",
+            env: { XAI_API_KEY: "xai-test-key" },
+            modelId: modelXaiGrok45.id,
+            subagents: { ...controls, canSpawn: true },
+        });
+        expect(grokParent.agent.tools.map((tool) => tool.name)).toContain("spawn_subagent");
+        expect(grokParent.agent.tools.map((tool) => tool.name)).toContain("followup_subagent");
+
+        const grokDeepest = createCodingAssistantAgent({
+            cwd: "/tmp/rig-app-test",
+            env: { XAI_API_KEY: "xai-test-key" },
+            modelId: modelXaiGrok45.id,
+            subagents: { ...controls, canSpawn: false, depth: 3 },
+        });
+        expect(grokDeepest.agent.tools.map((tool) => tool.name)).toContain("followup_subagent");
+        expect(grokDeepest.agent.tools.map((tool) => tool.name)).not.toContain("spawn_subagent");
+
+        const kimiParent = createCodingAssistantAgent({
+            cwd: "/tmp/rig-app-test",
+            env: { KIMI_API_KEY: "kimi-test-key" },
+            modelId: modelMoonshotKimiK3.id,
+            subagents: { ...controls, canSpawn: true },
+        });
+        expect(kimiParent.agent.tools.map((tool) => tool.name)).toContain("Agent");
+        expect(kimiParent.agent.tools.map((tool) => tool.name)).toContain("SendMessage");
+        const kimiDeepest = createCodingAssistantAgent({
+            cwd: "/tmp/rig-app-test",
+            env: { KIMI_API_KEY: "kimi-test-key" },
+            modelId: modelMoonshotKimiK3.id,
+            subagents: { ...controls, canSpawn: false, depth: 3 },
+        });
+        expect(kimiDeepest.agent.tools.map((tool) => tool.name)).toContain("SendMessage");
+        expect(kimiDeepest.agent.tools.map((tool) => tool.name)).not.toContain("Agent");
+
+        const piParent = createCodingAssistantAgent({
+            cwd: "/tmp/rig-app-test",
+            env: {
+                AWS_BEARER_TOKEN_BEDROCK: "bedrock-token",
+                AWS_REGION: "us-east-1",
+            },
+            modelId: modelMoonshotKimiK25.id,
+            providerId: "bedrock",
+            subagents: { ...controls, canSpawn: true },
+        });
+        expect(piParent.agent.tools.map((tool) => tool.name)).toContain("Agent");
+        expect(piParent.agent.tools.map((tool) => tool.name)).toContain("SendMessage");
+        const piDeepest = createCodingAssistantAgent({
+            cwd: "/tmp/rig-app-test",
+            env: {
+                AWS_BEARER_TOKEN_BEDROCK: "bedrock-token",
+                AWS_REGION: "us-east-1",
+            },
+            modelId: modelMoonshotKimiK25.id,
+            providerId: "bedrock",
+            subagents: { ...controls, canSpawn: false, depth: 3 },
+        });
+        expect(piDeepest.agent.tools.map((tool) => tool.name)).toContain("SendMessage");
+        expect(piDeepest.agent.tools.map((tool) => tool.name)).not.toContain("Agent");
     });
 
     it("omits workflow tools when workflow support is disabled", () => {

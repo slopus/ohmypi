@@ -155,6 +155,7 @@ export interface PersistedQueuedRun {
     debug?: boolean;
     debugDirectory?: string;
     displayText: string;
+    effort?: string;
     interactive?: boolean;
     kind: "goal" | "user";
     runId: string;
@@ -163,6 +164,10 @@ export interface PersistedQueuedRun {
     externalTools?: readonly ExternalToolDefinition[];
     skills?: readonly DurableSkillDefinition[];
     systemPrompt?: string | null;
+}
+
+interface SessionSubmitMessageRequest extends SubmitMessageRequest {
+    effort?: string;
 }
 
 export interface PersistedSessionState {
@@ -998,6 +1003,11 @@ export class InMemorySession {
         return getProviderIdForModel(this.#modelCatalog, modelId, providerId) !== undefined;
     }
 
+    effortLevelsForModel(modelId: string, providerId: string): readonly string[] | undefined {
+        return this.#modelsForProvider(providerId).find((model) => model.id === modelId)
+            ?.thinkingLevels;
+    }
+
     providerIdsForModel(modelId: string): readonly string[] {
         return getProviderIdsForModel(this.#modelCatalog, modelId);
     }
@@ -1160,9 +1170,7 @@ export class InMemorySession {
     changeEffort(request: ChangeEffortRequest): ProtocolSession {
         const model = this.#selectedModel();
         const effort = request.effort ?? model.defaultThinkingLevel;
-        if (!model.thinkingLevels.includes(effort)) {
-            throw new Error(`Model '${model.id}' does not support '${effort}' reasoning.`);
-        }
+        this.#assertSupportedEffort(effort);
 
         this.#effort = effort;
         this.#runtime?.agent.setEffort(effort);
@@ -2216,10 +2224,11 @@ export class InMemorySession {
     }
 
     submit(
-        request: SubmitMessageRequest,
+        request: SessionSubmitMessageRequest,
         options: { source?: "notification" } = {},
     ): SubmitMessageResponse {
         this.#assertAcceptingWork();
+        if (request.effort !== undefined) this.#assertSupportedEffort(request.effort);
         if (request.clientSubmissionId !== undefined) {
             const existingEvent = this.events.messageSubmission(request.clientSubmissionId);
             if (existingEvent !== undefined) {
@@ -2278,6 +2287,7 @@ export class InMemorySession {
                   }
                 : {}),
             displayText,
+            ...(request.effort === undefined ? {} : { effort: request.effort }),
             ...(request.interactive === undefined ? {} : { interactive: request.interactive }),
             kind: "user",
             runId,
@@ -3490,6 +3500,8 @@ export class InMemorySession {
             options.subagents = {
                 availableModels: this.#modelCatalog.providers.flatMap((provider) =>
                     provider.models.map((model) => ({
+                        defaultEffort: model.defaultThinkingLevel,
+                        effortLevels: model.thinkingLevels,
                         id: model.id,
                         name: model.name,
                         providerId: provider.providerId,
@@ -3502,7 +3514,8 @@ export class InMemorySession {
                         ? []
                         : [{ id: provider.providerId, reason: provider.disabledReason }],
                 ),
-                followUp: (target, message) => agentManager.followUp(this.id, target, message),
+                followUp: (target, message, effort) =>
+                    agentManager.followUp(this.id, target, message, effort),
                 interrupt: (target) => agentManager.interrupt(this.id, target),
                 list: (pathPrefix) => agentManager.list(this.id, pathPrefix),
                 maxDepth: agentManager.maxDepth,
@@ -3889,6 +3902,7 @@ export class InMemorySession {
                 sessionId: this.id,
             });
             this.#applyIntegrationConfiguration(queued);
+            if (queued.effort !== undefined) this.changeEffort({ effort: queued.effort });
             runtime = this.#ensureRuntime();
             await this.#ensureMcpTools(runtime, controller.signal, queued.interactive !== false);
             await this.#observeProviderQuota(
@@ -4048,6 +4062,13 @@ export class InMemorySession {
     #assertAcceptingWork(): void {
         if (this.#closing || this.#taskDrain?.closing === true) {
             throw new Error("The local daemon is shutting down.");
+        }
+    }
+
+    #assertSupportedEffort(effort: string): void {
+        const model = this.#selectedModel();
+        if (!model.thinkingLevels.includes(effort)) {
+            throw new Error(`Model '${model.id}' does not support '${effort}' reasoning.`);
         }
     }
 

@@ -360,7 +360,8 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
                 run.kind,
                 run.text,
                 JSON.stringify(run.userMessage),
-                run.externalTools === undefined &&
+                run.effort === undefined &&
+                    run.externalTools === undefined &&
                     run.skills === undefined &&
                     run.systemPrompt === undefined
                     ? null
@@ -369,6 +370,7 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
                               ? {}
                               : { externalTools: run.externalTools }),
                           ...(run.skills === undefined ? {} : { skills: run.skills }),
+                          ...(run.effort === undefined ? {} : { effort: run.effort }),
                           ...(run.systemPrompt === undefined
                               ? {}
                               : { systemPrompt: run.systemPrompt }),
@@ -1266,6 +1268,7 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
                     integrationConfigJson === undefined
                         ? {}
                         : (JSON.parse(integrationConfigJson) as {
+                              effort?: string;
                               externalTools?: readonly ExternalToolDefinition[];
                               skills?: readonly DurableSkillDefinition[];
                               systemPrompt?: string | null;
