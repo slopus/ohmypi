@@ -9,6 +9,48 @@ import { defineModel, defineProvider, type InferenceStream } from "../providers/
 import { InMemorySession } from "./InMemorySession.js";
 
 describe("InMemorySession reset", () => {
+    it("does not append a stopped direct shell command after the reset boundary", async () => {
+        const model = defineModel({
+            defaultThinkingLevel: "off",
+            id: "test/reset-shell-boundary",
+            name: "Reset shell boundary",
+            thinkingLevels: ["off"],
+        });
+        const provider = defineProvider({
+            id: "test",
+            models: [model],
+            stream() {
+                throw new Error("Inference is not expected.");
+            },
+        });
+        const session = new InMemorySession({
+            createEventId: createEventIdFactory(),
+            createRuntime: (options) => createRuntime(options, provider),
+            modelCatalog: {
+                defaultModelId: model.id,
+                defaultProviderId: provider.id,
+                models: [model],
+                providers: [{ models: [model], providerId: provider.id }],
+            },
+            request: {
+                cwd: "/tmp/rig-reset-shell-boundary",
+                modelId: model.id,
+                permissionMode: "full_access",
+            },
+        });
+
+        await session.runShellCommand({ command: "sleep 60", commandId: "shell-before-reset" });
+        await session.reset();
+        await new Promise((resolve) => setTimeout(resolve, 25));
+
+        expect(session.state().messages).toEqual([]);
+        expect(session.snapshot().snapshot.queue).toEqual([]);
+        const events = session.events.since(undefined) ?? [];
+        const resetIndex = events.findIndex((event) => event.type === "session_reset");
+        expect(resetIndex).toBeGreaterThan(0);
+        expect(events.slice(resetIndex + 1)).toEqual([]);
+    });
+
     it("terminalizes active and queued work before the reset boundary", async () => {
         const started = deferred<void>();
         const model = defineModel({

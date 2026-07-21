@@ -25,7 +25,7 @@ import {
     formatSkillInvocation,
     loadSkills,
 } from "../agent/index.js";
-import type { BashSessionActivity } from "../agent/context/BashContext.js";
+import type { BashSessionActivity, BashSessionSnapshot } from "../agent/context/BashContext.js";
 import { parseSkillFrontmatter } from "../agent/skills/parseSkillFrontmatter.js";
 import type { FileDiff } from "../agent/ToolResultPresentation.js";
 import { errorToMessage } from "../errorToMessage.js";
@@ -36,6 +36,8 @@ import type {
     FileSearchResult,
     EventId,
     McpServerSummary,
+    RunShellCommandResult,
+    RunShellCommandResponse,
     SecretSummary,
     SessionEvent,
     SessionTask,
@@ -55,6 +57,10 @@ import type {
     CodingAssistantModelChoice,
 } from "./CodingAssistantAgentBackend.js";
 import { createEditorTheme } from "./createEditorTheme.js";
+import {
+    createBackgroundTerminalViewer,
+    type BackgroundTerminalViewer,
+} from "./createBackgroundTerminalViewer.js";
 import { createSelectionPanel } from "./createSelectionPanel.js";
 import { createSubagentMonitor, type SubagentMonitor } from "./createSubagentMonitor.js";
 import { createWorkflowMonitor } from "./createWorkflowMonitor.js";
@@ -139,6 +145,7 @@ const IMAGE_CHIP_FG = "\x1b[38;5;255m";
 const FILE_MENTION_SEGMENTER = new Intl.Segmenter(undefined, { granularity: "grapheme" });
 const FAST_MODE_ON_MESSAGE = "Fast mode is on. Fast inference uses 2× plan usage.";
 const FAST_MODE_OFF_MESSAGE = "Fast mode is off.";
+const FOREGROUND_SHELL_YIELD_MS = 10_000;
 
 const MAX_DIFF_FILES_PER_TOOL = 20;
 const MAX_DIFF_ROWS_PER_TOOL = 120;
@@ -256,6 +263,7 @@ export interface AppSettings {
 interface PendingPrompt {
     content: string | readonly ContentBlock[];
     displayText: string;
+    shellCommand?: string;
     transcriptAppended?: boolean;
     transcriptEntryId?: string;
 }
@@ -277,6 +285,7 @@ interface PastedImage {
 interface PromptSubmission {
     content: string | readonly ContentBlock[];
     displayText: string;
+    shellCommand?: string;
     transcriptAppended?: boolean;
     transcriptEntryId?: string;
 }
@@ -307,6 +316,12 @@ interface FreeformUserInput {
     existingAnswers: readonly string[];
     questionId: string;
     requestId: string;
+}
+
+interface ForegroundShellCommand {
+    backgroundRequested: boolean;
+    commandId: string;
+    sessionId: number;
 }
 
 export class CodingAssistantApp implements Component, Focusable {
@@ -374,6 +389,9 @@ export class CodingAssistantApp implements Component, Focusable {
     #compacting = false;
     #pastedImagesById = new Map<number, PastedImage>();
     #selectionPanel: Component | undefined;
+    #backgroundTerminalViewer: BackgroundTerminalViewer | undefined;
+    #backgroundTerminalViewerController: AbortController | undefined;
+    #foregroundShellCommand: ForegroundShellCommand | undefined;
     #sessionMutationInFlight = false;
     #activeSessionMutation: Promise<void> | undefined;
     #sessionMutationBoundaryApplied = false;
@@ -385,6 +403,8 @@ export class CodingAssistantApp implements Component, Focusable {
     #observedShellProcesses: readonly BashSessionActivity[] = [];
     #yieldedBackgroundTerminals = new Map<number, string>();
     #compactCompletedTurns: boolean;
+    #directShellCommandsBySessionId = new Map<number, { command: string; commandId: string }>();
+    #backgroundedShellCommandIds = new Set<string>();
     #completionChime: boolean;
     #durableGlobalEventQueue: boolean;
     #showReasoning: boolean;
@@ -557,6 +577,10 @@ export class CodingAssistantApp implements Component, Focusable {
         this.#backgroundProcesses = this.#observedShellProcesses;
         for (const process of this.#observedShellProcesses) {
             this.#yieldedBackgroundTerminals.set(process.sessionId, process.command);
+            const direct = this.#directShellCommandsBySessionId.get(process.sessionId);
+            if (direct !== undefined) {
+                this.#backgroundShellCommand(direct.commandId, process.sessionId, "");
+            }
         }
         this.#syncSubagentRefreshTimer();
 
@@ -597,6 +621,7 @@ export class CodingAssistantApp implements Component, Focusable {
         this.#exiting = true;
         this.#statusText = "Stopped";
         this.#abortController?.abort();
+        this.#closeBackgroundTerminalViewer();
         this.#stopActivityAnimation();
         this.#stopSubagentRefreshTimer();
         this.#setSelectionPanel(undefined);
@@ -687,6 +712,37 @@ export class CodingAssistantApp implements Component, Focusable {
                         : event.data.displayText,
                 ...(event.data.source === "notification" ? { title: "Background work" } : {}),
             });
+            return;
+        }
+
+        if (event.type === "shell_command_started") {
+            this.#directShellCommandsBySessionId.set(event.data.sessionId, {
+                command: event.data.command,
+                commandId: event.data.commandId,
+            });
+            this.#ensureShellCommandEntry(event.data.command, event.data.commandId);
+            return;
+        }
+
+        if (event.type === "shell_command_finished") {
+            const backgrounded = this.#backgroundedShellCommandIds.delete(event.data.commandId);
+            if (event.data.sessionId !== undefined) {
+                this.#directShellCommandsBySessionId.delete(event.data.sessionId);
+                this.#yieldedBackgroundTerminals.delete(event.data.sessionId);
+            }
+            this.#backgroundProcesses = this.#observedShellProcesses.filter((process) =>
+                this.#yieldedBackgroundTerminals.has(process.sessionId),
+            );
+            if (backgrounded) {
+                this.#appendEntry({
+                    backgroundTerminalCompletion: event.data.command,
+                    role: "event",
+                    text: event.data.command,
+                });
+                this.#requestRender();
+            } else {
+                this.#finishShellCommand(event.data);
+            }
             return;
         }
 
@@ -851,7 +907,9 @@ export class CodingAssistantApp implements Component, Focusable {
                 this.#interruptSettlementRunId = undefined;
             }
             this.#setRunning(false);
-            this.#modelLocked = this.#pendingPrompts.length > 0;
+            this.#modelLocked = this.#pendingPrompts.some(
+                (prompt) => prompt.shellCommand === undefined,
+            );
             this.#statusText =
                 event.data.stopReason === "stop" ? "Idle" : `Stopped: ${event.data.stopReason}`;
             this.#stopActivityAnimation();
@@ -883,7 +941,9 @@ export class CodingAssistantApp implements Component, Focusable {
                 this.#interruptSettlementRunId = undefined;
             }
             this.#setRunning(false);
-            this.#modelLocked = this.#pendingPrompts.length > 0;
+            this.#modelLocked = this.#pendingPrompts.some(
+                (prompt) => prompt.shellCommand === undefined,
+            );
             this.#statusText = "Error";
             this.#stopActivityAnimation();
             this.#markActiveToolCallsStopped();
@@ -928,6 +988,10 @@ export class CodingAssistantApp implements Component, Focusable {
             this.#backgroundProcesses = [];
             this.#observedShellProcesses = [];
             this.#yieldedBackgroundTerminals.clear();
+            this.#directShellCommandsBySessionId.clear();
+            this.#backgroundedShellCommandIds.clear();
+            this.#foregroundShellCommand = undefined;
+            this.#closeBackgroundTerminalViewer();
             this.#renderedCompletionNotices.clear();
             this.#clearUserInputRequests();
             this.#appendEntry({
@@ -965,6 +1029,10 @@ export class CodingAssistantApp implements Component, Focusable {
             this.#awaitingApprovalToolCallIds.clear();
             this.#runningToolCallIds.clear();
             this.#toolStatusByCallId.clear();
+            this.#directShellCommandsBySessionId.clear();
+            this.#backgroundedShellCommandIds.clear();
+            this.#foregroundShellCommand = undefined;
+            this.#closeBackgroundTerminalViewer();
             this.#clearUserInputRequests();
             if (discardedQueuedPrompts > 0) {
                 this.#appendEntry({
@@ -1055,6 +1123,35 @@ export class CodingAssistantApp implements Component, Focusable {
 
         const escapePressed = matchesKey(data, "escape");
         this.#onUserActivity?.();
+
+        if (this.#backgroundTerminalViewer !== undefined) {
+            this.#backgroundTerminalViewer.handleInput?.(data);
+            this.#requestRender();
+            return;
+        }
+
+        if (
+            this.#foregroundShellCommand !== undefined &&
+            (data === "\x02" || matchesKey(data, "ctrl+b"))
+        ) {
+            this.#foregroundShellCommand.backgroundRequested = true;
+            this.#requestRender();
+            return;
+        }
+
+        if (
+            this.#foregroundShellCommand !== undefined &&
+            (data === "\x03" || matchesKey(data, "ctrl+c"))
+        ) {
+            const foreground = this.#foregroundShellCommand;
+            const entry = this.#entries.find((candidate) => candidate.id === foreground.commandId);
+            if (entry !== undefined) entry.detail = "Stopping shell command";
+            void this.#stopBackgroundProcess(foreground.sessionId).catch(() => {
+                foreground.backgroundRequested = true;
+            });
+            this.#requestRender();
+            return;
+        }
 
         if (this.#sessionMutationInFlight) {
             this.#requestRender();
@@ -1313,6 +1410,9 @@ export class CodingAssistantApp implements Component, Focusable {
 
     render(width: number): string[] {
         const safeWidth = Math.max(1, width);
+        if (this.#backgroundTerminalViewer !== undefined) {
+            return this.#backgroundTerminalViewer.render(safeWidth);
+        }
         const header = this.#renderHeader(safeWidth);
         const transcript = this.#renderTranscript(safeWidth);
         if (this.#exiting) return [...header, ...transcript];
@@ -1327,7 +1427,9 @@ export class CodingAssistantApp implements Component, Focusable {
         const safeWidth = Math.max(1, width);
         const slashCommandSuggestions = this.#slashCommandSuggestions();
         const fileMentionSnapshot =
-            slashCommandSuggestions.length === 0 ? this.#fileMentionSnapshot() : undefined;
+            slashCommandSuggestions.length === 0 && !this.#isShellMode()
+                ? this.#fileMentionSnapshot()
+                : undefined;
         const footer = this.#renderFooter(
             safeWidth,
             slashCommandSuggestions.length > 0
@@ -1401,6 +1503,14 @@ export class CodingAssistantApp implements Component, Focusable {
 
         this.#fileMentionAutocomplete?.clear();
         this.#editor.setText("");
+
+        if (prompt.startsWith("!")) {
+            this.#editor.addToHistory(prompt);
+            this.#pendingPrompts.push(submission);
+            this.#startDrainQueue();
+            this.#requestRender();
+            return;
+        }
 
         if (prompt.startsWith("/skill:")) {
             this.#editor.addToHistory(prompt);
@@ -1476,10 +1586,15 @@ export class CodingAssistantApp implements Component, Focusable {
             return undefined;
         }
 
-        const content = createCodeReviewPrompt(prompt) ?? this.#contentFromPrompt(prompt);
+        const shellCommand = prompt.startsWith("!") ? prompt.slice(1).trim() : undefined;
+        const content =
+            shellCommand === undefined
+                ? (createCodeReviewPrompt(prompt) ?? this.#contentFromPrompt(prompt))
+                : "";
         return {
             content,
             displayText: prompt,
+            ...(shellCommand === undefined ? {} : { shellCommand }),
         };
     }
 
@@ -2077,16 +2192,92 @@ export class CodingAssistantApp implements Component, Focusable {
     }
 
     #showBackgroundTerminals(): void {
-        this.#appendEntry({
-            role: "event",
-            title: "Background terminals",
-            text:
-                this.#backgroundProcesses.length === 0
-                    ? "No background terminals running."
-                    : this.#backgroundProcesses
-                          .map((process) => `• ${process.command}\n  ${process.cwd}`)
-                          .join("\n"),
+        if (this.#backgroundProcesses.length === 0) {
+            this.#appendEntry({
+                role: "event",
+                title: "Background terminals",
+                text: "No background terminals running.",
+            });
+            return;
+        }
+        if (this.#backgroundProcesses.length === 1) {
+            const process = this.#backgroundProcesses[0];
+            if (process !== undefined) this.#openBackgroundTerminalViewer(process);
+            return;
+        }
+
+        this.#showSelectionPanel(
+            createSelectionPanel({
+                items: this.#backgroundProcesses.map((process) => ({
+                    description: process.cwd,
+                    label: process.command.replaceAll("\n", " "),
+                    value: String(process.sessionId),
+                })),
+                onCancel: () => this.#closeSelectionPanel(),
+                onSelect: (item) => {
+                    const process = this.#backgroundProcesses.find(
+                        (candidate) => String(candidate.sessionId) === item.value,
+                    );
+                    if (process !== undefined) this.#openBackgroundTerminalViewer(process);
+                },
+                subtitle: "Choose a terminal to inspect its live output.",
+                theme: this.#theme,
+                title: "Background terminals",
+            }),
+        );
+    }
+
+    #openBackgroundTerminalViewer(process: BashSessionActivity): void {
+        this.#closeSelectionPanel();
+        this.#closeBackgroundTerminalViewer();
+        const controller = new AbortController();
+        const viewer = createBackgroundTerminalViewer({
+            command: process.command,
+            cwd: process.cwd,
+            height: () => this.#tui.terminal.rows,
+            onCancel: () => this.#closeBackgroundTerminalViewer(),
+            onRequestRender: () => this.#requestRender(),
+            onStop: async () => {
+                const result = await this.#stopBackgroundProcess(process.sessionId);
+                return result;
+            },
+            theme: this.#theme,
         });
+        this.#backgroundTerminalViewer = viewer;
+        this.#backgroundTerminalViewerController = controller;
+        void this.#pollBackgroundTerminalViewer(viewer, process.sessionId, controller.signal);
+        this.#requestRender();
+    }
+
+    #closeBackgroundTerminalViewer(): void {
+        this.#backgroundTerminalViewerController?.abort();
+        this.#backgroundTerminalViewerController = undefined;
+        this.#backgroundTerminalViewer = undefined;
+    }
+
+    async #pollBackgroundTerminalViewer(
+        viewer: BackgroundTerminalViewer,
+        sessionId: number,
+        signal: AbortSignal,
+    ): Promise<void> {
+        try {
+            while (!signal.aborted && this.#backgroundTerminalViewer === viewer) {
+                const snapshot = await this.#readBackgroundProcess(sessionId, 500);
+                if (signal.aborted || this.#backgroundTerminalViewer !== viewer) return;
+                if (snapshot === undefined) {
+                    viewer.setError("The background terminal is no longer available.");
+                    this.#requestRender();
+                    return;
+                }
+                viewer.update(snapshot);
+                this.#requestRender();
+                if (snapshot.status !== "running") return;
+            }
+        } catch (error) {
+            if (signal.aborted || this.#backgroundTerminalViewer !== viewer) return;
+            viewer.setError(errorToMessage(error));
+            this.#requestRender();
+        }
     }
 
     #stopBackgroundTerminals(): void {
@@ -2261,6 +2452,12 @@ export class CodingAssistantApp implements Component, Focusable {
             const prompt = this.#pendingPrompts[0];
             if (prompt === undefined) {
                 break;
+            }
+
+            if (prompt.shellCommand !== undefined) {
+                this.#pendingPrompts.shift();
+                await this.#runShellCommand(prompt.shellCommand);
+                continue;
             }
 
             await this.#runPrompt(prompt);
@@ -3463,14 +3660,22 @@ export class CodingAssistantApp implements Component, Focusable {
             return renderBackgroundTerminalInteraction(entry.backgroundTerminalInteraction, width);
         }
         if (entry.execCommand !== undefined) {
+            const active = this.#activeToolCallIds.has(entry.id);
             const stopped = this.#stoppedToolCallIds.has(entry.id);
             const isError = entry.role === "error";
             return renderExecCommand(entry.execCommand, {
+                active,
                 brand: this.#theme.brand,
+                ...(entry.detail === undefined ? {} : { detail: entry.detail }),
                 primary: this.#theme.primary,
                 ...(entry.permissionReview === undefined ? {} : { review: entry.permissionReview }),
-                status: stopped || isError ? this.#theme.error : this.#theme.success,
-                verb: stopped ? "Stopped" : isError ? "Failed" : "Ran",
+                status:
+                    stopped || isError
+                        ? this.#theme.error
+                        : active
+                          ? this.#theme.warning
+                          : this.#theme.success,
+                verb: stopped ? "Stopped" : isError ? "Failed" : active ? "Running" : "Ran",
                 width,
             });
         }
@@ -3521,6 +3726,11 @@ export class CodingAssistantApp implements Component, Focusable {
     ): string[] {
         if (suggestions.length > 0) {
             return this.#renderAutocomplete(width, suggestions, selectedIndex);
+        }
+
+        if (this.#isShellMode()) {
+            const indent = " ".repeat(visibleWidth(INPUT_PROMPT));
+            return [this.#fitLine(`${indent}${this.#theme.error}Shell mode${RESET}`, width)];
         }
 
         const parts = [`${this.#theme.warning}${this.#modelWithReasoningDisplayName()}${RESET}`];
@@ -4854,6 +5064,7 @@ export class CodingAssistantApp implements Component, Focusable {
 
         for (const [sessionId, command] of closed) {
             this.#yieldedBackgroundTerminals.delete(sessionId);
+            if (this.#directShellCommandsBySessionId.has(sessionId)) continue;
             this.#appendEntry({
                 backgroundTerminalCompletion: command,
                 role: "event",
@@ -5216,7 +5427,275 @@ export class CodingAssistantApp implements Component, Focusable {
             this.#dismissedSlashCommandText = undefined;
         }
         this.#slashCommandSuggestions();
-        this.#fileMentionAutocomplete?.sync(this.#editor.getLines(), this.#editor.getCursor());
+        if (this.#isShellMode()) this.#fileMentionAutocomplete?.clear();
+        else this.#fileMentionAutocomplete?.sync(this.#editor.getLines(), this.#editor.getCursor());
+    }
+
+    #isShellMode(): boolean {
+        return (
+            this.#freeformUserInput === undefined &&
+            this.#editor.getText().trimStart().startsWith("!")
+        );
+    }
+
+    async #runShellCommand(rawCommand: string): Promise<void> {
+        const command = rawCommand.trim();
+        if (command.length === 0) {
+            this.#appendEntry({
+                role: "event",
+                title: "Shell command",
+                text: "Enter a shell command after !.",
+            });
+            return;
+        }
+
+        const commandId = this.#idFactory();
+        this.#ensureShellCommandEntry(command, commandId);
+
+        try {
+            const response =
+                this.#agent.runShellCommand === undefined
+                    ? await this.#startLocalShellCommand(command, commandId)
+                    : await this.#agent.runShellCommand(command, { commandId });
+            if (response.status === "finished") {
+                this.#finishShellCommand(response);
+                return;
+            }
+            this.#directShellCommandsBySessionId.set(response.sessionId, { command, commandId });
+            await this.#runForegroundShellCommand(response);
+        } catch (error) {
+            this.#finishShellCommand({
+                command,
+                commandId,
+                errorMessage: errorToMessage(error),
+                exitCode: null,
+                output: errorToMessage(error),
+                timedOut: false,
+            });
+        }
+    }
+
+    #ensureShellCommandEntry(command: string, commandId: string): AppTranscriptEntry {
+        const existing = this.#entries.find((entry) => entry.id === commandId);
+        if (existing !== undefined) return existing;
+        this.#activeToolCallIds.add(commandId);
+        return this.#appendEntry({
+            detail: "Starting shell command",
+            execCommand: { command, output: "", type: "exec_command" },
+            id: commandId,
+            role: "tool",
+            text: command,
+        });
+    }
+
+    async #startLocalShellCommand(
+        command: string,
+        commandId: string,
+    ): Promise<RunShellCommandResponse> {
+        const sessionId = await this.#agent.context.bash.startSession({
+            command,
+            maxOutputBytes: 512_000,
+        });
+        return {
+            command,
+            commandId,
+            eventId: `local-shell:${commandId}`,
+            sessionId,
+            status: "running",
+        };
+    }
+
+    async #runForegroundShellCommand(
+        response: Extract<RunShellCommandResponse, { status: "running" }>,
+    ): Promise<void> {
+        const foreground: ForegroundShellCommand = {
+            backgroundRequested: false,
+            commandId: response.commandId,
+            sessionId: response.sessionId,
+        };
+        this.#foregroundShellCommand = foreground;
+        const entry = this.#entries.find((candidate) => candidate.id === response.commandId);
+        if (entry !== undefined) entry.detail = "Ctrl+B to background · Ctrl+C to stop";
+        this.#requestRender();
+        const deadline = Date.now() + FOREGROUND_SHELL_YIELD_MS;
+        try {
+            for (;;) {
+                let snapshot: BashSessionSnapshot | undefined;
+                try {
+                    snapshot = await this.#readBackgroundProcess(response.sessionId, 250);
+                } catch {
+                    if (!this.#activeToolCallIds.has(response.commandId)) return;
+                    const entry = this.#entries.find(
+                        (candidate) => candidate.id === response.commandId,
+                    );
+                    this.#backgroundShellCommand(
+                        response.commandId,
+                        response.sessionId,
+                        entry?.execCommand?.output ?? "",
+                    );
+                    return;
+                }
+                if (snapshot === undefined) {
+                    if (!this.#activeToolCallIds.has(response.commandId)) return;
+                    const entry = this.#entries.find(
+                        (candidate) => candidate.id === response.commandId,
+                    );
+                    this.#backgroundShellCommand(
+                        response.commandId,
+                        response.sessionId,
+                        entry?.execCommand?.output ?? "",
+                    );
+                    return;
+                }
+                this.#updateForegroundShellCommand(response.commandId, snapshot);
+                if (snapshot.status !== "running") {
+                    this.#finishShellCommand(this.#shellResult(response.commandId, snapshot));
+                    return;
+                }
+                if (foreground.backgroundRequested || Date.now() >= deadline) {
+                    if (!this.#activeToolCallIds.has(response.commandId)) return;
+                    this.#backgroundShellCommand(
+                        response.commandId,
+                        response.sessionId,
+                        this.#shellOutput(snapshot),
+                    );
+                    return;
+                }
+            }
+        } finally {
+            if (this.#foregroundShellCommand === foreground) {
+                this.#foregroundShellCommand = undefined;
+            }
+        }
+    }
+
+    async #readBackgroundProcess(
+        sessionId: number,
+        waitMs: number,
+    ): Promise<BashSessionSnapshot | undefined> {
+        return this.#agent.readBackgroundProcess === undefined
+            ? this.#agent.context.bash.readSession(sessionId, { waitMs })
+            : this.#agent.readBackgroundProcess(sessionId, { waitMs });
+    }
+
+    async #stopBackgroundProcess(sessionId: number): Promise<BashSessionSnapshot | undefined> {
+        if (this.#agent.stopBackgroundProcess === undefined) {
+            return this.#agent.context.bash.killSession(sessionId);
+        }
+        return (await this.#agent.stopBackgroundProcess(sessionId)).process;
+    }
+
+    #updateForegroundShellCommand(commandId: string, snapshot: BashSessionSnapshot): void {
+        const entry = this.#entries.find((candidate) => candidate.id === commandId);
+        if (entry === undefined || !this.#activeToolCallIds.has(commandId)) return;
+        entry.execCommand = {
+            command: snapshot.command,
+            output: this.#shellOutput(snapshot),
+            sessionId: snapshot.sessionId,
+            type: "exec_command",
+        };
+        entry.detail = "Ctrl+B to background · Ctrl+C to stop";
+        this.#requestRender();
+    }
+
+    #backgroundShellCommand(commandId: string, sessionId: number, output: string): void {
+        const entry = this.#entries.find((candidate) => candidate.id === commandId);
+        if (entry !== undefined) {
+            entry.execCommand = {
+                command: entry.execCommand?.command ?? entry.text,
+                output,
+                sessionId,
+                type: "exec_command",
+            };
+            entry.detail = "Continues in background · /ps to view";
+        }
+        this.#activeToolCallIds.delete(commandId);
+        this.#backgroundedShellCommandIds.add(commandId);
+        const direct = this.#directShellCommandsBySessionId.get(sessionId);
+        if (!this.#observedShellProcesses.some((process) => process.sessionId === sessionId)) {
+            this.#observedShellProcesses = [
+                ...this.#observedShellProcesses,
+                {
+                    command: direct?.command ?? entry?.execCommand?.command ?? "Shell command",
+                    cwd: this.#cwd,
+                    sessionId,
+                    status: "running",
+                },
+            ];
+        }
+        this.#yieldedBackgroundTerminals.set(
+            sessionId,
+            direct?.command ?? entry?.execCommand?.command ?? "Shell command",
+        );
+        this.#backgroundProcesses = this.#observedShellProcesses.filter((process) =>
+            this.#yieldedBackgroundTerminals.has(process.sessionId),
+        );
+        this.#requestRender();
+    }
+
+    #shellResult(commandId: string, snapshot: BashSessionSnapshot): RunShellCommandResult {
+        return {
+            command: snapshot.command,
+            commandId,
+            exitCode: snapshot.exitCode,
+            output: this.#shellOutput(snapshot),
+            sessionId: snapshot.sessionId,
+            timedOut: snapshot.timedOut,
+        };
+    }
+
+    #shellOutput(snapshot: Pick<BashSessionSnapshot, "stderr" | "stdout">): string {
+        return [snapshot.stdout, snapshot.stderr].filter(Boolean).join("\n");
+    }
+
+    #finishShellCommand(result: RunShellCommandResult): void {
+        if (
+            !this.#activeToolCallIds.has(result.commandId) &&
+            !this.#backgroundedShellCommandIds.has(result.commandId)
+        ) {
+            if (result.sessionId !== undefined) {
+                this.#directShellCommandsBySessionId.delete(result.sessionId);
+                this.#yieldedBackgroundTerminals.delete(result.sessionId);
+            }
+            return;
+        }
+        this.#moveActiveToolEntryToTranscriptTail(result.commandId);
+        const failed =
+            result.errorMessage !== undefined ||
+            result.timedOut ||
+            (result.exitCode !== null && result.exitCode !== 0);
+        const existing = this.#entries.find((entry) => entry.id === result.commandId);
+        const output =
+            result.output.length > 0
+                ? result.output
+                : result.timedOut
+                  ? "Command timed out."
+                  : result.exitCode === null
+                    ? (result.errorMessage ?? "Command did not finish.")
+                    : "";
+        if (existing === undefined) {
+            this.#appendEntry({
+                execCommand: { command: result.command, output, type: "exec_command" },
+                id: result.commandId,
+                role: failed ? "error" : "tool",
+                text: result.command,
+            });
+        } else {
+            existing.execCommand = {
+                command: result.command,
+                output,
+                type: "exec_command",
+            };
+            existing.role = failed ? "error" : "tool";
+            delete existing.detail;
+        }
+        this.#activeToolCallIds.delete(result.commandId);
+        this.#backgroundedShellCommandIds.delete(result.commandId);
+        if (result.sessionId !== undefined) {
+            this.#directShellCommandsBySessionId.delete(result.sessionId);
+            this.#yieldedBackgroundTerminals.delete(result.sessionId);
+        }
+        this.#requestRender();
     }
 
     #reasoningShortcutDirection(data: string): "down" | "up" | undefined {
@@ -5465,7 +5944,7 @@ export class CodingAssistantApp implements Component, Focusable {
         this.#editor.setText("");
         this.#editor.addToHistory(submission.displayText);
         this.#fileMentionAutocomplete?.clear();
-        this.#modelLocked = true;
+        if (submission.shellCommand === undefined) this.#modelLocked = true;
         this.#pendingPrompts.push(submission);
         this.#requestRender();
         return true;

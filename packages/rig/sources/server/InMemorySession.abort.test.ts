@@ -18,8 +18,53 @@ import {
 } from "../providers/types.js";
 import { InMemorySession } from "./InMemorySession.js";
 import type { AgentSessionManager } from "./AgentSessionManager.js";
+import { TrackedTaskDrain } from "./TrackedTaskDrain.js";
 
 describe("InMemorySession abort", () => {
+    it("kills a direct shell watcher before draining daemon shutdown tasks", async () => {
+        const model = defineModel({
+            defaultThinkingLevel: "off",
+            id: "test/shutdown-shell",
+            name: "Shutdown shell",
+            thinkingLevels: ["off"],
+        });
+        const provider = defineProvider({
+            id: "test",
+            models: [model],
+            stream() {
+                throw new Error("Inference is not expected.");
+            },
+        });
+        const taskDrain = new TrackedTaskDrain();
+        const session = new InMemorySession({
+            createEventId: createEventIdFactory(),
+            createRuntime: (options) => createRuntime(options, provider),
+            modelCatalog: {
+                defaultModelId: model.id,
+                defaultProviderId: provider.id,
+                models: [model],
+                providers: [{ models: [model], providerId: provider.id }],
+            },
+            request: {
+                cwd: "/tmp/rig-shutdown-shell",
+                modelId: model.id,
+                permissionMode: "full_access",
+            },
+            taskDrain,
+        });
+
+        await session.runShellCommand({ command: "sleep 60", commandId: "shutdown-shell" });
+        taskDrain.beginClose();
+        await session.beginShutdown();
+
+        await expect(taskDrain.drain()).resolves.toBeUndefined();
+        expect(
+            session.events
+                .since(undefined)
+                ?.some((event) => event.type === "shell_command_finished"),
+        ).toBe(true);
+    });
+
     it("stops active descendants instead of suspending them", async () => {
         const pauseDescendants = vi.fn(async () => 1);
         const stopDescendants = vi.fn(async () => 1);

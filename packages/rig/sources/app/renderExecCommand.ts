@@ -14,7 +14,9 @@ const MAX_OUTPUT_EDGE_LINES = 5;
 export function renderExecCommand(
     presentation: ExecCommandPresentation,
     options: {
+        active?: boolean;
         brand: string;
+        detail?: string;
         primary: string;
         review?: string;
         status: string;
@@ -42,10 +44,20 @@ export function renderExecCommand(
     if (options.review !== undefined) {
         childRows.push({ prefix: DIM, suffix: RESET, text: options.review });
     }
-    const outputLines = selectOutputLines(presentation.output);
-    childRows.push(
-        ...outputLines.map((output) => ({ prefix: DIM, suffix: RESET, text: output, wrap: true })),
-    );
+    if (options.detail !== undefined) {
+        childRows.push({ prefix: DIM, suffix: RESET, text: options.detail });
+    }
+    if (options.active !== true) {
+        const outputLines = selectOutputLines(presentation.output);
+        childRows.push(
+            ...outputLines.map((output) => ({
+                prefix: DIM,
+                suffix: RESET,
+                text: output,
+                wrap: true,
+            })),
+        );
+    }
     lines.push(
         ...renderChildRows(childRows, { afterMarker: `${RESET}${DIM}`, markerStyle: DIM, width }),
     );

@@ -37,9 +37,13 @@ import type {
     ListSubagentsResponse,
     ProtocolSession,
     RecordSessionActivityResponse,
+    ReadBackgroundProcessResponse,
     ResolveExternalToolCallRequest,
     ResolveExternalToolCallResponse,
     RewindSessionResponse,
+    RunShellCommandRequest,
+    RunShellCommandResponse,
+    StopBackgroundProcessResponse,
     RegisterSecretRequest,
     RegisterSecretResponse,
     SearchFilesResponse,
@@ -62,6 +66,7 @@ import type {
 import type { SecretAttachmentScope } from "../secrets/index.js";
 import { parseGlobalSseEvent } from "./parseGlobalSseEvent.js";
 import { EventStreamHttpError } from "./EventStreamHttpError.js";
+import { ProtocolHttpError } from "./ProtocolHttpError.js";
 import type {
     CreateRemoteTerminalRequest,
     CreateRemoteTerminalResponse,
@@ -138,6 +143,34 @@ export class ProtocolHttpClient {
         return this.#requestJson(
             "POST",
             `/sessions/${encodeURIComponent(sessionId)}/background-processes/stop`,
+        );
+    }
+
+    readBackgroundProcess(
+        sessionId: string,
+        processSessionId: number,
+        options: { waitMs?: number } = {},
+    ): Promise<ReadBackgroundProcessResponse | undefined> {
+        const query =
+            options.waitMs === undefined
+                ? ""
+                : `?waitMs=${encodeURIComponent(String(options.waitMs))}`;
+        return this.#requestJson<ReadBackgroundProcessResponse>(
+            "GET",
+            `/sessions/${encodeURIComponent(sessionId)}/background-processes/${encodeURIComponent(String(processSessionId))}${query}`,
+        ).catch((error: unknown) => {
+            if (error instanceof ProtocolHttpError && error.statusCode === 404) return undefined;
+            throw error;
+        });
+    }
+
+    stopBackgroundProcess(
+        sessionId: string,
+        processSessionId: number,
+    ): Promise<StopBackgroundProcessResponse> {
+        return this.#requestJson(
+            "DELETE",
+            `/sessions/${encodeURIComponent(sessionId)}/background-processes/${encodeURIComponent(String(processSessionId))}`,
         );
     }
 
@@ -420,6 +453,17 @@ export class ProtocolHttpClient {
         return this.#requestJson("POST", `/sessions/${encodeURIComponent(sessionId)}/reset`);
     }
 
+    runShellCommand(
+        sessionId: string,
+        request: RunShellCommandRequest,
+    ): Promise<RunShellCommandResponse> {
+        return this.#requestJson(
+            "POST",
+            `/sessions/${encodeURIComponent(sessionId)}/shell`,
+            request,
+        );
+    }
+
     recordSessionActivity(sessionId: string): Promise<RecordSessionActivityResponse> {
         return this.#requestJson("POST", `/sessions/${encodeURIComponent(sessionId)}/activity`);
     }
@@ -574,8 +618,12 @@ export class ProtocolHttpClient {
                     response.on("end", () => {
                         const text = Buffer.concat(chunks).toString("utf8");
                         if ((response.statusCode ?? 500) >= 400) {
+                            const statusCode = response.statusCode ?? 500;
                             reject(
-                                new Error(text.length > 0 ? text : `HTTP ${response.statusCode}`),
+                                new ProtocolHttpError(
+                                    statusCode,
+                                    text.length > 0 ? text : `HTTP ${String(statusCode)}`,
+                                ),
                             );
                             return;
                         }

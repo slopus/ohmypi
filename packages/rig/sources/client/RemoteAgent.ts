@@ -17,6 +17,9 @@ import type {
     ModelCatalog,
     ProtocolSession,
     SessionEvent,
+    RunShellCommandResponse,
+    ReadBackgroundProcessResponse,
+    StopBackgroundProcessResponse,
     SteerMessageResponse,
 } from "../protocol/index.js";
 import {
@@ -200,6 +203,17 @@ export class RemoteAgent implements CodingAssistantAgentBackend {
         return response.stoppedProcesses;
     }
 
+    readBackgroundProcess(
+        sessionId: number,
+        options?: { waitMs?: number },
+    ): Promise<ReadBackgroundProcessResponse | undefined> {
+        return this.#client.readBackgroundProcess(this.#session.id, sessionId, options);
+    }
+
+    stopBackgroundProcess(sessionId: number): Promise<StopBackgroundProcessResponse> {
+        return this.#client.stopBackgroundProcess(this.#session.id, sessionId);
+    }
+
     getUsage() {
         return this.#client.getSessionUsage(this.#session.id);
     }
@@ -228,6 +242,16 @@ export class RemoteAgent implements CodingAssistantAgentBackend {
     async reset(): Promise<void> {
         const response = await this.#client.reset(this.#session.id);
         this.#replaceSession(response.session);
+    }
+
+    runShellCommand(
+        command: string,
+        options: { commandId: string },
+    ): Promise<RunShellCommandResponse> {
+        return this.#client.runShellCommand(this.#session.id, {
+            command,
+            commandId: options.commandId,
+        });
     }
 
     async rewind(messageId: string): Promise<UserMessage> {

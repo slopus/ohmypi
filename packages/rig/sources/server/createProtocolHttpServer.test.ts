@@ -1061,6 +1061,65 @@ describe("createProtocolHttpServer", () => {
         }
     });
 
+    it("rejects non-object shell command requests", async () => {
+        const { client, close, socketPath } = await startServer();
+        try {
+            const created = await client.createSession({ cwd: "/tmp/rig-protocol-test" });
+            const response = await requestRawJson(
+                socketPath,
+                `/sessions/${created.session.id}/shell`,
+                { body: "null", method: "POST" },
+            );
+
+            expect(response.statusCode).toBe(400);
+            expect(response.body).toContain("Enter a shell command after !.");
+        } finally {
+            await close();
+        }
+    });
+
+    it("reads and stops one direct shell process through its stable session id", async () => {
+        const { client, close } = await startServer();
+        try {
+            const created = await client.createSession({
+                cwd: "/tmp/rig-protocol-test",
+                permissionMode: "full_access",
+            });
+            const started = await client.runShellCommand(created.session.id, {
+                command: "sleep 60",
+                commandId: "shell-command-1",
+            });
+
+            expect(started).toMatchObject({
+                command: "sleep 60",
+                commandId: "shell-command-1",
+                status: "running",
+            });
+            if (started.status !== "running") throw new Error("Expected a running command.");
+
+            await expect(
+                client.readBackgroundProcess(created.session.id, started.sessionId),
+            ).resolves.toMatchObject({
+                command: "sleep 60",
+                sessionId: started.sessionId,
+            });
+            await expect(
+                client.readBackgroundProcess(created.session.id, 999_999),
+            ).resolves.toBeUndefined();
+            await expect(
+                client.stopBackgroundProcess(created.session.id, started.sessionId),
+            ).resolves.toMatchObject({
+                process: { sessionId: started.sessionId },
+                stopped: true,
+            });
+            await expect(
+                client.readBackgroundProcess(created.session.id, started.sessionId),
+            ).resolves.toMatchObject({ sessionId: started.sessionId });
+        } finally {
+            await close();
+        }
+    });
+
     it("reports abort failures without dropping the protocol connection", async () => {
         const { client, close, store } = await startServer();
         try {

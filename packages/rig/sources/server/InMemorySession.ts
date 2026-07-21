@@ -15,6 +15,7 @@ import type {
     ContentBlock,
 } from "../agent/index.js";
 import type { Message, UserMessage } from "../agent/types.js";
+import type { BashContext } from "../agent/context/BashContext.js";
 import {
     createGoalContinuationPrompt,
     normalizeGoalObjective,
@@ -37,12 +38,18 @@ import type {
     EventId,
     ModelCatalog,
     ProtocolSession,
+    ReadBackgroundProcessResponse,
     RewindSessionResponse,
+    RunShellCommandRequest,
+    RunShellCommandResponse,
+    RunShellCommandResult,
     SessionEvent,
     SessionAgentMetadata,
     SessionInterruption,
     SessionStatus,
     SessionSummary,
+    ShellCommandFinishedEvent,
+    StopBackgroundProcessResponse,
     SubagentSummary,
     SessionTitleStatus,
     SubmitMessageRequest,
@@ -95,6 +102,7 @@ import { generateSessionMetadata } from "./generateSessionMetadata.js";
 import { createAbortRequestKey } from "./createAbortRequestKey.js";
 import { createGoalTitle } from "./createGoalTitle.js";
 import { createdContextTokens } from "./createdContextTokens.js";
+import { formatShellCommandContext } from "./formatShellCommandContext.js";
 import { getProviderIdForModel } from "./getProviderIdForModel.js";
 import { getProviderIdsForModel } from "./getProviderIdsForModel.js";
 import { resolveInitialModelSelection } from "./resolveInitialModelSelection.js";
@@ -385,6 +393,8 @@ export class InMemorySession {
     #systemPrompt: string | undefined;
     #suspendOnAbort = false;
     #shutdownCleanup: Promise<void> | undefined;
+    #shellCommandCompletions = new Map<number, Promise<void>>();
+    #shellHistoryRevision = 0;
     #taskList: SessionTaskList;
     #taskDrain: TaskDrain | undefined;
     #terminalManager: RemoteTerminalManager | undefined;
@@ -763,6 +773,150 @@ export class InMemorySession {
         const runningProcesses = runtime.context.bash.activeSessionCount?.() ?? 0;
         await runtime.context.bash.killAllSessions?.();
         return runningProcesses;
+    }
+
+    async readBackgroundProcess(
+        sessionId: number,
+        options: { waitMs?: number } = {},
+    ): Promise<ReadBackgroundProcessResponse | undefined> {
+        const runtime = this.#runtime;
+        if (runtime === undefined) return undefined;
+        return runtime.context.bash.readSession(sessionId, options);
+    }
+
+    async stopBackgroundProcess(sessionId: number): Promise<StopBackgroundProcessResponse> {
+        const runtime = this.#runtime;
+        if (runtime === undefined) return { stopped: false };
+        const process = await runtime.context.bash.killSession(sessionId);
+        if (process === undefined) return { stopped: false };
+        await this.#shellCommandCompletions.get(sessionId);
+        return { process, stopped: true };
+    }
+
+    async runShellCommand(request: RunShellCommandRequest): Promise<RunShellCommandResponse> {
+        this.#assertAcceptingWork();
+        const command = request.command.trim();
+        if (command.length === 0) throw new Error("Enter a shell command after !.");
+
+        const historyRevision = this.#shellHistoryRevision;
+        const bash = this.#ensureRuntime().context.bash;
+        let sessionId: number;
+        try {
+            sessionId = await bash.startSession({
+                command,
+                maxOutputBytes: 512_000,
+            });
+        } catch (error) {
+            const result: RunShellCommandResult = {
+                command,
+                commandId: request.commandId,
+                errorMessage: errorToMessage(error),
+                exitCode: null,
+                output: errorToMessage(error),
+                timedOut: false,
+            };
+            const event = this.#recordShellCommandResult(result, historyRevision);
+            return { ...result, eventId: event.id, status: "finished" };
+        }
+
+        const event = this.#append("shell_command_started", {
+            command,
+            commandId: request.commandId,
+            sessionId,
+        });
+        const watch = () =>
+            this.#watchShellCommand(bash, command, request.commandId, sessionId, historyRevision);
+        const watching = this.#taskDrain?.run(watch) ?? watch();
+        const completion = watching
+            .catch((error: unknown) => {
+                this.#recordShellCommandResult(
+                    {
+                        command,
+                        commandId: request.commandId,
+                        errorMessage: errorToMessage(error),
+                        exitCode: null,
+                        output: errorToMessage(error),
+                        sessionId,
+                        timedOut: false,
+                    },
+                    historyRevision,
+                );
+            })
+            .finally(() => {
+                if (this.#shellCommandCompletions.get(sessionId) === completion) {
+                    this.#shellCommandCompletions.delete(sessionId);
+                }
+            });
+        this.#shellCommandCompletions.set(sessionId, completion);
+
+        return {
+            command,
+            commandId: request.commandId,
+            eventId: event.id,
+            sessionId,
+            status: "running",
+        };
+    }
+
+    async #watchShellCommand(
+        bash: BashContext,
+        command: string,
+        commandId: string,
+        sessionId: number,
+        historyRevision: number,
+    ): Promise<void> {
+        for (;;) {
+            const snapshot = await bash.readSession(sessionId, {
+                waitMs: 30_000,
+            });
+            if (snapshot === undefined) {
+                throw new Error("The background terminal is no longer available.");
+            }
+            if (snapshot.status === "running") continue;
+
+            this.#recordShellCommandResult(
+                {
+                    command,
+                    commandId,
+                    exitCode: snapshot.exitCode,
+                    output: [snapshot.stdout, snapshot.stderr].filter(Boolean).join("\n"),
+                    sessionId,
+                    timedOut: snapshot.timedOut,
+                },
+                historyRevision,
+            );
+            return;
+        }
+    }
+
+    #recordShellCommandResult(
+        result: RunShellCommandResult,
+        historyRevision: number,
+    ): ShellCommandFinishedEvent {
+        if (historyRevision !== this.#shellHistoryRevision) {
+            return this.#append("shell_command_finished", result);
+        }
+        const contextMessage: UserMessage = {
+            blocks: [{ type: "text", text: formatShellCommandContext(result) }],
+            id: createId(),
+            role: "user",
+        };
+        const runtime = this.#runtime;
+        if (runtime === undefined) {
+            this.#separateModelContextFromVisibleTranscript();
+            this.#contextMessages?.push(contextMessage);
+        } else {
+            runtime.agent.enqueueMessage(contextMessage);
+        }
+        this.#storeMessage(
+            this.#messages.length,
+            contextMessage,
+            false,
+            `shell:${result.commandId}`,
+        );
+        this.#lastMessageAt = this.#now();
+
+        return this.#append("shell_command_finished", result);
     }
 
     async suspendByParent(): Promise<void> {
@@ -1728,11 +1882,13 @@ export class InMemorySession {
     }
 
     async reset(): Promise<ProtocolSession> {
+        this.#shellHistoryRevision += 1;
         this.#clearMetadataSettlement();
         this.#invalidateSessionMetadata();
         await this.#agentManager?.stopDescendants(this.id);
         const activeRunId = this.#activeRun?.runId;
         await this.abort({ stopDescendants: false });
+        await Promise.allSettled(this.#shellCommandCompletions.values());
         if (activeRunId !== undefined) await this.waitForRun(activeRunId);
         await this.#draining?.catch(() => undefined);
         const workflowRuns = [...this.#workflowRuns.values()];
@@ -1780,6 +1936,7 @@ export class InMemorySession {
             throw new Error("The selected user message is no longer available.");
         }
 
+        this.#shellHistoryRevision += 1;
         void this.#killRuntimeProcesses();
         this.#releaseMcpToolLease();
         this.#runtime = undefined;

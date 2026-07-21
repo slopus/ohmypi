@@ -31,6 +31,9 @@ import type {
     RewindSessionRequest,
     RewindSessionResponse,
     RecordSessionActivityResponse,
+    ReadBackgroundProcessResponse,
+    RunShellCommandRequest,
+    RunShellCommandResponse,
     ResolveExternalToolCallRequest,
     ResolveExternalToolCallResponse,
     RegisterSecretRequest,
@@ -42,6 +45,7 @@ import type {
     ShutdownServerResponse,
     StartInspectorResponse,
     SteerMessageResponse,
+    StopBackgroundProcessResponse,
     StopWorkflowResponse,
     SubmitMessageResponse,
     TrimGlobalEventsRequest,
@@ -803,6 +807,54 @@ async function handleRequest(
         return;
     }
 
+    if (route.name === "background-process") {
+        if (request.method === "GET") {
+            const rawWaitMs = url.searchParams.get("waitMs");
+            const waitMs =
+                rawWaitMs === null
+                    ? 0
+                    : Math.max(0, Math.min(30_000, Number.parseInt(rawWaitMs, 10) || 0));
+            const process = await session.readBackgroundProcess(route.processSessionId, {
+                waitMs,
+            });
+            if (process === undefined) {
+                sendJson(response, 404, { error: "The background terminal was not found." });
+                return;
+            }
+            sendJson<ReadBackgroundProcessResponse>(response, 200, process);
+            return;
+        }
+        if (request.method === "DELETE") {
+            const result = await session.stopBackgroundProcess(route.processSessionId);
+            sendJson<StopBackgroundProcessResponse>(response, 200, result);
+            return;
+        }
+    }
+
+    if (request.method === "POST" && route.name === "shell") {
+        const body = await readJson<unknown>(request);
+        if (body === null || typeof body !== "object" || Array.isArray(body)) {
+            sendJson(response, 400, { error: "Enter a shell command after !." });
+            return;
+        }
+        const candidate = body as Partial<RunShellCommandRequest>;
+        if (
+            typeof candidate.command !== "string" ||
+            candidate.command.trim().length === 0 ||
+            typeof candidate.commandId !== "string" ||
+            candidate.commandId.length === 0
+        ) {
+            sendJson(response, 400, { error: "Enter a shell command after !." });
+            return;
+        }
+        sendJson<RunShellCommandResponse>(
+            response,
+            200,
+            await session.runShellCommand(candidate as RunShellCommandRequest),
+        );
+        return;
+    }
+
     if (request.method === "POST" && route.name === "reset") {
         sendJson(response, 200, { session: await session.reset() });
         return;
@@ -1074,6 +1126,7 @@ function matchRoute(pathname: string):
               | "permissions"
               | "reset"
               | "rewind"
+              | "shell"
               | "secrets"
               | "service-tier"
               | "session"
@@ -1092,6 +1145,7 @@ function matchRoute(pathname: string):
     | { name: "user-input"; requestId: string; sessionId: string }
     | { name: "external-tool-call"; externalToolCallId: string; sessionId: string }
     | { name: "secret"; secretId: string; sessionId: string }
+    | { name: "background-process"; processSessionId: number; sessionId: string }
     | { name: "workflow-stop"; sessionId: string; workflowRunId: string }
     | undefined {
     if (pathname === "/health") return { name: "health" };
@@ -1159,6 +1213,11 @@ function matchRoute(pathname: string):
     if (parts.length === 4 && parts[2] === "background-processes" && parts[3] === "stop") {
         return { name: "background-processes-stop", sessionId };
     }
+    if (parts.length === 4 && parts[2] === "background-processes" && parts[3] !== undefined) {
+        const processSessionId = Number(parts[3]);
+        if (!Number.isSafeInteger(processSessionId) || processSessionId <= 0) return undefined;
+        return { name: "background-process", processSessionId, sessionId };
+    }
     if (parts.length === 4 && parts[2] === "secrets" && parts[3] !== undefined) {
         return { name: "secret", secretId: decodeURIComponent(parts[3]), sessionId };
     }
@@ -1185,6 +1244,7 @@ function matchRoute(pathname: string):
     if (parts[2] === "rewind") return { name: "rewind", sessionId };
     if (parts[2] === "secrets") return { name: "secrets", sessionId };
     if (parts[2] === "service-tier") return { name: "service-tier", sessionId };
+    if (parts[2] === "shell") return { name: "shell", sessionId };
     if (parts[2] === "stream") return { name: "stream", sessionId };
     if (parts[2] === "steer") return { name: "steer", sessionId };
     if (parts[2] === "subagents") return { name: "subagents", sessionId };
@@ -1208,10 +1268,12 @@ function isSessionMutation(routeName: string, method: string | undefined): boole
                 "reset",
                 "rewind",
                 "secrets",
+                "shell",
                 "steer",
                 "terminals",
             ].includes(routeName)) ||
         (method === "POST" && routeName === "workflow-stop") ||
+        (method === "DELETE" && routeName === "background-process") ||
         (["DELETE", "PATCH", "POST"].includes(method ?? "") && routeName === "goal") ||
         (method === "POST" && routeName === "user-input") ||
         (method === "DELETE" && routeName === "secret") ||

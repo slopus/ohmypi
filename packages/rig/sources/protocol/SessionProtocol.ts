@@ -23,7 +23,7 @@ import type { ChangeGoalStatusRequest, CreateGoalRequest, SessionGoal } from "..
 import type { EventId } from "./EventId.js";
 import type { DockerExecutionConfig } from "../execution/DockerExecutionConfig.js";
 import type { SessionExecutionEnvironment } from "../execution/SessionExecutionEnvironment.js";
-import type { BashSessionActivity } from "../agent/context/BashContext.js";
+import type { BashSessionActivity, BashSessionSnapshot } from "../agent/context/BashContext.js";
 import type {
     SecretAttachmentScope,
     SecretReference,
@@ -440,6 +440,40 @@ export interface RecordSessionActivityResponse {
     recorded: true;
 }
 
+export interface RunShellCommandRequest {
+    command: string;
+    commandId: string;
+}
+
+export interface RunShellCommandResult {
+    command: string;
+    commandId: string;
+    errorMessage?: string;
+    exitCode: number | null;
+    output: string;
+    sessionId?: number;
+    timedOut: boolean;
+}
+
+export interface RunningShellCommandResponse {
+    command: string;
+    commandId: string;
+    eventId: EventId;
+    sessionId: number;
+    status: "running";
+}
+
+export type RunShellCommandResponse =
+    | RunningShellCommandResponse
+    | (RunShellCommandResult & { eventId: EventId; status: "finished" });
+
+export type ReadBackgroundProcessResponse = BashSessionSnapshot;
+
+export interface StopBackgroundProcessResponse {
+    process?: BashSessionSnapshot;
+    stopped: boolean;
+}
+
 export interface SteerMessageRequest extends SubmitMessageRequest {
     clientSubmissionId?: string;
     expectedRunId?: string;
@@ -502,7 +536,9 @@ export type SessionEvent =
     | SubagentsSuspendedEvent
     | WorkflowChangedEvent
     | ExternalToolCallRequestedEvent
-    | ExternalToolCallResolvedEvent;
+    | ExternalToolCallResolvedEvent
+    | ShellCommandStartedEvent
+    | ShellCommandFinishedEvent;
 
 export interface BaseSessionEvent<TType extends string, TData> {
     createdAt: number;
@@ -588,6 +624,20 @@ export type AbortRequestedEvent = BaseSessionEvent<
     "abort_requested",
     {
         runId?: string;
+    }
+>;
+
+export type ShellCommandFinishedEvent = BaseSessionEvent<
+    "shell_command_finished",
+    RunShellCommandResult
+>;
+
+export type ShellCommandStartedEvent = BaseSessionEvent<
+    "shell_command_started",
+    {
+        command: string;
+        commandId: string;
+        sessionId: number;
     }
 >;
 

@@ -29,6 +29,58 @@ import { DEFAULT_TERMINAL_THEME } from "./defaultTerminalTheme.js";
 import { stripAnsi } from "./testing/stripAnsi.js";
 
 describe("CodingAssistantApp", () => {
+    it("backgrounds a daemon-owned shell command when foreground polling disconnects", async () => {
+        const model = defineModel({
+            id: "openai/gpt-test",
+            name: "GPT Test",
+            thinkingLevels: ["off"],
+            defaultThinkingLevel: "off",
+        });
+        const provider = defineProvider({
+            id: "codex",
+            models: [model],
+            stream() {
+                return streamText("unused");
+            },
+        });
+        const harness = createJustBashToolHarness();
+        const readBackgroundProcess = vi.fn(async () => {
+            throw new Error("The daemon connection closed.");
+        });
+        const app = new CodingAssistantApp({
+            agent: Object.assign(
+                new Agent({
+                    provider,
+                    modelId: model.id,
+                    context: harness.context,
+                    printToConsole: false,
+                }),
+                {
+                    readBackgroundProcess,
+                    runShellCommand: async (command: string, options: { commandId: string }) => ({
+                        command,
+                        commandId: options.commandId,
+                        eventId: "shell-started",
+                        sessionId: 9,
+                        status: "running" as const,
+                    }),
+                },
+            ),
+            cwd: harness.context.fs.cwd,
+            processManager: new NativeProcessManager(),
+            sessionBacked: true,
+            tui: fakeTui(),
+        });
+
+        submit(app, "!sleep 60");
+        await vi.waitFor(() => expect(readBackgroundProcess).toHaveBeenCalledOnce());
+
+        const rendered = stripAnsi(app.render(100).join("\n"));
+        expect(rendered).toContain("Continues in background · /ps to view");
+        expect(rendered).toContain("1 background terminal running");
+        expect(rendered).not.toContain("Failed sleep 60");
+    });
+
     it("does not render rows or separators for finalized whitespace-only assistant or thinking entries", () => {
         const model = defineModel({
             id: "openai/gpt-test",

@@ -14,7 +14,10 @@ import type {
     AbortRunOptions,
     AbortRunResponse,
     GetSessionUsageResponse,
+    ReadBackgroundProcessResponse,
+    RunShellCommandResponse,
     SteerMessageResponse,
+    StopBackgroundProcessResponse,
 } from "../protocol/index.js";
 import type { SecretAttachmentScope } from "../secrets/index.js";
 
@@ -42,6 +45,10 @@ export interface CodingAssistantAgentBackend {
     readonly secretIds?: readonly string[];
     readonly sessionSecretIds?: readonly string[];
     getUsage?(): Promise<GetSessionUsageResponse>;
+    readBackgroundProcess?(
+        sessionId: number,
+        options?: { waitMs?: number },
+    ): Promise<ReadBackgroundProcessResponse | undefined>;
     abort?(options?: AbortRunOptions): Promise<AbortRunResponse>;
     attachSecret?(secretId: string, scope?: SecretAttachmentScope): Promise<void>;
     compact(signal?: AbortSignal): Promise<AgentCompactionResult>;
@@ -49,8 +56,13 @@ export interface CodingAssistantAgentBackend {
     clearGoal?(): Promise<void>;
     detachSecret?(secretId: string, scope?: SecretAttachmentScope): Promise<void>;
     reset(): void | Promise<void>;
+    runShellCommand?(
+        command: string,
+        options: { commandId: string },
+    ): Promise<RunShellCommandResponse>;
     rewind?(messageId: string): Promise<UserMessage>;
     stopBackgroundProcesses?(): Promise<number>;
+    stopBackgroundProcess?(sessionId: number): Promise<StopBackgroundProcessResponse>;
     send(
         content: string | readonly ContentBlock[],
         options?: AgentRunOptions,

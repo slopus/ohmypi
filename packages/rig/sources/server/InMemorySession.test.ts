@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type { ModelCatalog } from "../protocol/index.js";
 import { defineModel } from "../providers/types.js";
@@ -19,6 +19,45 @@ describe("InMemorySession", () => {
             session.events.since(undefined)?.filter((event) => event.type === "message_submitted"),
         ).toHaveLength(1);
         session.abort();
+    });
+
+    it("persists direct shell results as pending model history without starting a run", async () => {
+        const session = new InMemorySessionStore().create({
+            cwd: "/tmp/rig-session-test",
+            permissionMode: "full_access",
+        });
+
+        const result = await session.runShellCommand({
+            command: "printf persisted-shell-output",
+            commandId: "shell-command-1",
+        });
+
+        expect(result).toMatchObject({
+            command: "printf persisted-shell-output",
+            commandId: "shell-command-1",
+        });
+        await vi.waitFor(() => {
+            expect(session.state().messages.at(-1)).toMatchObject({
+                isPartial: false,
+                message: {
+                    blocks: [
+                        {
+                            text: expect.stringContaining("<user_shell_command>"),
+                            type: "text",
+                        },
+                    ],
+                    role: "user",
+                },
+                runId: "shell:shell-command-1",
+            });
+        });
+        expect(session.snapshot().snapshot.queue.at(-1)?.message).toMatchObject({
+            blocks: [{ text: expect.stringContaining("persisted-shell-output"), type: "text" }],
+            role: "user",
+        });
+        expect(
+            session.events.since(undefined)?.filter((event) => event.type === "run_started"),
+        ).toHaveLength(0);
     });
 
     it("rejects steering when no run is active", () => {

@@ -76,11 +76,16 @@ function collectEntries(messages: readonly Message[]): TranscriptEntry[] {
             if (isGeneratedConversationSummary(message.blocks)) continue;
             const text = renderContent(message.blocks, "[Image shared by user]");
             if (text.length > 0) {
+                const isShellContext = isUserShellCommandContext(message.blocks);
                 entries.push({
-                    category: "message",
+                    category: isShellContext ? "tool" : "message",
                     ordinal: entries.length,
-                    text: truncateEntry(`User:\n${text}`),
-                    trustedUserEvidence: true,
+                    text: truncateEntry(
+                        isShellContext
+                            ? `Tool result (direct user shell command):\n${text}`
+                            : `User:\n${text}`,
+                    ),
+                    trustedUserEvidence: !isShellContext,
                 });
             }
             continue;
@@ -145,6 +150,15 @@ function isGeneratedConversationSummary(blocks: readonly ContentBlock[]): boolea
         .join("\n")
         .trimStart()
         .startsWith("<conversation_summary>");
+}
+
+function isUserShellCommandContext(blocks: readonly ContentBlock[]): boolean {
+    if (blocks.length === 0 || blocks.some((block) => block.type !== "text")) return false;
+    return blocks
+        .map((block) => (block.type === "text" ? block.text : ""))
+        .join("\n")
+        .trimStart()
+        .startsWith("<user_shell_command>");
 }
 
 function renderContent(blocks: readonly ContentBlock[], imagePlaceholder: string): string {
