@@ -243,6 +243,7 @@ export interface InMemorySessionOptions {
     emitCreatedEvent?: boolean;
     events?: readonly SessionEvent[];
     initialContextMessages?: readonly Message[];
+    id?: string;
     lastEventId?: EventId;
     now?: () => number;
     modelCatalog: ModelCatalog;
@@ -437,7 +438,7 @@ export class InMemorySession {
             secretIds,
             options.projectSecretIds,
         );
-        this.id = options.restore?.id ?? createId();
+        this.id = options.restore?.id ?? options.id ?? createId();
         this.#agentMetadata = options.restore?.agent ??
             options.metadata ?? {
                 depth: 0,

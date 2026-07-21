@@ -58,6 +58,7 @@ export class HappySessionClient {
     #metadataBase: Record<string, unknown> = {};
     #metadataVersion: number | undefined;
     readonly #pendingAttachments = new Map<string, Promise<ImageBlock | undefined>>();
+    readonly #remoteSessionWaiters = new Set<(sessionId: string | undefined) => void>();
     #socket: HappySocket | undefined;
     #summaryTitle: string | undefined;
     #summaryUpdatedAt = Date.now();
@@ -86,6 +87,8 @@ export class HappySessionClient {
         }
         this.#socket?.disconnect();
         this.#socket = undefined;
+        for (const resolve of this.#remoteSessionWaiters) resolve(undefined);
+        this.#remoteSessionWaiters.clear();
         await this.#syncPromise?.catch(() => undefined);
     }
 
@@ -110,6 +113,23 @@ export class HappySessionClient {
         this.#timer = setInterval(() => this.kick(), SYNC_INTERVAL_MS);
         this.#timer.unref();
         this.kick();
+    }
+
+    waitForRemoteSession(timeoutMs = HTTP_TIMEOUT_MS): Promise<string | undefined> {
+        const current = this.#repository.getSession(this.#session.id)?.remoteSessionId;
+        if (current !== undefined) return Promise.resolve(current);
+        if (this.#closed) return Promise.resolve(undefined);
+        this.kick();
+        return new Promise((resolve) => {
+            const finish = (sessionId: string | undefined) => {
+                clearTimeout(timer);
+                this.#remoteSessionWaiters.delete(finish);
+                resolve(sessionId);
+            };
+            const timer = setTimeout(() => finish(undefined), timeoutMs);
+            timer.unref();
+            this.#remoteSessionWaiters.add(finish);
+        });
     }
 
     async #runSyncLoop(): Promise<void> {
@@ -169,6 +189,8 @@ export class HappySessionClient {
             this.#metadataBase = { ...metadata };
         }
         this.#repository.setRemoteSession(this.#session.id, remoteSessionId);
+        for (const resolve of this.#remoteSessionWaiters) resolve(remoteSessionId);
+        this.#remoteSessionWaiters.clear();
         return this.#repository.getSession(this.#session.id);
     }
 

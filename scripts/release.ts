@@ -1,6 +1,7 @@
 import { fileURLToPath } from "node:url";
 
 import { readPackageManifest } from "./release/readPackageManifest.js";
+import { assertHappyRuntimeDependencies } from "./release/assertHappyRuntimeDependencies.js";
 import { runCommand } from "./release/runCommand.js";
 
 const PACKAGE_DIRECTORY = fileURLToPath(new URL("../packages/rig/", import.meta.url));
@@ -52,6 +53,7 @@ async function release(): Promise<void> {
     }
 
     const initialManifest = readPackageManifest();
+    assertHappyRuntimeDependencies(initialManifest);
     const tagsAtHead = runCommand("git", ["tag", "--points-at", "HEAD"], {
         captureOutput: true,
     }).stdout.split("\n");

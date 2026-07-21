@@ -4,6 +4,7 @@ import { join } from "node:path";
 
 import { getRigHome } from "../config/index.js";
 import { getHappyPaths } from "./getHappyPaths.js";
+import { loadOrCreateHappyMachineId } from "./loadOrCreateHappyMachineId.js";
 import { parseHappyCredentials } from "./parseHappyCredentials.js";
 import { resolveHappyHome } from "./resolveHappyHome.js";
 import { resolveHappyServerUrl } from "./resolveHappyServerUrl.js";
@@ -14,13 +15,14 @@ export async function importHappyCredentials(
     options: {
         environment?: NodeJS.ProcessEnv;
         homeDirectory?: string;
+        machineScope?: string;
         rigHome?: string;
     } = {},
 ): Promise<HappyConnectionConfiguration | undefined> {
     const environment = options.environment ?? process.env;
     const homeDirectory = options.homeDirectory ?? homedir();
     const rigHome = options.rigHome ?? getRigHome(environment, homeDirectory);
-    const targetPaths = getHappyPaths(rigHome);
+    const targetPaths = getHappyPaths(rigHome, options.machineScope);
     const sourceHome = resolveHappyHome(environment, homeDirectory);
     const sourceCredentials = await readJson(join(sourceHome, "access.key"));
     const sourceSettings = await readJson(join(sourceHome, "settings.json"));
@@ -60,7 +62,7 @@ export async function importHappyCredentials(
     const targetSettings = await readJson(targetPaths.settingsPath);
     const sourceServerUrl = readString(sourceSettings, "serverUrl");
     const settingsServerUrl = readString(targetSettings, "serverUrl");
-    const machineId = readString(targetSettings, "machineId");
+    const machineId = await loadOrCreateHappyMachineId(targetPaths.machinePath);
     return {
         credentials: parsed.credentials,
         credentialsPath: targetPaths.credentialsPath,

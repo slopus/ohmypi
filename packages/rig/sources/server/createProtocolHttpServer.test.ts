@@ -637,7 +637,7 @@ describe("createProtocolHttpServer", () => {
     });
 
     it("rejects malformed Docker session settings before creating a session", async () => {
-        const { client, close } = await startServer();
+        const { client, close, socketPath } = await startServer();
         try {
             await expect(
                 client.createSession({
@@ -648,6 +648,23 @@ describe("createProtocolHttpServer", () => {
                     },
                 }),
             ).rejects.toThrow("absolute container path");
+            const malformed = await requestRawJson(socketPath, "/sessions", {
+                body: JSON.stringify({
+                    cwd: "/tmp/invalid-docker-project",
+                    docker: { image: "project:local", workingDirectory: "relative/path" },
+                }),
+                method: "POST",
+            });
+            const conflicting = await requestRawJson(socketPath, "/sessions", {
+                body: JSON.stringify({
+                    cwd: "/tmp/invalid-docker-project",
+                    docker: { image: "project:local", workingDirectory: "/workspace" },
+                    local: true,
+                }),
+                method: "POST",
+            });
+            expect(malformed.statusCode).toBe(400);
+            expect(conflicting.statusCode).toBe(400);
         } finally {
             await close();
         }

@@ -18,6 +18,22 @@ import { PersistentSessionStore } from "./PersistentSessionStore.js";
 import { TrackedTaskDrain } from "./TrackedTaskDrain.js";
 
 describe("PersistentSessionStore", () => {
+    it("creates an idempotent persistent session with an integrating client ID", () => {
+        const store = new PersistentSessionStore({ databasePath: ":memory:" });
+        try {
+            const first = store.createWithId("happy-rig-request-1", { cwd: "/tmp/rig-happy" });
+            const second = store.createWithId("happy-rig-request-1", {
+                cwd: "/tmp/ignored-retry-directory",
+            });
+
+            expect(first.id).toBe("happy-rig-request-1");
+            expect(second).toBe(first);
+            expect(second.snapshot().cwd).toBe("/tmp/rig-happy");
+        } finally {
+            store.close();
+        }
+    });
+
     it("resumes a durable external function after daemon restart without replaying its call", async () => {
         const { cleanup, databasePath } = await createDatabasePath();
         const model = defineModel({

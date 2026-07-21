@@ -2,10 +2,7 @@ export { InMemorySession } from "./InMemorySession.js";
 export { InMemorySessionStore, type InMemorySessionStoreOptions } from "./InMemorySessionStore.js";
 export { getLocalServerPaths, type LocalServerPaths } from "./LocalServerPaths.js";
 export { getEnvironmentLocalServerPaths } from "./getEnvironmentLocalServerPaths.js";
-export {
-    loadHappyIntegration,
-    type HappyIntegrationMode,
-} from "./loadHappyIntegration.js";
+export { loadHappyIntegration, type HappyIntegrationMode } from "./loadHappyIntegration.js";
 export {
     PersistentSessionStore,
     type PersistentSessionStoreOptions,
@@ -37,6 +34,7 @@ export { readLocalServerToken } from "./readLocalServerToken.js";
 export { readLocalServerProcessId } from "./readLocalServerProcessId.js";
 export { removeStaleSocket } from "./removeStaleSocket.js";
 export { resolveHappyIntegrationMode } from "./resolveHappyIntegrationMode.js";
+export { isHappySyncDisabled } from "./isHappySyncDisabled.js";
 export {
     runLocalProtocolServer,
     type RunLocalProtocolServerOptions,

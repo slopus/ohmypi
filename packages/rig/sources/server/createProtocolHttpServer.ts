@@ -73,8 +73,9 @@ import { sendJson } from "./sendJson.js";
 import { streamGlobalEvents } from "./streamGlobalEvents.js";
 import { INVALID_PERMISSION_MODE_MESSAGE, isPermissionMode } from "../permissions/index.js";
 import { isGoalStatus } from "../goals/index.js";
-import { resolveDockerExecutionConfig, validateDockerExecutionConfig } from "../execution/index.js";
 import type { DockerExecutionConfig } from "../execution/index.js";
+import { configureSessionRequest } from "./configureSessionRequest.js";
+import { SessionConfigurationError } from "./SessionConfigurationError.js";
 import type { TaskDrain } from "./TrackedTaskDrain.js";
 import type { ProviderQuota } from "../providers/providerQuota.js";
 import type { SecretRegistration } from "../secrets/index.js";
@@ -484,32 +485,12 @@ async function handleRequest(
             });
             return;
         }
-        const { local, ...sessionRequest } = body;
-        if (local === true && body.docker !== undefined) {
-            sendJson(response, 400, {
-                error: "Choose either local execution or a Docker environment, not both.",
-            });
-            return;
-        }
-        const configuredDocker =
-            local === true || body.docker !== undefined ? undefined : defaultDocker;
-        const docker = body.docker ?? configuredDocker;
-        if (docker !== undefined) {
-            try {
-                validateDockerExecutionConfig(docker);
-            } catch (error) {
-                sendJson(response, 400, {
-                    error: errorToMessage(error),
-                });
-                return;
-            }
-            sessionRequest.docker = resolveDockerExecutionConfig(docker, body.cwd);
-        }
         try {
+            const sessionRequest = configureSessionRequest(body, defaultDocker);
             const session = store.create(sessionRequest);
             sendJson<CreateSessionResponse>(response, 201, { session: session.snapshot() });
         } catch (error) {
-            sendJson(response, 409, {
+            sendJson(response, error instanceof SessionConfigurationError ? 400 : 409, {
                 error: error instanceof Error ? error.message : "The session could not be created.",
             });
         }

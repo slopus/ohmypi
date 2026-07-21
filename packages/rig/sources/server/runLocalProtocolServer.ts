@@ -2,16 +2,14 @@ import { chmod, open } from "node:fs/promises";
 import { createServer } from "node:http";
 
 import { createProtocolHttpServer } from "./createProtocolHttpServer.js";
+import { configureSessionRequest } from "./configureSessionRequest.js";
 import {
     createDaemonStartupRequestListener,
     type DaemonStartupState,
 } from "./createDaemonStartupRequestListener.js";
 import { createModelCatalog } from "./createModelCatalog.js";
 import { getEnvironmentLocalServerPaths } from "./getEnvironmentLocalServerPaths.js";
-import {
-    loadHappyIntegration,
-    type HappyIntegrationMode,
-} from "./loadHappyIntegration.js";
+import { loadHappyIntegration, type HappyIntegrationMode } from "./loadHappyIntegration.js";
 import { prepareLocalServerDirectory } from "./prepareLocalServerDirectory.js";
 import { PersistentSessionStore } from "./PersistentSessionStore.js";
 import { TrackedTaskDrain } from "./TrackedTaskDrain.js";
@@ -202,7 +200,9 @@ export async function runLocalProtocolServer(
                 loadedConfig.config.settings.happyIntegration,
             ),
         );
-        const happyConfiguration = await happyModule?.importHappyCredentials();
+        const happyConfiguration = await happyModule?.importHappyCredentials({
+            machineScope: socketPath,
+        });
         store = new PersistentSessionStore({
             createRuntime: (options) =>
                 createCodingAssistantAgent({
@@ -217,19 +217,25 @@ export async function runLocalProtocolServer(
                 ? {}
                 : {
                       onSessionAccess: (session) => happySyncService?.attach(session),
-                      onSessionEvent: (event, session) =>
-                          happySyncService?.observe(event, session),
+                      onSessionEvent: (event, session) => happySyncService?.observe(event, session),
                   }),
             taskDrain,
         });
         if (happyModule !== undefined && happyConfiguration !== undefined) {
             try {
-                happySyncService = new happyModule.HappySyncService({
+                const service = new happyModule.HappySyncService({
                     configuration: happyConfiguration,
+                    createSession: (id, request) =>
+                        store!.createWithId(
+                            id,
+                            configureSessionRequest(request, loadedConfig.config.docker),
+                        ),
                     databasePath: paths.databasePath,
                     getSubagents: (sessionId) => store?.listSubagents(sessionId) ?? [],
                     modelCatalog,
                 });
+                service.start();
+                happySyncService = service;
             } catch (error) {
                 console.error(`Happy sync is unavailable: ${errorToMessage(error)}`);
             }
@@ -267,12 +273,22 @@ export async function runLocalProtocolServer(
                               return runHappyLifecycle(async () => {
                                   if (stopping) return false;
                                   const nextConfiguration =
-                                      await happyModule.importHappyCredentials();
+                                      await happyModule.importHappyCredentials({
+                                          machineScope: socketPath,
+                                      });
                                   if (stopping || nextConfiguration === undefined) return false;
                                   let next: HappySyncService;
                                   try {
                                       next = new happyModule.HappySyncService({
                                           configuration: nextConfiguration,
+                                          createSession: (id, request) =>
+                                              store!.createWithId(
+                                                  id,
+                                                  configureSessionRequest(
+                                                      request,
+                                                      loadedConfig.config.docker,
+                                                  ),
+                                              ),
                                           databasePath: paths.databasePath,
                                           getSubagents: (sessionId) =>
                                               store?.listSubagents(sessionId) ?? [],
@@ -284,9 +300,8 @@ export async function runLocalProtocolServer(
                                       );
                                       return false;
                                   }
-                                  const loadedSessions = store!.loadedSessions();
                                   const previous = happySyncService;
-                                  happySyncService = next;
+                                  happySyncService = undefined;
                                   try {
                                       await previous?.close();
                                   } catch (error) {
@@ -294,7 +309,11 @@ export async function runLocalProtocolServer(
                                           `The previous Happy sync connection could not close cleanly: ${errorToMessage(error)}`,
                                       );
                                   }
-                                  for (const session of loadedSessions) next.attach(session);
+                                  next.start();
+                                  happySyncService = next;
+                                  for (const session of store!.loadedSessions()) {
+                                      next.attach(session);
+                                  }
                                   return true;
                               });
                           },

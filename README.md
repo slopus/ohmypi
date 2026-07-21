@@ -86,6 +86,12 @@ Happy is enabled for the normal Rig CLI by default. Disable it machine-wide in
 happy_integration = false
 ```
 
+Development runs disable Happy synchronization by default so local builds do
+not appear as mobile machines or mirror test sessions. Set
+`RIG_DISABLE_HAPPY_SYNC=0` to opt a development run back in. Any Rig host can
+force the integration off with `RIG_DISABLE_HAPPY_SYNC=1`; this overrides the
+configuration file.
+
 Repository `rig.toml` files cannot enable or disable this machine-level
 integration. When enabled, Rig automatically imports newer credentials from
 `~/.happy` when its daemon starts. To authenticate directly from Rig instead,

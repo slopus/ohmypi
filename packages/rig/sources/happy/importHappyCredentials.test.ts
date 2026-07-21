@@ -7,6 +7,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import { importHappyCredentials } from "./importHappyCredentials.js";
 
 const temporaryDirectories: string[] = [];
+const uuidPattern =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 
 afterEach(async () => {
     const { rm } = await import("node:fs/promises");
@@ -46,14 +48,20 @@ describe("importHappyCredentials", () => {
 
         expect(imported).toMatchObject({
             imported: true,
-            machineId: "machine-1",
             serverUrl: "https://happy.example",
+        });
+        expect(imported?.machineId).toBeDefined();
+        expect(imported?.machineId).toMatch(uuidPattern);
+        expect(imported?.machineId).not.toBe("machine-1");
+        expect(JSON.parse(await readFile(join(rigHome, "happy", "machine.json"), "utf8"))).toEqual({
+            id: imported?.machineId,
         });
         expect(await readFile(join(rigHome, "happy", "access.key"), "utf8")).toBe(
             `${JSON.stringify(source, null, 2)}\n`,
         );
         expect((await stat(join(rigHome, "happy"))).mode & 0o777).toBe(0o700);
         expect((await stat(join(rigHome, "happy", "access.key"))).mode & 0o777).toBe(0o600);
+        expect((await stat(join(rigHome, "happy", "machine.json"))).mode & 0o777).toBe(0o600);
     });
 
     it("keeps a valid Rig copy when the Happy source is malformed", async () => {
@@ -159,5 +167,48 @@ describe("importHappyCredentials", () => {
             serverUrl: "https://unwritable-settings.example",
         });
         expect(imported?.credentials).toMatchObject({ token: "working-token" });
+    });
+
+    it("uses distinct persistent machine identities for separate daemon sockets", async () => {
+        const root = await mkdtemp(join(tmpdir(), "rig-happy-daemon-scopes-"));
+        temporaryDirectories.push(root);
+        const home = join(root, "home");
+        const rigHome = join(home, ".rig");
+        await mkdir(join(home, ".happy"), { recursive: true });
+        await writeFile(
+            join(home, ".happy", "access.key"),
+            JSON.stringify({
+                secret: Buffer.alloc(32, 6).toString("base64"),
+                token: "shared-token",
+            }),
+        );
+
+        const first = await importHappyCredentials({
+            environment: {},
+            homeDirectory: home,
+            machineScope: "/tmp/rig-first.sock",
+            rigHome,
+        });
+        const second = await importHappyCredentials({
+            environment: {},
+            homeDirectory: home,
+            machineScope: "/tmp/rig-second.sock",
+            rigHome,
+        });
+        const restored = await importHappyCredentials({
+            environment: {},
+            homeDirectory: home,
+            machineScope: "/tmp/rig-first.sock",
+            rigHome,
+        });
+
+        expect(first?.machineId).toBeDefined();
+        expect(second?.machineId).toBeDefined();
+        expect(restored?.machineId).toBeDefined();
+        expect(first?.machineId).toMatch(uuidPattern);
+        expect(second?.machineId).toMatch(uuidPattern);
+        expect(restored?.machineId).toMatch(uuidPattern);
+        expect(first?.machineId).toBe(restored?.machineId);
+        expect(first?.machineId).not.toBe(second?.machineId);
     });
 });

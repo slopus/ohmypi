@@ -195,6 +195,12 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
         return this.#createSession(request);
     }
 
+    createWithId(id: string, request: CreateSessionRequest): InMemorySession {
+        this.#assertAcceptingMutations();
+        const existing = this.get(id);
+        return existing ?? this.#createSession(request, undefined, undefined, id);
+    }
+
     detachSecret(
         sessionId: string,
         secretId: string,
@@ -254,6 +260,7 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
         request: CreateSessionRequest,
         metadata?: SessionAgentMetadata,
         contextMessages?: readonly Message[],
+        id?: string,
     ): InMemorySession {
         this.#assertAcceptingMutations();
         const session = new InMemorySession({
@@ -267,6 +274,7 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
                 : {}),
             ...(metadata !== undefined ? { metadata } : {}),
             ...(contextMessages !== undefined ? { initialContextMessages: contextMessages } : {}),
+            ...(id === undefined ? {} : { id }),
             onAppendEvent: (event) => this.#appendEvent(event),
             persistence: this,
             projectSecretIds: this.#projectSecrets(request.cwd),

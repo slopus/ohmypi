@@ -19,6 +19,93 @@ export interface HappyConnectionConfiguration {
     serverUrl: string;
 }
 
+export interface HappyMachineMetadata {
+    capabilities: {
+        newSession: boolean;
+        resume: false;
+        worktrees: false;
+    };
+    cliAvailability: {
+        agy: false;
+        claude: false;
+        codex: false;
+        detectedAt: number;
+        gemini: false;
+        openclaw: false;
+        rig: true;
+    };
+    client: { id: "rig"; name: "Rig"; version: string };
+    defaults: {
+        effort: string;
+        modelId: string;
+        permissionMode: "auto";
+        providerId: string;
+    };
+    displayName: string;
+    happyCliVersion: string;
+    happyHomeDir: string;
+    happyLibDir: string;
+    homeDir: string;
+    host: string;
+    machineKind: "rig";
+    models: HappyPublishedModel[];
+    operatingModes: readonly {
+        code: string;
+        description: string;
+        kind: HappyPermissionModeKind;
+        value: string;
+    }[];
+    platform: string;
+    providers: HappyProviderDescriptor[];
+    resumeSupport: {
+        detectedAt: number;
+        happyAgentAuthenticated: false;
+        requiresHappyAgentAuth: false;
+        requiresSameMachine: true;
+        rpcAvailable: false;
+    };
+    sessionCreation: {
+        idempotencyKey: "clientRequestId";
+        pendingRetryAfterMs: number;
+        resultKinds: readonly ["success", "pending", "requestToApproveDirectoryCreation", "error"];
+    };
+    rigMetadataVersion: 1;
+    rigOnly: true;
+}
+
+export interface HappyPublishedModel {
+    code: string;
+    contextWindow?: number;
+    defaultThinkingLevel: string;
+    id: string;
+    name: string;
+    provider: HappyProviderDescriptor;
+    providerId: string;
+    providerKind: string;
+    providerName: string;
+    serviceTiers: readonly string[];
+    thinkingLevels: readonly string[];
+    value: string;
+}
+
+export interface HappySpawnSessionRequest {
+    agent: "rig";
+    approvedNewDirectoryCreation?: boolean;
+    clientRequestId: string;
+    directory: string;
+    effort?: string;
+    modelId?: string;
+    permissionMode?: string;
+    providerId?: string;
+    type: "spawn-in-directory";
+}
+
+export type HappySpawnSessionResult =
+    | { sessionId: string; type: "success" }
+    | { clientRequestId: string; retryAfterMs: number; type: "pending" }
+    | { directory: string; type: "requestToApproveDirectoryCreation" }
+    | { errorMessage: string; type: "error" };
+
 export interface HappySessionMetadata {
     activity: {
         processes: { running: number };
@@ -57,20 +144,7 @@ export interface HappySessionMetadata {
     hostPid: number;
     machineId?: string;
     mcpServers: readonly { name: string; status: string }[];
-    models: readonly {
-        code: string;
-        contextWindow?: number;
-        defaultThinkingLevel: string;
-        id: string;
-        name: string;
-        provider: HappyProviderDescriptor;
-        providerId: string;
-        providerKind: string;
-        providerName: string;
-        serviceTiers: readonly string[];
-        thinkingLevels: readonly string[];
-        value: string;
-    }[];
+    models: readonly HappyPublishedModel[];
     operatingModes: readonly {
         code: string;
         description: string;

@@ -2,11 +2,9 @@ import { hostname, homedir, platform, release } from "node:os";
 
 import type { ModelCatalog, ProtocolSession, SubagentSummary } from "../protocol/index.js";
 import { readPackageVersion } from "../readPackageVersion.js";
-import type {
-    HappyConnectionConfiguration,
-    HappyProviderDescriptor,
-    HappySessionMetadata,
-} from "./types.js";
+import type { HappyConnectionConfiguration, HappySessionMetadata } from "./types.js";
+import { createHappyCatalogMetadata } from "./createHappyCatalogMetadata.js";
+import { describeHappyProvider } from "./describeHappyProvider.js";
 import { HAPPY_PERMISSION_MODES } from "./happyPermissionModes.js";
 import { HAPPY_SESSION_RPC_METHODS } from "./handleHappySessionRpc.js";
 
@@ -36,12 +34,12 @@ export function createHappySessionMetadata(options: {
         ({ model, providerId }) =>
             model.id === session.modelId && providerId === session.providerId,
     )?.model;
-    const providers = uniqueProviderIds(
+    const publishedCatalog =
         modelCatalog !== undefined && modelCatalog.providers.length > 0
-            ? modelCatalog.providers.map((provider) => provider.providerId)
-            : [session.providerId],
-    ).map(describeProvider);
-    const currentProvider = describeProvider(session.providerId);
+            ? createHappyCatalogMetadata(modelCatalog)
+            : undefined;
+    const providers = publishedCatalog?.providers ?? [describeHappyProvider(session.providerId)];
+    const currentProvider = describeHappyProvider(session.providerId);
     const title = session.title ?? "Rig session";
     const runningSubagents = subagents.filter((subagent) => subagent.status === "running").length;
     const queuedSubagents = subagents.filter((subagent) => subagent.status === "queued").length;
@@ -108,25 +106,27 @@ export function createHappySessionMetadata(options: {
             name: server.name,
             status: server.status,
         })),
-        models: providerModels.map(({ model, providerId, serviceTiers }) => {
-            const provider = describeProvider(providerId);
-            return {
-                code: model.id,
-                ...(model.contextWindow === undefined
-                    ? {}
-                    : { contextWindow: model.contextWindow }),
-                defaultThinkingLevel: model.defaultThinkingLevel,
-                id: model.id,
-                name: model.name,
-                provider,
-                providerId,
-                providerKind: provider.kind,
-                providerName: provider.name,
-                serviceTiers: [...(serviceTiers ?? [])],
-                thinkingLevels: [...model.thinkingLevels],
-                value: model.name,
-            };
-        }),
+        models:
+            publishedCatalog?.models ??
+            providerModels.map(({ model, providerId, serviceTiers }) => {
+                const provider = describeHappyProvider(providerId);
+                return {
+                    code: model.id,
+                    ...(model.contextWindow === undefined
+                        ? {}
+                        : { contextWindow: model.contextWindow }),
+                    defaultThinkingLevel: model.defaultThinkingLevel,
+                    id: model.id,
+                    name: model.name,
+                    provider,
+                    providerId,
+                    providerKind: provider.kind,
+                    providerName: provider.name,
+                    serviceTiers: [...(serviceTiers ?? [])],
+                    thinkingLevels: [...model.thinkingLevels],
+                    value: model.name,
+                };
+            }),
         model: { id: session.modelId, providerId: session.providerId },
         name: title,
         operatingModes: HAPPY_PERMISSION_MODES.map((mode) => ({ ...mode })),
@@ -154,26 +154,4 @@ export function createHappySessionMetadata(options: {
             selectedModel?.thinkingLevels.map((level) => ({ code: level, value: level })) ?? [],
         tools: [...session.snapshot.tools],
     };
-}
-
-function describeProvider(providerId: string): HappyProviderDescriptor {
-    const known: Readonly<Record<string, Omit<HappyProviderDescriptor, "id">>> = {
-        claude: { kind: "claude", name: "Anthropic Claude" },
-        codex: { kind: "codex", name: "OpenAI Codex" },
-        grok: { kind: "grok", name: "xAI Grok" },
-        kimi: { kind: "kimi", name: "Moonshot Kimi" },
-    };
-    return {
-        id: providerId,
-        ...(known[providerId] ?? {
-            kind: "custom",
-            name: providerId
-                .replaceAll(/[_-]+/gu, " ")
-                .replaceAll(/\b\w/gu, (character) => character.toUpperCase()),
-        }),
-    };
-}
-
-function uniqueProviderIds(providerIds: readonly string[]): readonly string[] {
-    return [...new Set(providerIds)];
 }

@@ -1,10 +1,17 @@
 import { createHash } from "node:crypto";
 
-import type { ModelCatalog, SessionEvent, SubagentSummary } from "../protocol/index.js";
+import type {
+    CreateSessionRequest,
+    ModelCatalog,
+    SessionEvent,
+    SubagentSummary,
+} from "../protocol/index.js";
 import type { InMemorySession } from "../server/InMemorySession.js";
+import { HappyMachineClient } from "./HappyMachineClient.js";
 import { HappySessionClient, type HappySessionClientOptions } from "./HappySessionClient.js";
 import { HappySyncOutboxFullError, HappySyncRepository } from "./HappySyncRepository.js";
 import { mapSessionEventToHappyMessages } from "./mapSessionEventToHappyMessages.js";
+import { handleHappySpawnSession } from "./handleHappySpawnSession.js";
 import type { HappyConnectionConfiguration } from "./types.js";
 
 const MAX_BACKFILLED_MESSAGES = 10_000;
@@ -12,6 +19,7 @@ const ATTACH_RETRY_DELAY_MS = 5_000;
 
 export interface HappySyncServiceOptions {
     configuration: HappyConnectionConfiguration;
+    createSession?: (id: string, request: CreateSessionRequest) => InMemorySession;
     databasePath: string;
     fetch?: typeof fetch;
     getSubagents?: (sessionId: string) => readonly SubagentSummary[];
@@ -23,25 +31,65 @@ export class HappySyncService {
     readonly #attachRetryAfter = new Map<string, number>();
     readonly #backfillTimers = new Map<string, NodeJS.Timeout>();
     readonly #clients = new Map<string, HappySessionClient>();
+    #closed = false;
     readonly #configuration: HappyConnectionConfiguration;
     readonly #credentialFingerprint: string;
+    readonly #createSession: HappySyncServiceOptions["createSession"];
     readonly #fetch: typeof fetch | undefined;
     readonly #getSubagents: NonNullable<HappySyncServiceOptions["getSubagents"]>;
     readonly #modelCatalog: ModelCatalog | undefined;
+    readonly #machineClient: HappyMachineClient | undefined;
     readonly #repository: HappySyncRepository;
     readonly #socketFactory: HappySessionClientOptions["socketFactory"];
 
     constructor(options: HappySyncServiceOptions) {
         this.#configuration = options.configuration;
         this.#credentialFingerprint = fingerprint(options.configuration);
+        this.#createSession = options.createSession;
         this.#fetch = options.fetch;
         this.#getSubagents = options.getSubagents ?? (() => []);
         this.#modelCatalog = options.modelCatalog;
         this.#repository = new HappySyncRepository(options.databasePath);
         this.#socketFactory = options.socketFactory;
+        if (
+            options.configuration.machineId !== undefined &&
+            options.createSession !== undefined &&
+            options.modelCatalog !== undefined
+        ) {
+            try {
+                this.#machineClient = new HappyMachineClient({
+                    configuration: options.configuration,
+                    ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
+                    modelCatalog: options.modelCatalog,
+                    ...(options.socketFactory === undefined
+                        ? {}
+                        : { socketFactory: options.socketFactory }),
+                    spawnSession: (params, signal) =>
+                        handleHappySpawnSession({
+                            createSession: (id, request) => {
+                                const session = this.#createSession!(id, request);
+                                this.attach(session);
+                            },
+                            machineId: options.configuration.machineId!,
+                            modelCatalog: options.modelCatalog!,
+                            params,
+                            signal,
+                            waitForRemoteSession: (sessionId) =>
+                                this.#clients.get(sessionId)?.waitForRemoteSession() ??
+                                Promise.resolve(undefined),
+                        }),
+                });
+            } catch (error) {
+                this.#machineClient = undefined;
+                console.error(`Happy machine sync is unavailable: ${String(error)}`);
+            }
+        } else {
+            this.#machineClient = undefined;
+        }
     }
 
     attach(session: InMemorySession): void {
+        if (this.#closed) return;
         if (session.snapshot().agent.type !== "primary") return;
         let client = this.#clients.get(session.id);
         if (client === undefined) {
@@ -83,6 +131,9 @@ export class HappySyncService {
     }
 
     async close(): Promise<void> {
+        if (this.#closed) return;
+        this.#closed = true;
+        this.#machineClient?.close();
         for (const timer of this.#backfillTimers.values()) clearTimeout(timer);
         this.#backfillTimers.clear();
         this.#attachRetryAfter.clear();
@@ -98,6 +149,7 @@ export class HappySyncService {
     }
 
     observe(event: SessionEvent, session: InMemorySession | undefined): void {
+        if (this.#closed) return;
         if (session === undefined || session.snapshot().agent.type !== "primary") return;
         try {
             this.attach(session);
@@ -113,6 +165,11 @@ export class HappySyncService {
             }
             console.error(`Happy sync could not observe session '${session.id}': ${String(error)}`);
         }
+    }
+
+    start(): void {
+        if (this.#closed) return;
+        this.#machineClient?.start();
     }
 
     #scheduleBackfill(session: InMemorySession): void {
