@@ -2,8 +2,8 @@
 .env
 .env.*
 !.env.example
-# Local notes and debugging artifacts kept with this checkout but never pushed,
-# such as bug screenshots, investigation files, and draft notes.
+# Local artifacts kept with this checkout but never pushed, such as reference
+# repositories, bug screenshots, investigation files, and draft notes.
 /.local/
 .context/
 .rig-dev/
