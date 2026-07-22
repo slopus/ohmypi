@@ -4,12 +4,12 @@ import { modelAnthropicFable5, modelOpenaiGpt56Sol } from "../../providers/model
 import { modelProfileSupportsEncryptedAgentMessages } from "./modelProfileSupportsEncryptedAgentMessages.js";
 
 describe("modelProfileSupportsEncryptedAgentMessages", () => {
-    it("recognizes Codex v2 profiles through OpenAI and Amazon Bedrock Mantle", () => {
+    it("recognizes Codex v2 profiles only on the native Codex provider", () => {
         expect(modelProfileSupportsEncryptedAgentMessages("codex", modelOpenaiGpt56Sol.id)).toBe(
             true,
         );
         expect(modelProfileSupportsEncryptedAgentMessages("bedrock", modelOpenaiGpt56Sol.id)).toBe(
-            true,
+            false,
         );
     });
 

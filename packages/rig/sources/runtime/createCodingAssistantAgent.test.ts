@@ -627,7 +627,7 @@ describe("createCodingAssistantAgent", () => {
         expect(runtime.agent.tools.map((tool) => tool.name)).toContain("Bash");
     });
 
-    it("uses Codex-style tools for Bedrock OpenAI models", () => {
+    it("uses standard function tools without Code Mode for Bedrock OpenAI models", () => {
         const managed = {
             description: "Test",
             path: "/root/test",
@@ -658,37 +658,19 @@ describe("createCodingAssistantAgent", () => {
 
         expect(runtime.provider.id).toBe("bedrock");
         expect(runtime.agent.model.id).toBe(modelOpenaiGpt56Sol.id);
-        expect(
-            runtime.agent.tools
-                .filter((tool) => tool.codeMode?.namespace === undefined)
-                .map((tool) => tool.name),
-        ).toEqual([
+        expect(runtime.agent.tools.every((tool) => tool.codeMode?.namespace === undefined)).toBe(
+            true,
+        );
+        expect(runtime.agent.tools.map((tool) => tool.name)).toEqual([
             "exec_command",
             "write_stdin",
             "apply_patch",
             "view_image",
             "update_plan",
             "request_user_input",
-        ]);
-        expect(
-            runtime.agent.tools
-                .filter((tool) => tool.codeMode?.namespace === "collaboration")
-                .map((tool) => tool.name),
-        ).toEqual([
+            "spawn_agent",
             "followup_task",
-            "interrupt_agent",
-            "list_agents",
             "send_message",
-            "spawn_agent",
-            "wait_agent",
-        ]);
-        expect(
-            runtime.agent.tools
-                .filter((tool) => tool.codeMode?.namespace === "rig")
-                .map((tool) => tool.name),
-        ).toEqual([
-            "spawn_agent",
-            "followup_task",
             "wait_agent",
             "list_agents",
             "interrupt_agent",

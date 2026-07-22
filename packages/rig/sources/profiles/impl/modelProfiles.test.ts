@@ -81,6 +81,18 @@ describe("modelProfiles", () => {
         }
     });
 
+    it("does not inherit Codex Code Mode metadata for Bedrock OpenAI models", () => {
+        const bedrockOpenai = modelProfiles.filter(
+            (profile) => profile.providerType === "bedrock" && profile.vendor === "openai",
+        );
+
+        expect(bedrockOpenai).toHaveLength(3);
+        for (const profile of bedrockOpenai) {
+            expect(profile.parameters.referenceClient).toBeUndefined();
+            expect(profile.prompt.original).toBeUndefined();
+        }
+    });
+
     it("records the exact Codex main source request matrix used for comparison", () => {
         const expected = {
             "openai/gpt-5.6-luna": [

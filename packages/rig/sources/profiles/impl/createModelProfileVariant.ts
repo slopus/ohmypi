@@ -8,12 +8,21 @@ export function createModelProfileVariant(
         model?: Model;
         profileType: ProfileProviderType;
         prompt?: ProfilePrompt;
+        referenceClient?: ModelProfile["parameters"]["referenceClient"] | null;
         serviceTiers?: readonly ServiceTier[];
         wireMode: ProfileWireMode;
     },
 ): ModelProfile {
     const model = options.model ?? base.model;
-    const { wireModelId: _wireModelId, ...baseParameters } = base.parameters;
+    const {
+        referenceClient: baseReferenceClient,
+        wireModelId: _wireModelId,
+        ...baseParameters
+    } = base.parameters;
+    const referenceClient =
+        options.referenceClient === null
+            ? undefined
+            : (options.referenceClient ?? baseReferenceClient);
     return defineModelProfile({
         ...base,
         id: `${options.profileType}:${model.id}`,
@@ -24,6 +33,7 @@ export function createModelProfileVariant(
             ...baseParameters,
             wireMode: options.wireMode,
             serviceTiers: options.serviceTiers ?? [],
+            ...(referenceClient === undefined ? {} : { referenceClient }),
             ...(model.contextWindow === undefined ? {} : { contextWindow: model.contextWindow }),
             ...(model.autoCompactWindow === undefined
                 ? {}

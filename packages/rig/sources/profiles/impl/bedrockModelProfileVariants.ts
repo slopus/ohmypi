@@ -6,11 +6,11 @@ import { codexOpenaiGpt56SolProfile } from "../codex-gpt-5-6-sol.js";
 import { codexOpenaiGpt56TerraProfile } from "../codex-gpt-5-6-terra.js";
 import type { Model } from "../../providers/types.js";
 import { createModelProfileVariant } from "./createModelProfileVariant.js";
-import { withoutProfilePromptAppend } from "./withoutProfilePromptAppend.js";
+import { noCapturedPrompt } from "./noCapturedPrompt.js";
 
-// Bedrock transport variants intentionally reuse the vendor/model profiles instead of
-// introducing duplicate top-level profiles. Unlike the official Claude Code and Codex
-// clients, they use AWS credentials, endpoints, regions, and Bedrock request formats.
+// Bedrock transport variants reuse vendor model limits and ordinary tool shapes without
+// inheriting transport-specific client behavior. In particular, Bedrock OpenAI models use
+// HTTP Responses function tools, not Codex WebSockets, Responses Lite, or Code Mode prompts.
 
 export const bedrockAnthropicFable5Profile = createModelProfileVariant(
     claudeAnthropicFable5Profile,
@@ -62,16 +62,16 @@ export const bedrockOpenaiGpt56LunaProfile = createModelProfileVariant(
         profileType: "bedrock",
         wireMode: "bedrock-mantle-or-runtime",
         model: modelBedrockOpenaiGpt56Luna,
+        prompt: noCapturedPrompt,
+        referenceClient: null,
     },
 );
 export const bedrockOpenaiGpt56SolProfile = createModelProfileVariant(codexOpenaiGpt56SolProfile, {
     profileType: "bedrock",
     wireMode: "bedrock-mantle-or-runtime",
     model: modelBedrockOpenaiGpt56Sol,
-    prompt: withoutProfilePromptAppend(
-        codexOpenaiGpt56SolProfile.prompt,
-        "codex-ultra-multi-agent",
-    ),
+    prompt: noCapturedPrompt,
+    referenceClient: null,
 });
 export const bedrockOpenaiGpt56TerraProfile = createModelProfileVariant(
     codexOpenaiGpt56TerraProfile,
@@ -79,9 +79,7 @@ export const bedrockOpenaiGpt56TerraProfile = createModelProfileVariant(
         profileType: "bedrock",
         wireMode: "bedrock-mantle-or-runtime",
         model: modelBedrockOpenaiGpt56Terra,
-        prompt: withoutProfilePromptAppend(
-            codexOpenaiGpt56TerraProfile.prompt,
-            "codex-ultra-multi-agent",
-        ),
+        prompt: noCapturedPrompt,
+        referenceClient: null,
     },
 );
