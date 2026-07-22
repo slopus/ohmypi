@@ -3965,9 +3965,10 @@ export class CodingAssistantApp implements Component, Focusable {
                     0,
                     ...activeSubagents.map((subagent) => subagentElapsedMs(subagent, this.#now())),
                 ),
-                totalTokens: this.#subagents
-                    .filter((subagent) => !subagent.taskName?.startsWith("workflow_"))
-                    .reduce((total, subagent) => total + (subagent.totalTokens ?? 0), 0),
+                totalTokens: activeSubagents.reduce(
+                    (total, subagent) => total + (subagent.totalTokens ?? 0),
+                    0,
+                ),
                 width,
             }),
             renderWorkflowSummary(this.#activeWorkflowCount(), width),

@@ -3381,9 +3381,14 @@ export class InMemorySession {
         const responseText = findLastAgentResponseText(
             this.#messages.filter((entry) => entry.runId === runId).map((entry) => entry.message),
         );
+        const providerFailed = this.isSubagent() && stopReason === "error";
         const tokenExhausted =
-            this.isSubagent() && stopReason !== "aborted" && responseText === undefined;
-        this.#status = tokenExhausted
+            this.isSubagent() &&
+            stopReason !== "aborted" &&
+            stopReason !== "error" &&
+            responseText === undefined;
+        const subagentFailed = providerFailed || tokenExhausted;
+        this.#status = subagentFailed
             ? "error"
             : stopReason === "aborted"
               ? this.#suspendOnAbort
@@ -3397,10 +3402,12 @@ export class InMemorySession {
             this.#activeRun = undefined;
         }
         this.#discardPendingSteeringMessages(runId);
-        if (tokenExhausted) {
+        if (subagentFailed) {
             this.#pauseActiveGoal();
             this.#append("run_error", {
-                errorMessage: SUBAGENT_TOKEN_EXHAUSTED_ERROR,
+                errorMessage: providerFailed
+                    ? (result.errorMessage ?? "The model response failed.")
+                    : SUBAGENT_TOKEN_EXHAUSTED_ERROR,
                 modelLocked: this.#modelLocked(),
                 runId,
             });

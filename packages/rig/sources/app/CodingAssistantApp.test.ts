@@ -3199,6 +3199,70 @@ describe("CodingAssistantApp", () => {
         );
     });
 
+    it("shows context tokens from active subagents only in the live summary", () => {
+        const model = defineModel({
+            id: "openai/gpt-test",
+            name: "GPT Test",
+            thinkingLevels: ["off"],
+            defaultThinkingLevel: "off",
+        });
+        const provider = defineProvider({
+            id: "codex",
+            models: [model],
+            stream() {
+                return streamText("unused");
+            },
+        });
+        const harness = createJustBashToolHarness();
+        const app = new CodingAssistantApp({
+            agent: new Agent({
+                provider,
+                modelId: model.id,
+                context: harness.context,
+                printToConsole: false,
+            }),
+            cwd: harness.context.fs.cwd,
+            initialSubagents: [
+                {
+                    agentId: "agent-completed",
+                    createdAt: 1,
+                    depth: 1,
+                    description: "Historical task",
+                    elapsedMs: 60_000,
+                    id: "subagent-completed",
+                    modelId: model.id,
+                    parentSessionId: "session-1",
+                    status: "completed",
+                    taskName: "historical_task",
+                    totalTokens: 6_000_000,
+                    updatedAt: 2,
+                },
+                {
+                    activeSince: 2,
+                    agentId: "agent-running",
+                    createdAt: 2,
+                    depth: 1,
+                    description: "Current task",
+                    elapsedMs: 0,
+                    id: "subagent-running",
+                    modelId: model.id,
+                    parentSessionId: "session-1",
+                    status: "running",
+                    taskName: "current_task",
+                    totalTokens: 100_000,
+                    updatedAt: 2,
+                },
+            ],
+            now: () => 2,
+            processManager: new NativeProcessManager(),
+            tui: fakeTui(),
+        });
+
+        const rendered = stripAnsi(app.render(120).join("\n"));
+        expect(rendered).toContain("1 agent running · /agents to view · 0s · 100k context tokens");
+        expect(rendered).not.toContain("6.1m context tokens");
+    });
+
     it("starts and manages a persistent goal from slash commands", async () => {
         const model = defineModel({
             id: "openai/gpt-test",

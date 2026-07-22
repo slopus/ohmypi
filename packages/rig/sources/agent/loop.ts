@@ -191,6 +191,7 @@ type PreparedToolPermission =
       };
 
 export interface AgentLoopResult {
+    errorMessage?: string;
     messages: readonly Message[];
     contextMessages: readonly Message[];
     stopReason: StopReason;
@@ -535,6 +536,9 @@ export async function runAgentLoop(options: RunAgentLoopOptions): Promise<AgentL
         if (assistantMessage.stopReason === "error") {
             await appendSteering(options, transcript, contextTranscript, providerMessages, now);
             return {
+                ...(assistantMessage.errorMessage === undefined
+                    ? {}
+                    : { errorMessage: assistantMessage.errorMessage }),
                 messages: transcript,
                 contextMessages: contextTranscript,
                 stopReason: assistantMessage.stopReason,

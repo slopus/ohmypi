@@ -1944,7 +1944,10 @@ describe("Agent", () => {
         await agent.steer("pending error direction");
         release.resolve();
 
-        await expect(run).resolves.toMatchObject({ stopReason: "error" });
+        await expect(run).resolves.toMatchObject({
+            errorMessage: "Provider rejected the request.",
+            stopReason: "error",
+        });
         expect(agent.messages.at(-1)).toMatchObject({
             role: "user",
             blocks: [{ type: "text", text: "pending error direction" }],
