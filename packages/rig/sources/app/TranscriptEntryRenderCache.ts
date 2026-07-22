@@ -7,6 +7,7 @@ interface CachedEntryRender {
     readonly detail: string | undefined;
     readonly dynamicState: string;
     readonly execCommand: AppTranscriptEntry["execCommand"];
+    readonly exploration: AppTranscriptEntry["exploration"];
     readonly fileDiffs: AppTranscriptEntry["fileDiffs"];
     readonly lines: readonly string[];
     readonly mcpToolCall: AppTranscriptEntry["mcpToolCall"];
@@ -40,6 +41,7 @@ export class TranscriptEntryRenderCache {
             detail: entry.detail,
             dynamicState: options.dynamicState,
             execCommand: entry.execCommand,
+            exploration: entry.exploration,
             fileDiffs: entry.fileDiffs,
             lines,
             mcpToolCall: entry.mcpToolCall,
@@ -73,6 +75,7 @@ function matches(
         cached.detail === entry.detail &&
         cached.dynamicState === options.dynamicState &&
         cached.execCommand === entry.execCommand &&
+        cached.exploration === entry.exploration &&
         cached.fileDiffs === entry.fileDiffs &&
         cached.mcpToolCall === entry.mcpToolCall &&
         cached.noticeChildren === entry.noticeChildren &&

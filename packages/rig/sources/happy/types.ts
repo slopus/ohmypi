@@ -1,3 +1,5 @@
+import type { ToolCallPresentation } from "../agent/ToolCallPresentation.js";
+
 export type HappyEncryptionVariant = "dataKey" | "legacy";
 
 export type HappyCredentials =
@@ -224,6 +226,7 @@ export type HappySessionEvent =
           call: string;
           description: string;
           name: string;
+          presentation?: ToolCallPresentation;
           title: string;
       }
     | { t: "turn-end"; status: "cancelled" | "completed" | "failed" }

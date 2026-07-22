@@ -17,6 +17,42 @@ describe("assistantMessageToAgentMessage", () => {
             responseModel: "gpt-5.6-2026-07-01",
         });
     });
+
+    it("stores a model-invisible tool call presentation on the durable block", () => {
+        const source = providerMessage();
+        const message = assistantMessageToAgentMessage(
+            {
+                ...source,
+                content: [
+                    {
+                        type: "toolCall",
+                        id: "call-1",
+                        name: "read",
+                        arguments: { path: "src/index.ts" },
+                    },
+                ],
+            },
+            () => "fallback",
+            { providerId: "pi", requestedModelId: "openai/gpt-5.6" },
+            () => ({
+                type: "exploration",
+                operations: [{ kind: "read", name: "index.ts" }],
+            }),
+        );
+
+        expect(message.blocks).toEqual([
+            {
+                type: "tool_call",
+                id: "call-1",
+                name: "read",
+                arguments: { path: "src/index.ts" },
+                presentation: {
+                    type: "exploration",
+                    operations: [{ kind: "read", name: "index.ts" }],
+                },
+            },
+        ]);
+    });
 });
 
 function providerMessage(options: { responseModel?: string } = {}): AssistantMessage {

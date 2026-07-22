@@ -12,6 +12,7 @@ import {
     textOutputSchema,
     toTextBlocks,
 } from "../utils/index.js";
+import { parseShellExplorationPresentation } from "../utils/parseShellExplorationPresentation.js";
 
 export const piBashTool = defineTool({
     name: "bash",
@@ -66,6 +67,7 @@ export const piBashTool = defineTool({
         }
         return { text };
     },
+    toCallPresentation: ({ command }) => parseShellExplorationPresentation(command),
     toLLM: toTextBlocks,
     toUI: (result) => summarizeTextOutput(result.text),
     locks: [],

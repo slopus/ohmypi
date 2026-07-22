@@ -5,6 +5,7 @@ import { defineTool } from "../../agent/types.js";
 import { describeFileAutoPermissionAction } from "../../permissions/describeFileAutoPermissionAction.js";
 import { shouldReviewPathInAutoMode } from "../../permissions/shouldReviewPathInAutoMode.js";
 import { readFileReturnSchema, readTextFile } from "../utils/index.js";
+import { readToolCallPresentation } from "../utils/createExplorationToolCallPresentation.js";
 
 export const grokReadFileTool = defineTool({
     name: "read_file",
@@ -51,6 +52,8 @@ Usage:
             },
             context,
         ),
+    toCallPresentation: ({ target_file }, context) =>
+        readToolCallPresentation(target_file, context),
     toLLM: (result) => [
         {
             type: "text",

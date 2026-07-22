@@ -4,6 +4,7 @@ import { defineTool } from "../../agent/types.js";
 import { describeFileAutoPermissionAction } from "../../permissions/describeFileAutoPermissionAction.js";
 import { shouldReviewPathInAutoMode } from "../../permissions/shouldReviewPathInAutoMode.js";
 import { globFiles, toTextBlocks } from "../utils/index.js";
+import { listToolCallPresentation } from "../utils/createExplorationToolCallPresentation.js";
 
 const MAX_RESULTS = 100;
 const TRUNCATION_NOTICE =
@@ -60,6 +61,8 @@ export const claudeGlobTool = defineTool({
             truncated,
         };
     },
+    toCallPresentation: ({ path, pattern }, context) =>
+        listToolCallPresentation(path ?? ".", context, pattern),
     toLLM: toTextBlocks,
     toUI: (result, args) =>
         result.numFiles === 0

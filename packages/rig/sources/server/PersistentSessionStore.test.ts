@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 
 import { describe, expect, it } from "vitest";
 
-import type { UserMessage } from "../agent/types.js";
+import type { AgentMessage, UserMessage } from "../agent/types.js";
 import { createEventIdFactory, type ModelCatalog, type SessionEvent } from "../protocol/index.js";
 import type { GymInferenceRequest } from "../providers/gym-types.js";
 import { defineModel } from "../providers/types.js";
@@ -975,11 +975,33 @@ describe("PersistentSessionStore", () => {
                 status: "completed",
             });
             const userMessage = textUserMessage("message-1", "persist me");
+            const toolCallMessage: AgentMessage = {
+                role: "agent",
+                id: "message-2",
+                blocks: [
+                    {
+                        type: "tool_call",
+                        id: "call-1",
+                        name: "read",
+                        arguments: { path: "src/index.ts" },
+                        presentation: {
+                            type: "exploration",
+                            operations: [{ kind: "read", name: "index.ts" }],
+                        },
+                    },
+                ],
+            };
             store.saveSession(state);
             store.upsertMessage(state.id, {
                 isPartial: false,
                 message: userMessage,
                 position: 0,
+                runId: "run-1",
+            });
+            store.upsertMessage(state.id, {
+                isPartial: false,
+                message: toolCallMessage,
+                position: 1,
                 runId: "run-1",
             });
             store.close();
@@ -989,7 +1011,10 @@ describe("PersistentSessionStore", () => {
                 const restored = restoredStore.get(state.id);
 
                 expect(restored?.snapshot().status).toBe("completed");
-                expect(restored?.snapshot().snapshot.messages).toEqual([userMessage]);
+                expect(restored?.snapshot().snapshot.messages).toEqual([
+                    userMessage,
+                    toolCallMessage,
+                ]);
             } finally {
                 restoredStore.close();
             }

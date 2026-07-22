@@ -10,6 +10,7 @@ import {
     textOutputSchema,
     toTextBlocks,
 } from "../utils/index.js";
+import { searchToolCallPresentation } from "../utils/createExplorationToolCallPresentation.js";
 
 export const grokGrepTool = defineTool({
     name: "grep",
@@ -87,6 +88,8 @@ export const grokGrepTool = defineTool({
         );
         return { text: result.text.length === 0 ? "No matches found" : result.text };
     },
+    toCallPresentation: ({ path, pattern }, context) =>
+        searchToolCallPresentation(pattern, path, context),
     toLLM: toTextBlocks,
     toUI: (result, args) =>
         result.text === "No matches found"

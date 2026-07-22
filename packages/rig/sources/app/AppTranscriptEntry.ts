@@ -3,6 +3,7 @@ import type {
     ExecCommandPresentation,
     FileDiff,
 } from "../agent/ToolResultPresentation.js";
+import type { ExplorationToolCallPresentation } from "../agent/ToolCallPresentation.js";
 import type { CodexMcpToolCall } from "./CodexMcpToolCall.js";
 import type { CompletedTurn } from "./CompletedTurn.js";
 import type { NoticeChild } from "./NoticeChild.js";
@@ -22,6 +23,7 @@ export interface AppTranscriptEntry {
     childText?: boolean;
     completedTurn?: CompletedTurn;
     execCommand?: ExecCommandPresentation;
+    exploration?: ExplorationToolCallPresentation;
     fileDiffs?: readonly FileDiff[];
     omittedFileDiffs?: number;
     id: string;

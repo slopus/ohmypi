@@ -12,6 +12,7 @@ import {
     toTextBlocks,
     truncateTextHead,
 } from "../utils/index.js";
+import { listToolCallPresentation } from "../utils/createExplorationToolCallPresentation.js";
 
 const DEFAULT_LIMIT = 1000;
 const DEFAULT_MAX_BYTES = 50 * 1024;
@@ -67,6 +68,8 @@ export const piFindTool = defineTool({
                     : `${truncation.content}\n\n[${notices.join(". ")}]`,
         };
     },
+    toCallPresentation: ({ path, pattern }, context) =>
+        listToolCallPresentation(path ?? ".", context, pattern),
     toLLM: toTextBlocks,
     toUI: (result, args) =>
         result.text === "No files found matching pattern"

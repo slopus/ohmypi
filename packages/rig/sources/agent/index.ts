@@ -43,6 +43,11 @@ export type {
     UserMessage,
 } from "./types.js";
 export type {
+    ExplorationOperation,
+    ExplorationToolCallPresentation,
+    ToolCallPresentation,
+} from "./ToolCallPresentation.js";
+export type {
     BackgroundTerminalInteractionPresentation,
     ExecCommandPresentation,
     FileDiff,

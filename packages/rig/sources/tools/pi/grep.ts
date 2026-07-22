@@ -13,6 +13,7 @@ import {
     textOutputSchema,
     toTextBlocks,
 } from "../utils/index.js";
+import { searchToolCallPresentation } from "../utils/createExplorationToolCallPresentation.js";
 
 export const piGrepTool = defineTool({
     name: "grep",
@@ -71,6 +72,8 @@ export const piGrepTool = defineTool({
 
         return { text: boundGrepOutput(result.text) };
     },
+    toCallPresentation: ({ path, pattern }, context) =>
+        searchToolCallPresentation(pattern, path, context),
     toLLM: toTextBlocks,
     toUI: (result, args) =>
         result.text === "No matches found"

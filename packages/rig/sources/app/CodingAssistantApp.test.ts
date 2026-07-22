@@ -5321,6 +5321,64 @@ describe("CodingAssistantApp", () => {
         expect(modelContext).not.toContain("output truncated");
     });
 
+    it("renders a persisted tool-call presentation without a live execution event", () => {
+        const model = defineModel({
+            id: "openai/gpt-test",
+            name: "GPT Test",
+            thinkingLevels: ["off"],
+            defaultThinkingLevel: "off",
+        });
+        const provider = defineProvider({
+            id: "codex",
+            models: [model],
+            stream() {
+                return streamText("unused");
+            },
+        });
+        const harness = createJustBashToolHarness();
+        const app = new CodingAssistantApp({
+            agent: new Agent({
+                provider,
+                modelId: model.id,
+                context: harness.context,
+                printToConsole: false,
+            }),
+            cwd: harness.context.fs.cwd,
+            processManager: new NativeProcessManager(),
+            tui: fakeTui(),
+        });
+
+        app.applySessionEvent({
+            createdAt: 1,
+            data: {
+                message: {
+                    blocks: [
+                        {
+                            arguments: { file_path: "/workspace/src/example.ts" },
+                            id: "read-source",
+                            name: "Read",
+                            presentation: {
+                                type: "exploration",
+                                operations: [{ kind: "read", name: "example.ts" }],
+                            },
+                            type: "tool_call",
+                        },
+                    ],
+                    id: "agent-message",
+                    role: "agent",
+                },
+                runId: "run-1",
+            },
+            id: "agent-event",
+            sessionId: "session-1",
+            type: "agent_message",
+        });
+
+        const rendered = stripAnsi(app.render(80).join("\n"));
+        expect(rendered).toContain("• Explored");
+        expect(rendered).toContain("└ Read example.ts");
+    });
+
     it("renders structured MCP calls, replayed results, errors, and approval detail", () => {
         const model = defineModel({
             id: "openai/gpt-test",

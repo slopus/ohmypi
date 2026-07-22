@@ -10,6 +10,7 @@ import {
     readTextFile,
     textOutputSchema,
 } from "../utils/index.js";
+import { readToolCallPresentation } from "../utils/createExplorationToolCallPresentation.js";
 
 const MAX_LINES_TO_READ = 2000;
 
@@ -93,6 +94,7 @@ export const claudeReadTool = defineTool({
         if (offset !== undefined) options.offset = offset;
         return readTextFile(options, context);
     },
+    toCallPresentation: ({ file_path }, context) => readToolCallPresentation(file_path, context),
     toLLM: (result) => {
         if ("image_url" in result) {
             const match = /^data:([^;]+);base64,(.*)$/.exec(result.image_url);

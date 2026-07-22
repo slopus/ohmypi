@@ -1,3 +1,4 @@
+import type { ToolCallPresentation } from "./ToolCallPresentation.js";
 import type { AgentBlock, AgentMessage, ToolCallBlock } from "./types.js";
 import type {
     AssistantContent as ProviderAssistantContent,
@@ -9,11 +10,14 @@ export function assistantMessageToAgentMessage(
     message: ProviderAssistantMessage,
     fallbackId: () => string,
     attribution: { providerId: string; requestedModelId: string },
+    toToolCallPresentation?: (toolCall: ProviderToolCall) => ToolCallPresentation | undefined,
 ): AgentMessage {
     return {
         role: "agent",
         id: message.responseId ?? fallbackId(),
-        blocks: message.content.map(providerAssistantContentToAgentBlock),
+        blocks: message.content.map((content) =>
+            providerAssistantContentToAgentBlock(content, toToolCallPresentation),
+        ),
         usage: message.usage,
         providerId: attribution.providerId,
         requestedModelId: attribution.requestedModelId,
@@ -21,7 +25,10 @@ export function assistantMessageToAgentMessage(
     };
 }
 
-function providerAssistantContentToAgentBlock(content: ProviderAssistantContent): AgentBlock {
+function providerAssistantContentToAgentBlock(
+    content: ProviderAssistantContent,
+    toToolCallPresentation?: (toolCall: ProviderToolCall) => ToolCallPresentation | undefined,
+): AgentBlock {
     if (content.type === "text") {
         return {
             type: "text",
@@ -38,14 +45,18 @@ function providerAssistantContentToAgentBlock(content: ProviderAssistantContent)
         };
     }
 
-    return providerToolCallToAgentBlock(content);
+    return providerToolCallToAgentBlock(content, toToolCallPresentation?.(content));
 }
 
-function providerToolCallToAgentBlock(toolCall: ProviderToolCall): ToolCallBlock {
+function providerToolCallToAgentBlock(
+    toolCall: ProviderToolCall,
+    presentation: ToolCallPresentation | undefined,
+): ToolCallBlock {
     return {
         type: "tool_call",
         id: toolCall.id,
         name: toolCall.name,
         arguments: toolCall.arguments,
+        ...(presentation === undefined ? {} : { presentation }),
     };
 }

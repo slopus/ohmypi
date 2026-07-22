@@ -119,7 +119,7 @@ function mapAgentMessage(
 function toolCallStartMessage(
     event: SessionEvent,
     messageId: string,
-    toolCall: Pick<ToolCallBlock, "arguments" | "id" | "name">,
+    toolCall: Pick<ToolCallBlock, "arguments" | "id" | "name" | "presentation">,
     runId: string,
 ): HappySessionProtocolMessage {
     const title = humanizeToolName(toolCall.name);
@@ -128,6 +128,7 @@ function toolCallStartMessage(
         call: toolCall.id,
         description: `Running ${title}`,
         name: toolCall.name,
+        ...(toolCall.presentation === undefined ? {} : { presentation: toolCall.presentation }),
         t: "tool-call-start",
         title,
     });

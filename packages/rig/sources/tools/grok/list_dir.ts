@@ -7,6 +7,7 @@ import { describeFileAutoPermissionAction } from "../../permissions/describeFile
 import { shouldReviewPathInAutoMode } from "../../permissions/shouldReviewPathInAutoMode.js";
 import { countTextLines, textOutputSchema, toTextBlocks } from "../utils/index.js";
 import { formatDirectoryEntryName } from "../utils/formatDirectoryEntryName.js";
+import { listToolCallPresentation } from "../utils/createExplorationToolCallPresentation.js";
 
 const MAX_ENTRIES = 500;
 
@@ -43,6 +44,8 @@ Other details:
         if (entries.length > MAX_ENTRIES) output.push("... (directory listing truncated)");
         return { text: output.length === 0 ? "(empty directory)" : output.join("\n") };
     },
+    toCallPresentation: ({ target_directory }, context) =>
+        listToolCallPresentation(target_directory, context),
     toLLM: toTextBlocks,
     toUI: (result, args) =>
         result.text === "(empty directory)"

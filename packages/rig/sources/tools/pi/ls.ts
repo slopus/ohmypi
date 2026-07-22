@@ -7,6 +7,7 @@ import { shouldReviewPathInAutoMode } from "../../permissions/shouldReviewPathIn
 import { toTextBlocks } from "../utils/index.js";
 import { formatDirectoryEntryName } from "../utils/formatDirectoryEntryName.js";
 import { boundDirectoryListing } from "./boundDirectoryListing.js";
+import { listToolCallPresentation } from "../utils/createExplorationToolCallPresentation.js";
 
 const DEFAULT_LIMIT = 500;
 const DEFAULT_MAX_BYTES = 50 * 1024;
@@ -56,6 +57,7 @@ export const piLsTool = defineTool({
             truncated: bounded.truncated,
         };
     },
+    toCallPresentation: ({ path }, context) => listToolCallPresentation(path ?? ".", context),
     toLLM: toTextBlocks,
     toUI: (result, args) =>
         result.text === "(empty directory)"

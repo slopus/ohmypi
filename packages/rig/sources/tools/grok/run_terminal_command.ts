@@ -4,6 +4,7 @@ import { Type } from "@sinclair/typebox";
 import { defineTool } from "../../agent/types.js";
 import { summarizeEscalatedShellAction } from "../../permissions/summarizeEscalatedShellAction.js";
 import { summarizeTextOutput, toTextBlocks } from "../utils/index.js";
+import { parseShellExplorationPresentation } from "../utils/parseShellExplorationPresentation.js";
 
 export const grokRunTerminalCommandTool = defineTool({
     name: "run_terminal_command",
@@ -85,6 +86,8 @@ Usage notes:
         }
         return { text };
     },
+    toCallPresentation: ({ background, command }) =>
+        background ? undefined : parseShellExplorationPresentation(command),
     toLLM: (result) => toTextBlocks({ text: result.text }),
     toUI: (result) => summarizeTextOutput(result.text),
     locks: [],

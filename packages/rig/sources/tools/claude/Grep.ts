@@ -13,6 +13,7 @@ import {
     textOutputSchema,
     toTextBlocks,
 } from "../utils/index.js";
+import { searchToolCallPresentation } from "../utils/createExplorationToolCallPresentation.js";
 
 const CLAUDE_GREP_DESCRIPTION = `A powerful search tool built on ripgrep
 
@@ -140,6 +141,8 @@ export const claudeGrepTool = defineTool({
             text: result.text.length > 0 ? boundGrepOutput(result.text) : "No matches found",
         };
     },
+    toCallPresentation: ({ path, pattern }, context) =>
+        searchToolCallPresentation(pattern, path, context),
     toLLM: toTextBlocks,
     toUI: (result, args) =>
         result.text === "No matches found"

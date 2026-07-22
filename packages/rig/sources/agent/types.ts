@@ -7,6 +7,7 @@ import type { Static, TSchema } from "@sinclair/typebox";
 import type { AgentContext } from "./context/AgentContext.js";
 import type { Usage } from "../providers/types.js";
 import type { ToolResultPresentation } from "./ToolResultPresentation.js";
+import type { ToolCallPresentation } from "./ToolCallPresentation.js";
 import type { UserInputResponse } from "../user-input/types.js";
 
 /** Plain text content. */
@@ -40,6 +41,8 @@ export interface ToolCallBlock {
     id: string;
     name: string;
     arguments: unknown;
+    /** Durable model-invisible data defined by the tool for rich transcript rendering. */
+    presentation?: ToolCallPresentation;
 }
 
 /** Result of executing a tool call, embedded in an agent message. */
@@ -152,6 +155,10 @@ export interface DefinedTool<
     ) => Static<TReturnSchema>;
     isError?: (result: Static<TReturnSchema>) => boolean;
     toLLM: (result: Static<TReturnSchema>) => readonly ContentBlock[];
+    toCallPresentation?: (
+        args: Static<TArgsSchema>,
+        context: AgentContext,
+    ) => ToolCallPresentation | undefined;
     toPresentation?: (
         result: Static<TReturnSchema>,
         args: Static<TArgsSchema>,
@@ -189,6 +196,7 @@ export interface AnyDefinedTool {
     resolveUserInput?: (response: UserInputResponse, args: never) => unknown;
     isError?: (result: never) => boolean;
     toLLM: (result: never) => readonly ContentBlock[];
+    toCallPresentation?: (args: never, context: AgentContext) => ToolCallPresentation | undefined;
     toPresentation?: (result: never, args: never) => ToolResultPresentation | undefined;
     toTrustedUserEvidence?: (result: never, args: never) => readonly ContentBlock[];
     toUI: (result: never, args: never) => string;
@@ -230,6 +238,10 @@ export function defineTool<
     ) => Static<TReturnSchema>;
     isError?: (result: Static<TReturnSchema>) => boolean;
     toLLM: (result: Static<TReturnSchema>) => readonly ContentBlock[];
+    toCallPresentation?: (
+        args: Static<TArgsSchema>,
+        context: AgentContext,
+    ) => ToolCallPresentation | undefined;
     toPresentation?: (
         result: Static<TReturnSchema>,
         args: Static<TArgsSchema>,

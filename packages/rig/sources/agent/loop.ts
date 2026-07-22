@@ -16,6 +16,7 @@ import { isContextWindowExceededError } from "./isContextWindowExceededError.js"
 import { isInvalidImageRequestError } from "./isInvalidImageRequestError.js";
 import { isRetryableInferenceError } from "./isRetryableInferenceError.js";
 import { prepareProviderMessageImages } from "./prepareProviderMessageImages.js";
+import { presentToolCall, type PresentedToolCall } from "./presentToolCall.js";
 import { replaceLastTurnToolResultImages } from "./replaceLastTurnToolResultImages.js";
 import { createSystemPrompt } from "./createSystemPrompt.js";
 import { ToolLockManager } from "./ToolLockManager.js";
@@ -117,7 +118,7 @@ export type AgentLoopEvent =
       }
     | {
           type: "tool_execution_start";
-          toolCall: ProviderToolCall;
+          toolCall: PresentedToolCall;
       }
     | {
           type: "tool_execution_end";
@@ -305,6 +306,8 @@ export async function runAgentLoop(options: RunAgentLoopOptions): Promise<AgentL
                                 provider: options.provider,
                                 providerMessages,
                                 transcript,
+                                toolContext,
+                                tools: options.tools,
                                 usedToolCallIds,
                             });
                         }
@@ -346,6 +349,8 @@ export async function runAgentLoop(options: RunAgentLoopOptions): Promise<AgentL
                             provider: options.provider,
                             providerMessages,
                             transcript,
+                            toolContext,
+                            tools: options.tools,
                             usedToolCallIds,
                         });
                     }
@@ -482,10 +487,22 @@ export async function runAgentLoop(options: RunAgentLoopOptions): Promise<AgentL
             if (block.type === "toolCall") usedToolCallIds.add(block.id);
         }
 
-        const agentMessage = assistantMessageToAgentMessage(assistantMessage, idFactory, {
-            providerId: options.provider.id,
-            requestedModelId: model.id,
-        });
+        const toolCalls = assistantMessage.content.filter(isProviderToolCall);
+        const presentedToolCalls = new Map(
+            toolCalls.map((toolCall) => [
+                toolCall.id,
+                presentToolCall(toolCall, options.tools, toolContext),
+            ]),
+        );
+        const agentMessage = assistantMessageToAgentMessage(
+            assistantMessage,
+            idFactory,
+            {
+                providerId: options.provider.id,
+                requestedModelId: model.id,
+            },
+            (toolCall) => presentedToolCalls.get(toolCall.id)?.presentation,
+        );
         transcript.push(agentMessage);
         contextTranscript.push(agentMessage);
         await options.onMessage?.(agentMessage);
@@ -535,7 +552,6 @@ export async function runAgentLoop(options: RunAgentLoopOptions): Promise<AgentL
             };
         }
 
-        const toolCalls = assistantMessage.content.filter(isProviderToolCall);
         if (toolCalls.length === 0) {
             return {
                 messages: transcript,
@@ -601,7 +617,10 @@ export async function runAgentLoop(options: RunAgentLoopOptions): Promise<AgentL
                         }),
                     );
                     await ignoreOptionalFailure(() =>
-                        options.onEvent?.({ type: "tool_execution_start", toolCall }),
+                        options.onEvent?.({
+                            type: "tool_execution_start",
+                            toolCall: presentedToolCalls.get(toolCall.id) ?? toolCall,
+                        }),
                     );
                     const toolCallIndex = toolCalls.indexOf(toolCall);
                     const preparedPermission = await resolvePermissionPrompt(
@@ -765,14 +784,21 @@ async function appendInferenceCrashContinuation(options: {
     provider: Provider;
     providerMessages: ProviderMessage[];
     transcript: Message[];
+    toolContext: AgentContext;
+    tools: readonly AnyDefinedTool[];
     usedToolCallIds: Set<string>;
 }): Promise<void> {
     const resumableAssistant = toResumableAssistantMessage(options.assistantMessage);
     options.providerMessages.push(resumableAssistant);
-    const agentMessage = assistantMessageToAgentMessage(resumableAssistant, options.idFactory, {
-        providerId: options.provider.id,
-        requestedModelId: options.model.id,
-    });
+    const agentMessage = assistantMessageToAgentMessage(
+        resumableAssistant,
+        options.idFactory,
+        {
+            providerId: options.provider.id,
+            requestedModelId: options.model.id,
+        },
+        (toolCall) => presentToolCall(toolCall, options.tools, options.toolContext).presentation,
+    );
     options.transcript.push(agentMessage);
     options.contextTranscript.push(agentMessage);
 

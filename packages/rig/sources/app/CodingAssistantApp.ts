@@ -105,6 +105,7 @@ import { renderCodexFileDiff } from "./renderCodexFileDiff.js";
 import { renderCodexMcpToolCall } from "./renderCodexMcpToolCall.js";
 import { renderNoticeWithChildren } from "./renderNoticeWithChildren.js";
 import { renderExecCommand } from "./renderExecCommand.js";
+import { renderExploration } from "./renderExploration.js";
 import { renderPendingSteeringMessages } from "./renderPendingSteeringMessages.js";
 import { renderRigBanner } from "./renderRigBanner.js";
 import { renderStartupStatusCard } from "./renderStartupStatusCard.js";
@@ -147,6 +148,10 @@ const FILE_MENTION_SEGMENTER = new Intl.Segmenter(undefined, { granularity: "gra
 const FAST_MODE_ON_MESSAGE = "Fast mode is on. Fast inference uses 2× plan usage.";
 const FAST_MODE_OFF_MESSAGE = "Fast mode is off.";
 const FOREGROUND_SHELL_YIELD_MS = 10_000;
+
+function entryBoundary(entry: AppTranscriptEntry | undefined): boolean {
+    return entry?.completedTurn !== undefined || entry?.turnElapsedMs !== undefined;
+}
 
 const MAX_DIFF_FILES_PER_TOOL = 20;
 const MAX_DIFF_ROWS_PER_TOOL = 120;
@@ -3139,6 +3144,10 @@ export class CodingAssistantApp implements Component, Focusable {
         } else if (event.type === "tool_execution_start") {
             this.#activeToolCallIds.add(event.toolCall.id);
             this.#runningToolCallIds.add(event.toolCall.id);
+            const entry = this.#entries.find((candidate) => candidate.id === event.toolCall.id);
+            if (entry !== undefined && event.toolCall.presentation?.type === "exploration") {
+                entry.exploration = event.toolCall.presentation;
+            }
             this.#refreshToolActivityStatus();
         } else if (event.type === "tool_execution_end") {
             const entry = this.#entries.find(
@@ -3306,11 +3315,14 @@ export class CodingAssistantApp implements Component, Focusable {
             } else if (block.type === "tool_call" && !this.#seenToolCallIds.has(block.id)) {
                 this.#seenToolCallIds.add(block.id);
                 const mcpToolCall = this.#createMcpToolCall(block.name, block.arguments);
+                const exploration =
+                    block.presentation?.type === "exploration" ? block.presentation : undefined;
                 this.#appendEntry({
                     id: block.id,
                     role: "tool",
                     title: this.#toolDisplayName(block.name),
                     text: this.#formatToolCall(block.name, block.arguments),
+                    ...(exploration === undefined ? {} : { exploration }),
                     ...(mcpToolCall === undefined ? {} : { mcpToolCall }),
                 });
             } else if (block.type === "tool_result") {
@@ -3574,6 +3586,9 @@ export class CodingAssistantApp implements Component, Focusable {
         if (entry.execCommand !== undefined) {
             completeEntry.execCommand = entry.execCommand;
         }
+        if (entry.exploration !== undefined) {
+            completeEntry.exploration = entry.exploration;
+        }
         if (entry.fileDiffs !== undefined) {
             completeEntry.fileDiffs = entry.fileDiffs;
         }
@@ -3663,8 +3678,9 @@ export class CodingAssistantApp implements Component, Focusable {
     }
 
     #visibleTranscriptEntries(): AppTranscriptEntry[] {
+        const liveExplorationEntries = new Set(this.#liveExplorationEntries());
         const sourceEntries = this.#entries.filter(
-            (entry) => !this.#activeToolCallIds.has(entry.id),
+            (entry) => !this.#activeToolCallIds.has(entry.id) && !liveExplorationEntries.has(entry),
         );
         const reasoningEntries = this.#showReasoning
             ? [...sourceEntries]
@@ -3676,7 +3692,26 @@ export class CodingAssistantApp implements Component, Focusable {
 
     #renderTranscriptEntries(entries: readonly AppTranscriptEntry[], width: number): string[] {
         const lines: string[] = [];
-        for (const entry of entries) {
+        for (let index = 0; index < entries.length; index += 1) {
+            const entry = entries[index];
+            if (entry === undefined) continue;
+            if (this.#isExplorationEntry(entry)) {
+                const group = [entry];
+                while (
+                    entryBoundary(group.at(-1)) === false &&
+                    this.#isExplorationEntry(entries[index + 1])
+                ) {
+                    const next = entries[index + 1];
+                    if (next === undefined) break;
+                    group.push(next);
+                    index += 1;
+                }
+                if (lines.length > 0) lines.push("");
+                lines.push(...this.#renderExplorationEntries(group, width));
+                const last = group.at(-1);
+                if (last !== undefined) this.#appendEntryCompletion(lines, last, width);
+                continue;
+            }
             const entryLines = this.#entryRenderCache.render(
                 entry,
                 {
@@ -3689,13 +3724,17 @@ export class CodingAssistantApp implements Component, Focusable {
             if (entryLines.length === 0) continue;
             if (lines.length > 0) lines.push("");
             lines.push(...entryLines);
-            if (this.#compactCompletedTurns && entry.completedTurn !== undefined) {
-                lines.push("", renderCompletedTurnStats(entry.completedTurn.stats, width));
-            } else if (entry.turnElapsedMs !== undefined) {
-                lines.push("", renderTurnCompletionSeparator(entry.turnElapsedMs, width));
-            }
+            this.#appendEntryCompletion(lines, entry, width);
         }
         return lines;
+    }
+
+    #appendEntryCompletion(lines: string[], entry: AppTranscriptEntry, width: number): void {
+        if (this.#compactCompletedTurns && entry.completedTurn !== undefined) {
+            lines.push("", renderCompletedTurnStats(entry.completedTurn.stats, width));
+        } else if (entry.turnElapsedMs !== undefined) {
+            lines.push("", renderTurnCompletionSeparator(entry.turnElapsedMs, width));
+        }
     }
 
     #entryRenderState(entry: AppTranscriptEntry): string {
@@ -3892,9 +3931,53 @@ export class CodingAssistantApp implements Component, Focusable {
     }
 
     #renderActiveToolRows(width: number): string[] {
-        return this.#entries
-            .filter((entry) => this.#activeToolCallIds.has(entry.id))
+        const liveExplorationEntries = this.#liveExplorationEntries();
+        const liveExplorationSet = new Set(liveExplorationEntries);
+        const rows = this.#entries
+            .filter(
+                (entry) => this.#activeToolCallIds.has(entry.id) && !liveExplorationSet.has(entry),
+            )
             .flatMap((entry) => this.#renderEntry(entry, width));
+        if (liveExplorationEntries.length > 0) {
+            rows.push(...this.#renderExplorationEntries(liveExplorationEntries, width));
+        }
+        return rows;
+    }
+
+    #liveExplorationEntries(): AppTranscriptEntry[] {
+        const entries: AppTranscriptEntry[] = [];
+        for (let index = this.#entries.length - 1; index >= 0; index -= 1) {
+            const entry = this.#entries[index];
+            if (!this.#isExplorationEntry(entry)) break;
+            entries.unshift(entry);
+        }
+        return entries.some((entry) => this.#activeToolCallIds.has(entry.id)) ? entries : [];
+    }
+
+    #isExplorationEntry(entry: AppTranscriptEntry | undefined): entry is AppTranscriptEntry {
+        return (
+            entry?.exploration !== undefined &&
+            entry.role === "tool" &&
+            entry.permissionReview === undefined &&
+            !this.#stoppedToolCallIds.has(entry.id)
+        );
+    }
+
+    #renderExplorationEntries(entries: readonly AppTranscriptEntry[], width: number): string[] {
+        const active = entries.some((entry) => this.#activeToolCallIds.has(entry.id));
+        return renderExploration(
+            entries.flatMap((entry) =>
+                entry.exploration === undefined ? [] : [entry.exploration],
+            ),
+            {
+                accent: this.#theme.accent,
+                brand: this.#theme.brand,
+                primary: this.#theme.primary,
+                status: active ? this.#theme.warning : this.#theme.success,
+                title: active ? "Exploring" : "Explored",
+                width,
+            },
+        );
     }
 
     #usageFooter(): string {
@@ -4553,6 +4636,13 @@ export class CodingAssistantApp implements Component, Focusable {
         if (existing !== undefined) {
             existing.role = block.isError ? "error" : "tool";
             existing.title = this.#toolDisplayName(block.toolName);
+            if (
+                block.isError === true ||
+                (block.presentation?.type === "exec_command" &&
+                    block.presentation.sessionId !== undefined)
+            ) {
+                delete existing.exploration;
+            }
             if (block.presentation?.type === "exec_command") {
                 existing.execCommand = block.presentation;
                 delete existing.backgroundTerminalInteraction;

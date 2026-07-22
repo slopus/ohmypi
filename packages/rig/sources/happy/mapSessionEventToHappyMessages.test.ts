@@ -28,6 +28,10 @@ describe("mapSessionEventToHappyMessages", () => {
                         arguments: { path: "README.md" },
                         id: "call-1",
                         name: "Read",
+                        presentation: {
+                            type: "exploration",
+                            operations: [{ kind: "read", name: "README.md" }],
+                        },
                         type: "tool_call",
                     },
                 ],
@@ -47,6 +51,12 @@ describe("mapSessionEventToHappyMessages", () => {
                 (message) => message.content.turn === "run-1",
             ),
         ).toBe(true);
+        expect(mapSessionEventToHappyMessages(event)[2]?.content.ev).toMatchObject({
+            presentation: {
+                type: "exploration",
+                operations: [{ kind: "read", name: "README.md" }],
+            },
+        });
     });
 
     it("does not echo a mobile-origin user message back into Happy", () => {

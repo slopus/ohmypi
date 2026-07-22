@@ -11,6 +11,7 @@ import {
     shellToolOutputSchema,
     summarizeShellOutput,
 } from "../utils/index.js";
+import { parseShellExplorationPresentation } from "../utils/parseShellExplorationPresentation.js";
 
 export const claudeBashTool = defineTool({
     name: "Bash",
@@ -77,6 +78,8 @@ export const claudeBashTool = defineTool({
         if (execution.signal !== undefined) options.signal = execution.signal;
         return runShellCommand(command, options, context);
     },
+    toCallPresentation: ({ command, run_in_background }) =>
+        run_in_background === true ? undefined : parseShellExplorationPresentation(command),
     toLLM: shellOutputToText,
     toUI: (result) => summarizeShellOutput(result),
     locks: [],

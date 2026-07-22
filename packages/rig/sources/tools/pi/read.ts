@@ -5,6 +5,7 @@ import { defineTool } from "../../agent/types.js";
 import { describeFileAutoPermissionAction } from "../../permissions/describeFileAutoPermissionAction.js";
 import { shouldReviewPathInAutoMode } from "../../permissions/shouldReviewPathInAutoMode.js";
 import { mediaTypeForPath, readFileReturnSchema, readTextFile } from "../utils/index.js";
+import { readToolCallPresentation } from "../utils/createExplorationToolCallPresentation.js";
 import { boundPiReadResult } from "./boundPiReadResult.js";
 
 const DEFAULT_MAX_LINES = 2000;
@@ -69,6 +70,7 @@ export const piReadTool = defineTool({
             maxLines: DEFAULT_MAX_LINES,
         });
     },
+    toCallPresentation: ({ path }, context) => readToolCallPresentation(path, context),
     toLLM: (result) => {
         if ("image_url" in result) {
             const match = /^data:([^;]+);base64,(.*)$/u.exec(result.image_url);
