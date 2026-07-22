@@ -15,7 +15,7 @@
 
 - Replaces Codex's contradictory leading identity with a model-specific Rig identity and changes the secondary `As Codex` self-reference to `As Rig`.
 - Retains every other byte of the official model `base_instructions`, including its communication, tool-use, safety, persistence, and skill guidance.
-- Version note: the installed official Codex CLI 0.144.6 compiles an older GPT-5.6 Luna prompt (`78a2fc84e1bffa421d865c1a2ade4185d3d33ef38e6a15157f0ff1a89b7d52ec`) that differs from this pinned `main` source. Among other release-skew changes, `main` includes the Destructive Actions section and places the evidence-first objection guidance later. Rig intentionally follows the newer source golden; the gym pins the older client hash separately.
+- Version note: the older compiled-client prompt hash comes from Codex CLI 0.144.6 (`78a2fc84e1bffa421d865c1a2ade4185d3d33ef38e6a15157f0ff1a89b7d52ec`), while the current tool capture uses CLI 0.145.0. Rig intentionally follows the newer source golden; the gym pins the older client hash separately.
 - Luna does not receive Rig's Ultra append.
 
 The official prompt is [codex-gpt-5-6-luna.golden.md](./codex/codex-gpt-5-6-luna.golden.md), the prompt Rig uses is [codex-gpt-5-6-luna.md](./codex/codex-gpt-5-6-luna.md), and the standalone diff is [codex-gpt-5-6-luna.patch](./codex/codex-gpt-5-6-luna.patch).
@@ -23,16 +23,16 @@ The official prompt is [codex-gpt-5-6-luna.golden.md](./codex/codex-gpt-5-6-luna
 ## Tool changes
 
 - The official `code_mode_only` surface selects `exec`, `wait`, `request_user_input`.
-- Rig now uses the same Code Mode split: raw-text `exec`, function `wait`, direct `request_user_input`, and (for v2) a top-level `collaboration` namespace. Reserved definitions remain close to the official captures, with Rig-specific contracts for `wait` and `request_user_input`; `wait_agent` advertises Rig's five-minute default and steering interruption behavior.
-- Removed because Rig does not implement the same client behavior: MCP resource list/read helpers and plugin installation; v2 also omits `send_message` because Rig's existing follow-up operation has different turn-start semantics.
+- Rig now uses the same Code Mode split: raw-text `exec`, function `wait`, direct `request_user_input`, and (for v2) a top-level `collaboration` namespace. Reserved collaboration definitions exactly match the official captures, including message-only delivery and the 30-second `wait_agent` default.
+- Removed because Rig does not implement the same client behavior: MCP resource list/read helpers and plugin installation.
 - Added by Rig: secret injection, workflow controls, `resume_agent`, richer collaboration variants, and richer execution-result fields. For v1, Rig adds its collaboration and workflow operations as direct functions because that captured client surface has no v2 `collaboration` namespace. `request_user_input` removes the official Plan-mode-only instruction because Rig deliberately has no separate Plan mode.
 - The captured v1 surface has no encrypted collaboration fields; Rig's direct agent tools use plaintext Rig session messages.
 - Rig does not append the v2 namespace portability note to this profile because the captured v1 surface has neither a `collaboration` nor a `rig` namespace.
 - Rig's direct agent tools use plaintext session messages and mark delegated text as model-authored rather than user authorization.
 - Omits model-facing instructions for `audio()`, because Rig has no audio transcript block, and for `notify()`, because Rig presents notifications as UI progress rather than extra model-visible tool outputs. The Code Mode runtime helpers remain installed.
-- Wire-format deviation: official Codex selects Responses Lite and sends `additional_tools` in developer input; Rig currently sends the equivalent custom/function/namespace definitions through the standard Responses `tools` and `instructions` fields.
+- Rig sends Code Mode requests through the Codex Responses WebSocket transport by default, while retaining explicit SSE support.
 - Nested tools still execute through Rig's shared AgentContext and permission model. Dynamically configured MCP call tools remain available inside `exec` even though they are absent from this static profile capture.
-- Official tools were captured from @openai/codex CLI 0.144.6: Started the official Codex CLI against a local HTTP interception proxy and extracted the request tool definitions.
+- Official tools were captured from @openai/codex CLI 0.145.0: Started the official Codex CLI against a local HTTP interception proxy and extracted the request tool definitions.
 - Tool capture source: Top-level and nested tool definitions from the first Responses request emitted by the installed official Codex CLI. SHA-256: `b5e6b9b174d3da16e5566f59eccd68d7f6b4feb60f3663f71358a1a81e16b585`.
 - Prompts were read directly from the source revision above.
 
@@ -64,7 +64,7 @@ index 62d69d4..5a06c40 100644
 
 ````diff
 diff --git a/codex-gpt-5-6-luna.tools.golden.json b/codex-gpt-5-6-luna.tools.json
-index 677b4e7..ceeacd7 100644
+index 677b4e7..d121432 100644
 --- a/codex-gpt-5-6-luna.tools.golden.json
 +++ b/codex-gpt-5-6-luna.tools.json
 @@ -2,7 +2,7 @@
@@ -76,7 +76,7 @@ index 677b4e7..ceeacd7 100644
      "format": {
        "type": "grammar",
        "syntax": "lark",
-@@ -13,100 +13,335 @@
+@@ -13,100 +13,357 @@
      "type": "function",
      "name": "wait",
      "description": "Waits on a yielded `exec` cell and returns new output or completion.\n- Use `wait` only after `exec` returns `Script running with cell ID ...`.\n- `cell_id` identifies the running `exec` cell to resume.\n- `yield_time_ms` controls how long to wait for more output before yielding again. Defaults to 10000 ms.\n- `max_tokens` limits how much new output this wait call returns. Defaults to 10000 tokens.\n- `terminate: true` stops the running cell; false or omitted waits for output.\n- `wait` returns only the new output since the last yield, or the final completion or termination result for that cell.\n- If the cell is still running, `wait` may yield again with the same `cell_id`.\n- If the cell has already finished, `wait` returns the completed result and closes the cell.",
@@ -271,12 +271,9 @@ index 677b4e7..ceeacd7 100644
 +    "description": "Wait indefinitely for one workflow run to finish and return its consolidated result.\n\nUse this after starting a workflow when the user asked you to wait for its result. Call it once instead of polling workflow status or ending your turn. The call remains active for workflows of any duration and resumes automatically when the workflow completes, fails, or is stopped. If the user cancels this tool call, only the wait is cancelled; the workflow continues running in the background and will still send its completion notification.",
 +    "parameters": {
 +      "type": "object",
-       "required": [
--        "questions"
++      "required": [
 +        "run_id"
-       ],
--      "additionalProperties": false
--    }
++      ],
 +      "properties": {
 +        "run_id": {
 +          "description": "Workflow run identifier returned by workflow.",
@@ -292,9 +289,12 @@ index 677b4e7..ceeacd7 100644
 +    "description": "Read the current status and consolidated output of a workflow run.",
 +    "parameters": {
 +      "type": "object",
-+      "required": [
+       "required": [
+-        "questions"
 +        "run_id"
-+      ],
+       ],
+-      "additionalProperties": false
+-    }
 +      "properties": {
 +        "run_id": {
 +          "description": "Workflow run identifier returned by workflow.",
@@ -402,13 +402,35 @@ index 677b4e7..ceeacd7 100644
 +  },
 +  {
 +    "type": "function",
++    "name": "send_message",
++    "description": "Send a message to an existing subagent without starting another turn.",
++    "parameters": {
++      "additionalProperties": false,
++      "type": "object",
++      "required": [
++        "target",
++        "message"
++      ],
++      "properties": {
++        "target": {
++          "type": "string"
++        },
++        "message": {
++          "type": "string"
++        }
++      }
++    },
++    "strict": false
++  },
++  {
++    "type": "function",
 +    "name": "wait_agent",
 +    "description": "Wait for a subagent status change or completion. Returns early when an agent updates, new user input arrives, or the wait is cancelled.",
 +    "parameters": {
 +      "type": "object",
 +      "properties": {
 +        "timeout_ms": {
-+          "description": "Maximum wait in milliseconds. Defaults to 300000, min 10000, max 3600000.",
++          "description": "Maximum wait in milliseconds. Defaults to 30000, min 10000, max 3600000.",
 +          "maximum": 3600000,
 +          "minimum": 10000,
 +          "type": "number"

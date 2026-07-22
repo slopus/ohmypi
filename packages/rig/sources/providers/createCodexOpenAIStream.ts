@@ -6,6 +6,7 @@ import OpenAI from "openai";
 import { classifyCodexErrorCode } from "./classifyCodexErrorCode.js";
 import { classifyCodexProviderError } from "./classifyCodexProviderError.js";
 import { createCodexOpenAIRequest } from "./createCodexOpenAIRequest.js";
+import { createCodexWebSocketResponseStream } from "./createCodexWebSocketResponseStream.js";
 import { createOpenAIResponsesStream } from "./createOpenAIResponsesStream.js";
 import { readCodexQuotaAuth } from "./readCodexQuotaAuth.js";
 import type { Context, Model, StreamOptions } from "./types.js";
@@ -21,12 +22,16 @@ export function createCodexOpenAIStream(options: {
     streamOptions?: StreamOptions;
     transport?: SimpleStreamOptions["transport"];
 }): ReturnType<typeof createOpenAIResponsesStream> {
-    if (options.transport === "websocket" || options.transport === "websocket-cached") {
-        throw new Error("Codex Code Mode custom tools require the SSE transport.");
-    }
     return createOpenAIResponsesStream({
         async createResponseStream() {
             const accountId = resolveCodexAccountId(options.accessToken, options.authPath);
+            const request = createCodexOpenAIRequest({
+                context: options.context,
+                modelId: options.modelId,
+                ...(options.streamOptions === undefined
+                    ? {}
+                    : { streamOptions: options.streamOptions }),
+            });
             const client = new OpenAI({
                 apiKey: options.accessToken,
                 baseURL: `${options.baseUrl.replace(/\/$/, "")}/codex`,
@@ -43,14 +48,29 @@ export function createCodexOpenAIStream(options: {
                 },
                 maxRetries: 0,
             });
-            return client.responses.create(
-                createCodexOpenAIRequest({
-                    context: options.context,
-                    modelId: options.modelId,
-                    ...(options.streamOptions === undefined
+            if (options.transport !== "sse") {
+                return createCodexWebSocketResponseStream({
+                    client,
+                    request: request as unknown as Record<string, unknown>,
+                    headers: {
+                        Authorization: `Bearer ${options.accessToken}`,
+                        "chatgpt-account-id": accountId,
+                        originator: "codex_cli_rs",
+                        "OpenAI-Beta": "responses_websockets=2026-02-06",
+                        ...(options.streamOptions?.sessionId === undefined
+                            ? {}
+                            : {
+                                  "session-id": options.streamOptions.sessionId,
+                                  "x-client-request-id": options.streamOptions.sessionId,
+                              }),
+                    },
+                    ...(options.streamOptions?.signal === undefined
                         ? {}
-                        : { streamOptions: options.streamOptions }),
-                }),
+                        : { signal: options.streamOptions.signal }),
+                });
+            }
+            return client.responses.create(
+                request,
                 ...(options.streamOptions?.signal === undefined
                     ? []
                     : [{ signal: options.streamOptions.signal }]),

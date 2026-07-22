@@ -532,7 +532,14 @@ function expectExactRigPayload(
             collaboration?.tools?.flatMap((tool) =>
                 typeof tool.name === "string" ? [tool.name] : [],
             ),
-        ).toEqual(["followup_task", "interrupt_agent", "list_agents", "spawn_agent", "wait_agent"]);
+        ).toEqual([
+            "followup_task",
+            "interrupt_agent",
+            "list_agents",
+            "send_message",
+            "spawn_agent",
+            "wait_agent",
+        ]);
         const rig = tools.find((tool) => tool.name === "rig");
         expect(rig).toMatchObject({ type: "namespace" });
         expect(

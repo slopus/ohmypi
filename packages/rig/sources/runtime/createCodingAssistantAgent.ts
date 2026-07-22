@@ -204,6 +204,7 @@ export function createCodingAssistantAgent(
                         "list_agents",
                         "interrupt_agent",
                         "resume_agent",
+                        "send_message",
                         "SendMessage",
                         "followup_subagent",
                     ].includes(tool.name),
@@ -233,7 +234,9 @@ export function createCodingAssistantAgent(
                       .filter((tool) => isCodexCollaborationNamespaceTool(tool.name))
                       .toSorted((left, right) => left.name.localeCompare(right.name))
                       .map(createCodexCollaborationNamespaceTool),
-                  ...availableCollaborationTools.map(createRigNamespaceTool),
+                  ...availableCollaborationTools
+                      .filter((tool) => tool.name !== "send_message")
+                      .map(createRigNamespaceTool),
               ]
             : selectedTools.map((tool) =>
                   collaborationNames.has(tool.name)

@@ -131,6 +131,47 @@ export class AgentSessionManager {
         return this.#managedSubagent(child);
     }
 
+    sendMessage(
+        parentSessionId: string,
+        target: string,
+        message: string,
+        encryptedMessage?: string,
+    ): ManagedSubagent {
+        const child = this.#resolveTarget(parentSessionId, target);
+        const parent = this.#repository.get(parentSessionId);
+        if (encryptedMessage !== undefined) {
+            const parentTransportScope = parent?.encryptedAgentTransportScope();
+            if (
+                parentTransportScope === undefined ||
+                parentTransportScope !== child.encryptedAgentTransportScope()
+            ) {
+                throw new Error(
+                    "Native encrypted collaboration only works within the same compatible provider and region.",
+                );
+            }
+        }
+        const childPath = this.#pathFor(child);
+        const parentPath = parent === undefined ? "/root" : this.#pathFor(parent);
+        child.deliverAgentMessage({
+            blocks: message.length === 0 ? [] : [{ type: "text", text: message }],
+            id: crypto.randomUUID(),
+            provenance: "agent",
+            role: "user",
+            ...(encryptedMessage === undefined
+                ? {}
+                : {
+                      encryptedAgentMessage: {
+                          author: parentPath,
+                          recipient: childPath,
+                          header: `Message Type: MESSAGE\nTask name: ${childPath}\nSender: ${parentPath}\nPayload:\n`,
+                          encryptedContent: encryptedMessage,
+                      },
+                  }),
+        });
+        this.recordChanged(child);
+        return this.#managedSubagent(child);
+    }
+
     interrupt(parentSessionId: string, target: string): ManagedSubagent {
         const child = this.#resolveTarget(parentSessionId, target);
         const previous = this.#managedSubagent(child);

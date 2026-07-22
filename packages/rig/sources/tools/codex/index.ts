@@ -10,6 +10,7 @@ export { codexInterruptAgentTool } from "./interrupt_agent.js";
 export { codexResumeAgentTool } from "./resume_agent.js";
 export { codexListAgentsTool } from "./list_agents.js";
 export { codexWaitAgentTool } from "./wait_agent.js";
+export { codexSendMessageTool } from "./send_message.js";
 export { unifiedExecOutputSchema } from "./unifiedExecOutput.js";
 
 import { codexApplyPatchTool } from "./apply_patch.js";
@@ -24,6 +25,7 @@ import { codexInterruptAgentTool } from "./interrupt_agent.js";
 import { codexResumeAgentTool } from "./resume_agent.js";
 import { codexListAgentsTool } from "./list_agents.js";
 import { codexWaitAgentTool } from "./wait_agent.js";
+import { codexSendMessageTool } from "./send_message.js";
 import {
     codexStopWorkflowTool,
     codexWaitForWorkflowTool,
@@ -47,6 +49,7 @@ export const codexCollaborationTools = [
     codexStopWorkflowTool,
     codexSpawnAgentTool,
     codexFollowupTaskTool,
+    codexSendMessageTool,
     codexWaitAgentTool,
     codexListAgentsTool,
     codexInterruptAgentTool,

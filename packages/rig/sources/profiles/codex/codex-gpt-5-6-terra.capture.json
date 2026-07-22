@@ -23,9 +23,9 @@
   },
   "tools": {
     "client": "@openai/codex",
-    "version": "0.144.6",
+    "version": "0.145.0",
     "sourceDescription": "Top-level and nested tool definitions from the first Responses request emitted by the installed official Codex CLI",
     "captureMethod": "Started the official Codex CLI against a local HTTP interception proxy and extracted the request tool definitions",
-    "sha256": "03a9149eb6291b0c31318b6c35e8b84a531f6f4268f8f333ad98722203197300"
+    "sha256": "09a9ad8451241c329d98bb2ff0b85be3b035a081ffd37d3d2980402d742f023e"
   }
 }

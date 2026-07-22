@@ -20,7 +20,9 @@ export function computeCodexProfileTools(target: CodexProfileArtifactDescriptor)
                       .filter((tool) => isCodexCollaborationNamespaceTool(tool.name))
                       .toSorted((left, right) => left.name.localeCompare(right.name))
                       .map(createCodexCollaborationNamespaceTool),
-                  ...profile.tools.collaboration.map(createRigNamespaceTool),
+                  ...profile.tools.collaboration
+                      .filter((tool) => tool.name !== "send_message")
+                      .map(createRigNamespaceTool),
               ]
             : profileTools.map((tool) =>
                   collaborationNames.has(tool.name)

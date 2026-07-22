@@ -1,12 +1,16 @@
 import { zstdDecompressSync } from "node:zlib";
+import { once } from "node:events";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
+import OpenAI from "openai";
+import { WebSocketServer } from "ws";
 
 import { validJpeg32Base64, validPng32Base64 } from "../tools/testing/validImageFixtures.js";
 import { createCodexProvider } from "./codex.js";
+import { createCodexWebSocketResponseStream } from "./createCodexWebSocketResponseStream.js";
 import { modelOpenaiGpt55, modelOpenaiGpt56Sol } from "./models.js";
 import type { Context } from "./types.js";
 
@@ -226,19 +230,124 @@ describe("codex provider", () => {
         });
     });
 
-    it("rejects WebSocket transport when Code Mode custom tools require SSE", () => {
-        const provider = createCodexProvider({
-            apiKey: "e30.eyJodHRwczovL2FwaS5vcGVuYWkuY29tL2F1dGgiOnsiY2hhdGdwdF9hY2NvdW50X2lkIjoiYWNjb3VudC10ZXN0In19.x",
-            transport: "websocket",
-        });
-        const context: Context = {
-            ...emptyContext(),
-            tools: [{ kind: "custom", name: "exec", description: "Run JavaScript." }],
-        };
+    it("sends Code Mode custom tools over the Codex WebSocket transport by default", async () => {
+        const server = new WebSocketServer({ host: "127.0.0.1", port: 0 });
+        await once(server, "listening");
+        const address = server.address();
+        if (typeof address === "string" || address === null) {
+            throw new Error("Expected a TCP WebSocket test server.");
+        }
 
-        expect(() => provider.stream(modelOpenaiGpt56Sol, context)).toThrow(
-            "Codex Code Mode custom tools require the SSE transport.",
-        );
+        let requestFrame: unknown;
+        let requestHeaders: NodeJS.Dict<string | string[]> = {};
+        server.on("connection", (socket, request) => {
+            requestHeaders = request.headers;
+            socket.once("message", (data) => {
+                requestFrame = JSON.parse(data.toString());
+                socket.send(
+                    JSON.stringify({
+                        type: "response.completed",
+                        response: {
+                            id: "response-code-mode",
+                            model: "gpt-5.6-sol",
+                            status: "completed",
+                            usage: {
+                                input_tokens: 1,
+                                input_tokens_details: { cached_tokens: 0 },
+                                output_tokens: 1,
+                                total_tokens: 2,
+                            },
+                        },
+                    }),
+                );
+            });
+        });
+
+        try {
+            const provider = createCodexProvider({
+                apiKey: "e30.eyJodHRwczovL2FwaS5vcGVuYWkuY29tL2F1dGgiOnsiY2hhdGdwdF9hY2NvdW50X2lkIjoiYWNjb3VudC10ZXN0In19.x",
+                baseUrl: `http://127.0.0.1:${address.port}/backend-api`,
+            });
+            const context: Context = {
+                ...emptyContext(),
+                tools: [{ kind: "custom", name: "exec", description: "Run JavaScript." }],
+            };
+
+            await expect(provider.stream(modelOpenaiGpt56Sol, context).result()).resolves.toMatchObject(
+                { stopReason: "stop" },
+            );
+
+            expect(requestHeaders["openai-beta"]).toBe("responses_websockets=2026-02-06");
+            expect(requestFrame).toMatchObject({
+                type: "response.create",
+                model: "gpt-5.6-sol",
+                parallel_tool_calls: false,
+                tools: [{ type: "custom", name: "exec" }],
+            });
+        } finally {
+            server.close();
+            await once(server, "close");
+        }
+    });
+
+    it("times out an idle Codex WebSocket response", async () => {
+        const server = new WebSocketServer({ host: "127.0.0.1", port: 0 });
+        await once(server, "listening");
+        const address = server.address();
+        if (typeof address === "string" || address === null) {
+            throw new Error("Expected a TCP WebSocket test server.");
+        }
+
+        try {
+            const stream = createCodexWebSocketResponseStream({
+                client: new OpenAI({
+                    apiKey: "test-token",
+                    baseURL: `http://127.0.0.1:${address.port}`,
+                    maxRetries: 0,
+                    timeout: 25,
+                }),
+                headers: {},
+                request: { model: "gpt-5.6-sol" },
+            });
+
+            await expect(stream.next()).rejects.toThrow(
+                "Codex WebSocket timed out after 25ms without receiving a response event.",
+            );
+        } finally {
+            server.close();
+            await once(server, "close");
+        }
+    });
+
+    it("reports caller cancellation as an aborted Codex WebSocket response", async () => {
+        const server = new WebSocketServer({ host: "127.0.0.1", port: 0 });
+        await once(server, "listening");
+        const address = server.address();
+        if (typeof address === "string" || address === null) {
+            throw new Error("Expected a TCP WebSocket test server.");
+        }
+        const controller = new AbortController();
+
+        try {
+            const stream = createCodexWebSocketResponseStream({
+                client: new OpenAI({
+                    apiKey: "test-token",
+                    baseURL: `http://127.0.0.1:${address.port}`,
+                    maxRetries: 0,
+                }),
+                headers: {},
+                request: { model: "gpt-5.6-sol" },
+                signal: controller.signal,
+            });
+            const next = stream.next();
+            await once(server, "connection");
+            controller.abort();
+
+            await expect(next).rejects.toMatchObject({ name: "AbortError" });
+        } finally {
+            server.close();
+            await once(server, "close");
+        }
     });
 
     it.each([

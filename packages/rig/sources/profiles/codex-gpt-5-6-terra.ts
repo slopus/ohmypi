@@ -4,7 +4,7 @@
 // bytes are retained. Rig appends runtime model metadata and,
 // at Ultra effort, its separately persisted Ultra instructions. Tools changed: Rig keeps Codex's
 // exec/wait/direct-input/collaboration split. Removed: resource-list/read helpers, plugin install,
-// and send_message's message-only semantics. Added under the separate provider-neutral `rig`
+// helpers, and plugin install. Added under the separate provider-neutral `rig`
 // namespace: workflows, richer cross-provider agent controls, and resume_agent. Secret injection
 // and richer execution results remain Rig extensions. request_user_input drops the invalid
 // Plan-mode restriction. A short runtime append explains native `collaboration` versus portable

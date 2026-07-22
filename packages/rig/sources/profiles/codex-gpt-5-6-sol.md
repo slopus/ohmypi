@@ -15,7 +15,7 @@
 
 - Replaces Codex's contradictory leading identity with a model-specific Rig identity and changes the secondary `As Codex` self-reference to `As Rig`.
 - Retains every other byte of the official model `base_instructions`, including its communication, tool-use, safety, persistence, and skill guidance.
-- Version note: the installed official Codex CLI 0.144.6 compiles an older GPT-5.6 Sol prompt (`e9778714d505f3dd04d44db4394024c5fab5bf6554fc9faa3cdf9cf776b63bb9`) that differs from this pinned `main` source. Among other release-skew changes, `main` includes the Destructive Actions section and places the evidence-first objection guidance later. Rig intentionally follows the newer source golden; the gym pins the older client hash separately.
+- Version note: the older compiled-client prompt hash comes from Codex CLI 0.144.6 (`e9778714d505f3dd04d44db4394024c5fab5bf6554fc9faa3cdf9cf776b63bb9`), while the current tool capture uses CLI 0.145.0. Rig intentionally follows the newer source golden; the gym pins the older client hash separately.
 - At Ultra effort, Rig appends its separately persisted Ultra instructions after this base prompt; that runtime-only append is not part of the diff below.
 
 The official prompt is [codex-gpt-5-6-sol.golden.md](./codex/codex-gpt-5-6-sol.golden.md), the prompt Rig uses is [codex-gpt-5-6-sol.md](./codex/codex-gpt-5-6-sol.md), and the standalone diff is [codex-gpt-5-6-sol.patch](./codex/codex-gpt-5-6-sol.patch).
@@ -23,17 +23,17 @@ The official prompt is [codex-gpt-5-6-sol.golden.md](./codex/codex-gpt-5-6-sol.g
 ## Tool changes
 
 - The official `code_mode_only` surface selects `exec`, `wait`, `request_user_input`, `collaboration`.
-- Rig now uses the same Code Mode split: raw-text `exec`, function `wait`, direct `request_user_input`, and (for v2) a top-level `collaboration` namespace. Reserved definitions remain close to the official captures, with Rig-specific contracts for `wait` and `request_user_input`; `wait_agent` advertises Rig's five-minute default and steering interruption behavior.
-- Removed because Rig does not implement the same client behavior: MCP resource list/read helpers and plugin installation; v2 also omits `send_message` because Rig's existing follow-up operation has different turn-start semantics.
+- Rig now uses the same Code Mode split: raw-text `exec`, function `wait`, direct `request_user_input`, and (for v2) a top-level `collaboration` namespace. Reserved collaboration definitions exactly match the official captures, including message-only delivery and the 30-second `wait_agent` default.
+- Removed because Rig does not implement the same client behavior: MCP resource list/read helpers and plugin installation.
 - Added by Rig: secret injection, workflow controls, `resume_agent`, richer collaboration variants, and richer execution-result fields. For v2, Rig exposes these additions in a separate top-level `rig` namespace while leaving the reserved `collaboration` definitions unchanged. The `rig` agent tools use plaintext Rig session messages and support cross-model, cross-provider, and cross-region targets; their richer spawn/follow-up schemas include model, provider, and effort controls. `request_user_input` removes the official Plan-mode-only instruction because Rig deliberately has no separate Plan mode.
 - The official v2 `spawn_agent` and `followup_task` message fields remain encrypted: Rig does not inspect them and forwards them to the child as Codex `agent_message` encrypted content.
 - Rig appends a short runtime portability note: native `collaboration` works through Amazon Bedrock Mantle but its ciphertext is limited to compatible agents in the same provider and region; use `rig` across Codex Cloud/Bedrock, provider instances, models, or regions and for richer controls, and retry rejected native calls without copying ciphertext.
 - Portable `rig` agent tools reject native-only encrypted fields, mark delegated text as model-authored rather than user authorization, and request Auto review before transferring parent context or model-generated work across an explicit model/provider boundary.
 - Omits model-facing instructions for `audio()`, because Rig has no audio transcript block, and for `notify()`, because Rig presents notifications as UI progress rather than extra model-visible tool outputs. The Code Mode runtime helpers remain installed.
-- Wire-format deviation: official Codex selects Responses Lite and sends `additional_tools` in developer input; Rig currently sends the equivalent custom/function/namespace definitions through the standard Responses `tools` and `instructions` fields.
+- Rig sends Code Mode requests through the Codex Responses WebSocket transport by default, while retaining explicit SSE support.
 - Nested tools still execute through Rig's shared AgentContext and permission model. Dynamically configured MCP call tools remain available inside `exec` even though they are absent from this static profile capture.
-- Official tools were captured from @openai/codex CLI 0.144.6: Started the official Codex CLI against a local HTTP interception proxy and extracted the request tool definitions.
-- Tool capture source: Top-level and nested tool definitions from the first Responses request emitted by the installed official Codex CLI. SHA-256: `03a9149eb6291b0c31318b6c35e8b84a531f6f4268f8f333ad98722203197300`.
+- Official tools were captured from @openai/codex CLI 0.145.0: Started the official Codex CLI against a local HTTP interception proxy and extracted the request tool definitions.
+- Tool capture source: Top-level and nested tool definitions from the first Responses request emitted by the installed official Codex CLI. SHA-256: `09a9ad8451241c329d98bb2ff0b85be3b035a081ffd37d3d2980402d742f023e`.
 - Prompts were read directly from the source revision above.
 
 The official tools are [codex-gpt-5-6-sol.tools.golden.json](./codex/codex-gpt-5-6-sol.tools.golden.json), Rig's computed tools are [codex-gpt-5-6-sol.tools.json](./codex/codex-gpt-5-6-sol.tools.json), and the standalone diff is [codex-gpt-5-6-sol.tools.patch](./codex/codex-gpt-5-6-sol.tools.patch).
@@ -64,7 +64,7 @@ index 62d69d4..368db08 100644
 
 ````diff
 diff --git a/codex-gpt-5-6-sol.tools.golden.json b/codex-gpt-5-6-sol.tools.json
-index 67c638f..0b1e730 100644
+index 9bb9f14..9d59998 100644
 --- a/codex-gpt-5-6-sol.tools.golden.json
 +++ b/codex-gpt-5-6-sol.tools.json
 @@ -2,7 +2,7 @@
@@ -235,7 +235,7 @@ index 67c638f..0b1e730 100644
    },
    {
      "type": "namespace",
-@@ -118,131 +116,352 @@
+@@ -118,139 +116,383 @@
          "type": "function",
          "name": "followup_task",
          "description": "Send a follow-up task to an existing non-root target agent and trigger a turn if it is idle. If the target is already running, deliver the task promptly at message boundaries while sampling, or after the pending tool call completes.",
@@ -326,34 +326,69 @@ index 67c638f..0b1e730 100644
        },
        {
          "type": "function",
--        "name": "send_message",
--        "description": "Send a message to an existing agent. The message will be delivered promptly. Does not trigger a new turn.",
+         "name": "send_message",
+         "description": "Send a message to an existing agent. The message will be delivered promptly. Does not trigger a new turn.",
 -        "strict": false,
-+        "name": "spawn_agent",
-+        "description": "\n        \n        Spawns an agent to work on the specified task. If your current task is `/root/task1` and you spawn_agent with task_name \"task_3\" the agent will have canonical task name `/root/task1/task_3`.\nYou are then able to refer to this agent as `task_3` or `/root/task1/task_3` interchangeably. However an agent `/root/task2/task_3` would only be able to communicate with this agent via its canonical name `/root/task1/task_3`.\nThe spawned agent will have the same tools as you and the ability to spawn its own subagents.\n\nOnly call this tool for a concrete, bounded subtask that can run independently alongside useful local work; otherwise continue locally.\nIt will be able to send you and other running agents messages, and its final answer will be provided to you when it finishes.\nThe new agent's canonical task name will be provided to it along with the message.\n\nNote that passing `fork_turns=\"none\"` will not pass any surrounding context to the spawned subagent, which may cause the agent to lack the context it needs to complete its task, whereas `fork_turns=\"all\"` will provide the subagent with all surrounding context.",
          "parameters": {
 +          "additionalProperties": false,
            "type": "object",
 +          "required": [
-+            "task_name",
++            "target",
 +            "message"
 +          ],
            "properties": {
-+            "task_name": {
-+              "description": "Task name for the new agent. Use lowercase letters, digits, and underscores.",
++            "target": {
++              "description": "Relative or canonical task name to message (from spawn_agent).",
 +              "type": "string"
 +            },
              "message": {
 -              "type": "string",
--              "description": "Message text to queue on the target agent.",
+               "description": "Message text to queue on the target agent.",
 -              "encrypted": true
-+              "description": "Initial plain-text task for the new agent.",
-+              "encrypted": true,
-+              "type": "string"
-             },
+-            },
 -            "target": {
 -              "type": "string",
 -              "description": "Relative or canonical task name to message (from spawn_agent)."
++              "encrypted": true,
++              "type": "string"
+             }
+-          },
++          }
++        },
++        "strict": false
++      },
++      {
++        "type": "function",
++        "name": "spawn_agent",
++        "description": "\n        Available model overrides (optional; inherited parent model is preferred):\n- `gpt-5.6-sol`: Latest frontier agentic coding model. Reasoning efforts: low (default), medium, high, xhigh, max, ultra. Service tiers: priority.\n- `gpt-5.6-terra`: Balanced agentic coding model for everyday work. Reasoning efforts: low, medium (default), high, xhigh, max, ultra. Service tiers: priority.\n        Spawns an agent to work on the specified task. If your current task is `/root/task1` and you spawn_agent with task_name \"task_3\" the agent will have canonical task name `/root/task1/task_3`.\nYou are then able to refer to this agent as `task_3` or `/root/task1/task_3` interchangeably. However an agent `/root/task2/task_3` would only be able to communicate with this agent via its canonical name `/root/task1/task_3`.\nThe spawned agent will have the same tools as you and the ability to spawn its own subagents.\n\nOnly call this tool for a concrete, bounded subtask that can run independently alongside useful local work; otherwise continue locally.\nIt will be able to send you and other running agents messages, and its final answer will be provided to you when it finishes.\nThe new agent's canonical task name will be provided to it along with the message.\n\nNote that passing `fork_turns=\"none\"` will not pass any surrounding context to the spawned subagent, which may cause the agent to lack the context it needs to complete its task, whereas `fork_turns=\"all\"` will provide the subagent with all surrounding context.",
++        "parameters": {
++          "additionalProperties": false,
++          "type": "object",
+           "required": [
+-            "target",
++            "task_name",
+             "message"
+           ],
+-          "additionalProperties": false
+-        }
++          "properties": {
++            "task_name": {
++              "description": "Task name for the new agent. Use lowercase letters, digits, and underscores.",
++              "type": "string"
++            },
++            "message": {
++              "description": "Initial plain-text task for the new agent.",
++              "encrypted": true,
++              "type": "string"
++            },
++            "model": {
++              "description": "Model override for the new agent. Omit unless an explicit override is needed.",
++              "type": "string"
++            },
++            "reasoning_effort": {
++              "description": "Reasoning effort override for the new agent. Omit to inherit the parent effort.",
++              "type": "string"
++            },
 +            "fork_turns": {
 +              "description": "Optional number of turns to fork. Defaults to `all`. Use `none`, `all`, or a positive integer string such as `3` to fork only the most recent turns.",
 +              "type": "string"
@@ -371,9 +406,7 @@ index 67c638f..0b1e730 100644
 +          "type": "object",
 +          "properties": {
 +            "timeout_ms": {
-+              "description": "Timeout in milliseconds. Defaults to 300000, min 10000, max 3600000.",
-+              "maximum": 3600000,
-+              "minimum": 10000,
++              "description": "Timeout in milliseconds. Defaults to 30000, min 10000, max 3600000.",
 +              "type": "number"
 +            }
 +          }
@@ -419,8 +452,7 @@ index 67c638f..0b1e730 100644
 +            "scriptPath": {
 +              "description": "Path to a saved Python workflow script.",
 +              "type": "string"
-             }
--          },
++            }
 +          }
 +        },
 +        "strict": false
@@ -431,13 +463,9 @@ index 67c638f..0b1e730 100644
 +        "description": "Wait indefinitely for one workflow run to finish and return its consolidated result.\n\nUse this after starting a workflow when the user asked you to wait for its result. Call it once instead of polling workflow status or ending your turn. The call remains active for workflows of any duration and resumes automatically when the workflow completes, fails, or is stopped. If the user cancels this tool call, only the wait is cancelled; the workflow continues running in the background and will still send its completion notification.",
 +        "parameters": {
 +          "type": "object",
-           "required": [
--            "target",
--            "message"
++          "required": [
 +            "run_id"
-           ],
--          "additionalProperties": false
--        }
++          ],
 +          "properties": {
 +            "run_id": {
 +              "description": "Workflow run identifier returned by workflow.",
@@ -486,7 +514,7 @@ index 67c638f..0b1e730 100644
        {
          "type": "function",
          "name": "spawn_agent",
--        "description": "\n        \n        Spawns an agent to work on the specified task. If your current task is `/root/task1` and you spawn_agent with task_name \"task_3\" the agent will have canonical task name `/root/task1/task_3`.\nYou are then able to refer to this agent as `task_3` or `/root/task1/task_3` interchangeably. However an agent `/root/task2/task_3` would only be able to communicate with this agent via its canonical name `/root/task1/task_3`.\nThe spawned agent will have the same tools as you and the ability to spawn its own subagents.\n\nOnly call this tool for a concrete, bounded subtask that can run independently alongside useful local work; otherwise continue locally.\nIt will be able to send you and other running agents messages, and its final answer will be provided to you when it finishes.\nThe new agent's canonical task name will be provided to it along with the message.\n\nNote that passing `fork_turns=\"none\"` will not pass any surrounding context to the spawned subagent, which may cause the agent to lack the context it needs to complete its task, whereas `fork_turns=\"all\"` will provide the subagent with all surrounding context.",
+-        "description": "\n        Available model overrides (optional; inherited parent model is preferred):\n- `gpt-5.6-sol`: Latest frontier agentic coding model. Reasoning efforts: low (default), medium, high, xhigh, max, ultra. Service tiers: priority.\n- `gpt-5.6-terra`: Balanced agentic coding model for everyday work. Reasoning efforts: low, medium (default), high, xhigh, max, ultra. Service tiers: priority.\n        Spawns an agent to work on the specified task. If your current task is `/root/task1` and you spawn_agent with task_name \"task_3\" the agent will have canonical task name `/root/task1/task_3`.\nYou are then able to refer to this agent as `task_3` or `/root/task1/task_3` interchangeably. However an agent `/root/task2/task_3` would only be able to communicate with this agent via its canonical name `/root/task1/task_3`.\nThe spawned agent will have the same tools as you and the ability to spawn its own subagents.\n\nOnly call this tool for a concrete, bounded subtask that can run independently alongside useful local work; otherwise continue locally.\nIt will be able to send you and other running agents messages, and its final answer will be provided to you when it finishes.\nThe new agent's canonical task name will be provided to it along with the message.\n\nNote that passing `fork_turns=\"none\"` will not pass any surrounding context to the spawned subagent, which may cause the agent to lack the context it needs to complete its task, whereas `fork_turns=\"all\"` will provide the subagent with all surrounding context.",
 -        "strict": false,
 +        "description": "Spawn a background subagent for a concrete, bounded task. The new agent shares the workspace and reports back when it finishes.",
          "parameters": {
@@ -513,21 +541,30 @@ index 67c638f..0b1e730 100644
 +                  "type": "string"
 +                }
 +              ]
-+            },
-+            "task_name": {
-+              "description": "Lowercase task name using letters, numbers, and underscores.",
-+              "type": "string"
              },
-             "message": {
--              "type": "string",
--              "description": "Initial plain-text task for the new agent.",
--              "encrypted": true
-+              "description": "Complete instructions for the new agent.",
-+              "type": "string"
-             },
--            "task_name": {
+-          "message": {
+-            "type": "string",
+-            "description": "Initial plain-text task for the new agent.",
+-            "encrypted": true
+-          },
+-          "model": {
+-            "type": "string",
+-            "description": "Model override for the new agent. Omit unless an explicit override is needed."
+-          },
+-          "reasoning_effort": {
+-            "type": "string",
+-            "description": "Reasoning effort override for the new agent. Omit to inherit the parent effort."
+-          },
+             "task_name": {
 -              "type": "string",
 -              "description": "Task name for the new agent. Use lowercase letters, digits, and underscores."
++              "description": "Lowercase task name using letters, numbers, and underscores.",
++              "type": "string"
++            },
++            "message": {
++              "description": "Complete instructions for the new agent.",
++              "type": "string"
++            },
 +            "effort": {
 +              "description": "Child effort level. Must be one of the allowed effort levels shown in the system prompt for the selected model.",
 +              "type": "string"
@@ -588,7 +625,7 @@ index 67c638f..0b1e730 100644
              "timeout_ms": {
 -              "type": "number",
 -              "description": "Timeout in milliseconds. Defaults to 30000, min 10000, max 3600000."
-+              "description": "Maximum wait in milliseconds. Defaults to 300000, min 10000, max 3600000.",
++              "description": "Maximum wait in milliseconds. Defaults to 30000, min 10000, max 3600000.",
 +              "maximum": 3600000,
 +              "minimum": 10000,
 +              "type": "number"

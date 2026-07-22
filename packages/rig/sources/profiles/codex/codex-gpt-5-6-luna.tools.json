@@ -278,13 +278,35 @@
   },
   {
     "type": "function",
+    "name": "send_message",
+    "description": "Send a message to an existing subagent without starting another turn.",
+    "parameters": {
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "target",
+        "message"
+      ],
+      "properties": {
+        "target": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        }
+      }
+    },
+    "strict": false
+  },
+  {
+    "type": "function",
     "name": "wait_agent",
     "description": "Wait for a subagent status change or completion. Returns early when an agent updates, new user input arrives, or the wait is cancelled.",
     "parameters": {
       "type": "object",
       "properties": {
         "timeout_ms": {
-          "description": "Maximum wait in milliseconds. Defaults to 300000, min 10000, max 3600000.",
+          "description": "Maximum wait in milliseconds. Defaults to 30000, min 10000, max 3600000.",
           "maximum": 3600000,
           "minimum": 10000,
           "type": "number"

@@ -15,7 +15,7 @@ import { CODEX_PROFILE_ARTIFACTS, type CodexProfileCapture } from "../types.js";
 const execFileAsync = promisify(execFile);
 const sourceRelativePath = "codex-rs/models-manager/models.json" as const;
 const toolCaptureClient = "@openai/codex" as const;
-const toolCaptureVersion = "0.144.6";
+const toolCaptureVersion = "0.145.0";
 const toolCaptureSourceDescription =
     "Top-level and nested tool definitions from the first Responses request emitted by the installed official Codex CLI";
 const toolCaptureMethod =

@@ -363,7 +363,14 @@ describe("createCodingAssistantAgent", () => {
             runtime.agent.tools
                 .filter((tool) => tool.codeMode?.namespace === "collaboration")
                 .map((tool) => tool.name),
-        ).toEqual(["followup_task", "interrupt_agent", "list_agents", "spawn_agent", "wait_agent"]);
+        ).toEqual([
+            "followup_task",
+            "interrupt_agent",
+            "list_agents",
+            "send_message",
+            "spawn_agent",
+            "wait_agent",
+        ]);
         expect(
             runtime.agent.tools
                 .filter((tool) => tool.codeMode?.namespace === "rig")
@@ -440,7 +447,14 @@ describe("createCodingAssistantAgent", () => {
             parent.agent.tools
                 .filter((tool) => tool.codeMode?.namespace === "collaboration")
                 .map((tool) => tool.name),
-        ).toEqual(["followup_task", "interrupt_agent", "list_agents", "spawn_agent", "wait_agent"]);
+        ).toEqual([
+            "followup_task",
+            "interrupt_agent",
+            "list_agents",
+            "send_message",
+            "spawn_agent",
+            "wait_agent",
+        ]);
         expect(
             parent.agent.tools
                 .filter((tool) => tool.codeMode?.namespace === "rig")
@@ -465,6 +479,7 @@ describe("createCodingAssistantAgent", () => {
                 "list_agents",
                 "interrupt_agent",
                 "resume_agent",
+                "send_message",
             ]),
         );
         expect(deepest.agent.tools.map((tool) => tool.name)).not.toContain("workflow");
@@ -659,7 +674,14 @@ describe("createCodingAssistantAgent", () => {
             runtime.agent.tools
                 .filter((tool) => tool.codeMode?.namespace === "collaboration")
                 .map((tool) => tool.name),
-        ).toEqual(["followup_task", "interrupt_agent", "list_agents", "spawn_agent", "wait_agent"]);
+        ).toEqual([
+            "followup_task",
+            "interrupt_agent",
+            "list_agents",
+            "send_message",
+            "spawn_agent",
+            "wait_agent",
+        ]);
         expect(
             runtime.agent.tools
                 .filter((tool) => tool.codeMode?.namespace === "rig")

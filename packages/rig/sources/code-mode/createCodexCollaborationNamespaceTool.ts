@@ -28,14 +28,38 @@ function toRigArguments(name: string, args: never): unknown {
             target: official.target,
         };
     }
+    if (name === "send_message") {
+        const official = args as { message: string; target: string };
+        return {
+            encrypted_message: official.message,
+            message: "",
+            target: official.target,
+        };
+    }
     if (name !== "spawn_agent") return args;
-    const official = args as { fork_turns?: string; message: string; task_name: string };
+    const official = args as {
+        fork_turns?: string;
+        message: string;
+        model?: string;
+        reasoning_effort?: string;
+        task_name: string;
+    };
     const fork = resolveCodexForkTurns(official.fork_turns);
     return {
         context: fork.contextMode,
         encrypted_message: official.message,
         ...(fork.lastNTurns === undefined ? {} : { last_n_turns: fork.lastNTurns }),
         message: "",
+        ...(official.model === undefined
+            ? {}
+            : {
+                  model: official.model.startsWith("gpt-")
+                      ? `openai/${official.model}`
+                      : official.model,
+              }),
+        ...(official.reasoning_effort === undefined
+            ? {}
+            : { effort: official.reasoning_effort }),
         task_name: official.task_name,
     };
 }

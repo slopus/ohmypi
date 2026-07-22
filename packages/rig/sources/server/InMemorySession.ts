@@ -2507,6 +2507,29 @@ export class InMemorySession {
         };
     }
 
+    deliverAgentMessage(message: UserMessage): void {
+        this.#assertAcceptingWork();
+        const agent = this.#ensureRuntime().agent;
+        const activeRun = this.#activeRun;
+        if (activeRun !== undefined && agent.status === "running") {
+            this.#pendingSteeringMessages.set(message.id, {
+                message,
+                runId: activeRun.runId,
+            });
+            agent.steerMessage(message);
+            return;
+        }
+        agent.enqueueMessage(message);
+        this.#storeMessage(
+            this.#messages.length,
+            message,
+            false,
+            activeRun?.runId ?? this.#lastSessionRunId ?? `agent:${message.id}`,
+        );
+        this.#lastMessageAt = this.#now();
+        this.#saveSession();
+    }
+
     subagentSummary(): SubagentSummary {
         if (
             this.#agentMetadata.type !== "subagent" ||
@@ -3573,6 +3596,8 @@ export class InMemorySession {
                 list: (pathPrefix) => agentManager.list(this.id, pathPrefix),
                 maxDepth: agentManager.maxDepth,
                 resume: (target) => agentManager.resume(this.id, target),
+                sendMessage: (target, message, encryptedMessage) =>
+                    agentManager.sendMessage(this.id, target, message, encryptedMessage),
                 spawn: (request, signal) => agentManager.spawn(this.id, request, signal),
                 wait: (timeoutMs, signal) => agentManager.wait(this.id, timeoutMs, signal),
             };

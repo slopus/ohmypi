@@ -1,5 +1,5 @@
 diff --git a/codex-gpt-5-6-luna.tools.golden.json b/codex-gpt-5-6-luna.tools.json
-index 677b4e7..ceeacd7 100644
+index 677b4e7..d121432 100644
 --- a/codex-gpt-5-6-luna.tools.golden.json
 +++ b/codex-gpt-5-6-luna.tools.json
 @@ -2,7 +2,7 @@
@@ -11,7 +11,7 @@ index 677b4e7..ceeacd7 100644
      "format": {
        "type": "grammar",
        "syntax": "lark",
-@@ -13,100 +13,335 @@
+@@ -13,100 +13,357 @@
      "type": "function",
      "name": "wait",
      "description": "Waits on a yielded `exec` cell and returns new output or completion.\n- Use `wait` only after `exec` returns `Script running with cell ID ...`.\n- `cell_id` identifies the running `exec` cell to resume.\n- `yield_time_ms` controls how long to wait for more output before yielding again. Defaults to 10000 ms.\n- `max_tokens` limits how much new output this wait call returns. Defaults to 10000 tokens.\n- `terminate: true` stops the running cell; false or omitted waits for output.\n- `wait` returns only the new output since the last yield, or the final completion or termination result for that cell.\n- If the cell is still running, `wait` may yield again with the same `cell_id`.\n- If the cell has already finished, `wait` returns the completed result and closes the cell.",
@@ -206,12 +206,9 @@ index 677b4e7..ceeacd7 100644
 +    "description": "Wait indefinitely for one workflow run to finish and return its consolidated result.\n\nUse this after starting a workflow when the user asked you to wait for its result. Call it once instead of polling workflow status or ending your turn. The call remains active for workflows of any duration and resumes automatically when the workflow completes, fails, or is stopped. If the user cancels this tool call, only the wait is cancelled; the workflow continues running in the background and will still send its completion notification.",
 +    "parameters": {
 +      "type": "object",
-       "required": [
--        "questions"
++      "required": [
 +        "run_id"
-       ],
--      "additionalProperties": false
--    }
++      ],
 +      "properties": {
 +        "run_id": {
 +          "description": "Workflow run identifier returned by workflow.",
@@ -227,9 +224,12 @@ index 677b4e7..ceeacd7 100644
 +    "description": "Read the current status and consolidated output of a workflow run.",
 +    "parameters": {
 +      "type": "object",
-+      "required": [
+       "required": [
+-        "questions"
 +        "run_id"
-+      ],
+       ],
+-      "additionalProperties": false
+-    }
 +      "properties": {
 +        "run_id": {
 +          "description": "Workflow run identifier returned by workflow.",
@@ -337,13 +337,35 @@ index 677b4e7..ceeacd7 100644
 +  },
 +  {
 +    "type": "function",
++    "name": "send_message",
++    "description": "Send a message to an existing subagent without starting another turn.",
++    "parameters": {
++      "additionalProperties": false,
++      "type": "object",
++      "required": [
++        "target",
++        "message"
++      ],
++      "properties": {
++        "target": {
++          "type": "string"
++        },
++        "message": {
++          "type": "string"
++        }
++      }
++    },
++    "strict": false
++  },
++  {
++    "type": "function",
 +    "name": "wait_agent",
 +    "description": "Wait for a subagent status change or completion. Returns early when an agent updates, new user input arrives, or the wait is cancelled.",
 +    "parameters": {
 +      "type": "object",
 +      "properties": {
 +        "timeout_ms": {
-+          "description": "Maximum wait in milliseconds. Defaults to 300000, min 10000, max 3600000.",
++          "description": "Maximum wait in milliseconds. Defaults to 30000, min 10000, max 3600000.",
 +          "maximum": 3600000,
 +          "minimum": 10000,
 +          "type": "number"

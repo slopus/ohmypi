@@ -67,6 +67,7 @@ export interface SubagentContext {
     list(pathPrefix?: string): readonly ManagedSubagent[];
     maxDepth: number;
     resume(target: string): ManagedSubagent;
+    sendMessage?(target: string, message: string, encryptedMessage?: string): ManagedSubagent;
     spawn(request: SpawnSubagentRequest, signal?: AbortSignal): Promise<SpawnSubagentResult>;
     wait(timeoutMs?: number, signal?: AbortSignal): Promise<WaitForSubagentResult>;
 }

@@ -5,8 +5,9 @@ import type { InMemorySession } from "./InMemorySession.js";
 import { AgentSessionManager } from "./AgentSessionManager.js";
 
 describe("AgentSessionManager", () => {
-    it("forwards opaque Codex follow-ups only within one compatible provider and region", () => {
+    it("forwards opaque Codex collaboration only within one compatible provider and region", () => {
         const submit = vi.fn(() => ({ runId: "child-run" }));
+        const deliverAgentMessage = vi.fn();
         const encryptedAgentTransportScope = vi.fn(() => '["codex",null]');
         const child = {
             agentMetadata: () => ({
@@ -19,6 +20,7 @@ describe("AgentSessionManager", () => {
             id: "child-1",
             isSubagent: () => true,
             encryptedAgentTransportScope,
+            deliverAgentMessage,
             subagentSummary: () => ({
                 description: "Audit",
                 status: "completed" as const,
@@ -57,9 +59,28 @@ describe("AgentSessionManager", () => {
             text: "",
         });
 
+        expect(manager.sendMessage(parent.id, "audit", "", "opaque-message")).toMatchObject({
+            sessionId: child.id,
+        });
+        expect(deliverAgentMessage).toHaveBeenCalledWith({
+            blocks: [],
+            encryptedAgentMessage: {
+                author: "/root",
+                recipient: "/root/audit",
+                header: "Message Type: MESSAGE\nTask name: /root/audit\nSender: /root\nPayload:\n",
+                encryptedContent: "opaque-message",
+            },
+            id: expect.any(String),
+            provenance: "agent",
+            role: "user",
+        });
+
         encryptedAgentTransportScope.mockReturnValue('["bedrock","us-east-1"]');
         expect(() => manager.followUp(parent.id, "audit", "", undefined, "opaque-task")).toThrow(
             "Native encrypted collaboration only works within the same compatible provider and region. Retry with `rig.followup_task` and provide the task normally.",
+        );
+        expect(() => manager.sendMessage(parent.id, "audit", "", "opaque-message")).toThrow(
+            "Native encrypted collaboration only works within the same compatible provider and region.",
         );
         expect(submit).toHaveBeenCalledOnce();
 

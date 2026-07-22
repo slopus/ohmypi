@@ -1,11 +1,5 @@
 import { Type, type TSchema } from "@sinclair/typebox";
 
-import {
-    DEFAULT_SUBAGENT_WAIT_TIMEOUT_MS,
-    MAX_SUBAGENT_WAIT_TIMEOUT_MS,
-    MIN_SUBAGENT_WAIT_TIMEOUT_MS,
-} from "../agent/context/subagentWaitTimeouts.js";
-
 export interface CodexCollaborationNamespaceDefinition {
     description: string;
     name: string;
@@ -80,7 +74,9 @@ const definitions: Readonly<Record<string, CodexCollaborationNamespaceDefinition
     spawn_agent: {
         name: "spawn_agent",
         description: `
-${"        "}
+        Available model overrides (optional; inherited parent model is preferred):
+- \`gpt-5.6-sol\`: Latest frontier agentic coding model. Reasoning efforts: low (default), medium, high, xhigh, max, ultra. Service tiers: priority.
+- \`gpt-5.6-terra\`: Balanced agentic coding model for everyday work. Reasoning efforts: low, medium (default), high, xhigh, max, ultra. Service tiers: priority.
         Spawns an agent to work on the specified task. If your current task is \`/root/task1\` and you spawn_agent with task_name "task_3" the agent will have canonical task name \`/root/task1/task_3\`.
 You are then able to refer to this agent as \`task_3\` or \`/root/task1/task_3\` interchangeably. However an agent \`/root/task2/task_3\` would only be able to communicate with this agent via its canonical name \`/root/task1/task_3\`.
 The spawned agent will have the same tools as you and the ability to spawn its own subagents.
@@ -100,6 +96,18 @@ Note that passing \`fork_turns="none"\` will not pass any surrounding context to
                     description: "Initial plain-text task for the new agent.",
                     encrypted: true,
                 }),
+                model: Type.Optional(
+                    Type.String({
+                        description:
+                            "Model override for the new agent. Omit unless an explicit override is needed.",
+                    }),
+                ),
+                reasoning_effort: Type.Optional(
+                    Type.String({
+                        description:
+                            "Reasoning effort override for the new agent. Omit to inherit the parent effort.",
+                    }),
+                ),
                 fork_turns: Type.Optional(
                     Type.String({
                         description:
@@ -118,9 +126,8 @@ Note that passing \`fork_turns="none"\` will not pass any surrounding context to
             {
                 timeout_ms: Type.Optional(
                     Type.Number({
-                        description: `Timeout in milliseconds. Defaults to ${DEFAULT_SUBAGENT_WAIT_TIMEOUT_MS}, min ${MIN_SUBAGENT_WAIT_TIMEOUT_MS}, max ${MAX_SUBAGENT_WAIT_TIMEOUT_MS}.`,
-                        maximum: MAX_SUBAGENT_WAIT_TIMEOUT_MS,
-                        minimum: MIN_SUBAGENT_WAIT_TIMEOUT_MS,
+                        description:
+                            "Timeout in milliseconds. Defaults to 30000, min 10000, max 3600000.",
                     }),
                 ),
             },
