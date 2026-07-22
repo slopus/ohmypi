@@ -58,7 +58,7 @@ describe("subagent live log", () => {
                                 output: 0,
                                 total: 0,
                             },
-                            input: 1_000,
+                            input: 100,
                             output: 250,
                             totalTokens: 1_250,
                         },
@@ -87,7 +87,7 @@ describe("subagent live log", () => {
         expect(completed.text).toContain("LAST_LOG_LINE");
         expect(completed.text).not.toContain("FIRST_LOG_LINE");
         expect(completed.text).toContain("Gym");
-        expect(completed.text).toContain("350 context tokens");
+        expect(completed.text).toContain("1.3k context tokens");
     }, 60_000);
 });
 

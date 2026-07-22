@@ -104,7 +104,6 @@ import { createSessionMetadataTranscript } from "./createSessionMetadataTranscri
 import { generateSessionMetadata } from "./generateSessionMetadata.js";
 import { createAbortRequestKey } from "./createAbortRequestKey.js";
 import { createGoalTitle } from "./createGoalTitle.js";
-import { createdContextTokens } from "./createdContextTokens.js";
 import { formatShellCommandContext } from "./formatShellCommandContext.js";
 import { getProviderIdForModel } from "./getProviderIdForModel.js";
 import { getProviderIdsForModel } from "./getProviderIdsForModel.js";
@@ -3370,15 +3369,8 @@ export class InMemorySession {
         if (partialPosition !== undefined) {
             this.#activePartial = undefined;
         }
-        if (message.role === "agent") {
-            const previousTokens =
-                existingMessage?.message.role === "agent" &&
-                existingMessage.message.usage !== undefined
-                    ? createdContextTokens(existingMessage.message.usage)
-                    : 0;
-            this.#totalTokens +=
-                (message.usage === undefined ? 0 : createdContextTokens(message.usage)) -
-                previousTokens;
+        if (message.role === "agent" && message.usage !== undefined) {
+            this.#totalTokens = message.usage.totalTokens;
         }
         this.#append("agent_message", { message, runId });
         if (this.isSubagent()) this.#agentManager?.recordChanged(this);
