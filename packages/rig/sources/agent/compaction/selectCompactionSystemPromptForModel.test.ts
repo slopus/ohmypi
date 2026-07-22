@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { KIMI_COMPACTION_SYSTEM_PROMPT } from "../prompts/kimiCompactionSystemPrompt.js";
+import { KIMI_COMPACTION_SYSTEM_PROMPT } from "../../profiles/kimi/prompts/compactionSystemPrompt.js";
 import { modelMoonshotKimiK3, modelOpenaiGpt54 } from "../../providers/models.js";
 import { selectCompactionSystemPromptForModel } from "./selectCompactionSystemPromptForModel.js";
 

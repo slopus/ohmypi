@@ -1,7 +1,7 @@
 import {
     KIMI_SUBAGENT_INSTRUCTIONS_MARKER,
     kimiSubagentInstructions,
-} from "./prompts/kimiSubagentInstructions.js";
+} from "../profiles/kimi/prompts/subagentInstructions.js";
 
 const genericSubagentInstructionsMarker = "You are a subagent working on one delegated step.";
 

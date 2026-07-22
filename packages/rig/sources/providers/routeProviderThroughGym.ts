@@ -26,12 +26,16 @@ export function routeProviderThroughGym(provider: Provider, env: NodeJS.ProcessE
             : { contextCompatibilityKey: (model) => provider.contextCompatibilityKey!(model) }),
         ...(contextWindow === undefined ? {} : { contextWindow }),
         endpoint,
+        ...(provider.extendProfilePromptContext === undefined
+            ? {}
+            : { extendProfilePromptContext: provider.extendProfilePromptContext }),
         imageProfile: (model) => provider.imageProfile(model),
         ...(provider.inferenceCrashContinuation === undefined
             ? {}
             : { inferenceCrashContinuation: provider.inferenceCrashContinuation }),
         models: provider.models,
         providerId: provider.id,
+        ...(provider.profileType === undefined ? {} : { profileType: provider.profileType }),
         toolProfile: (model) => provider.toolProfile(model),
         ...(provider.serviceTiers === undefined ? {} : { serviceTiers: provider.serviceTiers }),
         ...(env.RIG_GYM_TOKEN === undefined ? {} : { token: env.RIG_GYM_TOKEN }),

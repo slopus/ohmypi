@@ -10,7 +10,10 @@ export const sendMessageTool = defineTool({
     arguments: Type.Object({
         to: Type.String({ description: "The target subagent's task name, path, or agent id." }),
         summary: Type.Optional(
-            Type.String({ description: "A short human-readable summary of the follow-up." }),
+            Type.String({
+                description: "A short human-readable summary of the follow-up.",
+                maxLength: 200,
+            }),
         ),
         message: Type.String({ description: "The follow-up instructions." }),
         effort: Type.Optional(

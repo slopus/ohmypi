@@ -3,10 +3,9 @@ import { describe, expect, it } from "vitest";
 import { NativeProcessManager } from "../processes/index.js";
 import {
     modelAnthropicFable5,
-    modelMoonshotKimiK25,
     modelMoonshotKimiK3,
-    modelOpenaiGpt55,
     modelOpenaiGpt56Sol,
+    modelZaiGlm5,
     modelXaiGrok45,
     modelXaiGrokBuild,
 } from "../providers/models.js";
@@ -462,7 +461,7 @@ describe("createCodingAssistantAgent", () => {
                 AWS_BEARER_TOKEN_BEDROCK: "bedrock-token",
                 AWS_REGION: "us-east-1",
             },
-            modelId: modelMoonshotKimiK25.id,
+            modelId: modelZaiGlm5.id,
             providerId: "bedrock",
             subagents: { ...controls, canSpawn: true },
         });
@@ -474,7 +473,7 @@ describe("createCodingAssistantAgent", () => {
                 AWS_BEARER_TOKEN_BEDROCK: "bedrock-token",
                 AWS_REGION: "us-east-1",
             },
-            modelId: modelMoonshotKimiK25.id,
+            modelId: modelZaiGlm5.id,
             providerId: "bedrock",
             subagents: { ...controls, canSpawn: false, depth: 3 },
         });
@@ -549,12 +548,12 @@ describe("createCodingAssistantAgent", () => {
                 AWS_BEARER_TOKEN_BEDROCK: "bedrock-token",
                 AWS_REGION: "us-east-1",
             },
-            modelId: modelOpenaiGpt55.id,
+            modelId: modelOpenaiGpt56Sol.id,
             providerId: "bedrock",
         });
 
         expect(runtime.provider.id).toBe("bedrock");
-        expect(runtime.agent.model.id).toBe(modelOpenaiGpt55.id);
+        expect(runtime.agent.model.id).toBe(modelOpenaiGpt56Sol.id);
         expect(runtime.agent.tools.map((tool) => tool.name)).toEqual([
             "exec_command",
             "write_stdin",
@@ -565,19 +564,19 @@ describe("createCodingAssistantAgent", () => {
         ]);
     });
 
-    it("uses provider-neutral tools for Bedrock Kimi and GLM models", () => {
+    it("uses provider-neutral tools for Bedrock GLM models", () => {
         const runtime = createCodingAssistantAgent({
             cwd: "/tmp/rig-app-test",
             env: {
                 AWS_BEARER_TOKEN_BEDROCK: "bedrock-token",
                 AWS_REGION: "us-east-1",
             },
-            modelId: modelMoonshotKimiK25.id,
+            modelId: modelZaiGlm5.id,
             providerId: "bedrock",
         });
 
         expect(runtime.provider.id).toBe("bedrock");
-        expect(runtime.agent.model.id).toBe(modelMoonshotKimiK25.id);
+        expect(runtime.agent.model.id).toBe(modelZaiGlm5.id);
         expect(runtime.agent.tools.map((tool) => tool.name)).toEqual([
             "read",
             "bash",

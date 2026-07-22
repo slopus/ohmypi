@@ -3,7 +3,8 @@ import { KIMI_API_MODEL_ID, KIMI_DEFAULT_BASE_URL, KIMI_PROVIDER_ID } from "./ki
 import { createKimiStream } from "./createKimiStream.js";
 import { createProviderQuotaCache } from "./createProviderQuotaCache.js";
 import { fetchKimiProviderQuota } from "./fetchKimiProviderQuota.js";
-import { modelMoonshotKimiK3 } from "./models.js";
+import { modelsForProfileProviderType } from "../profiles/impl/modelsForProfileProviderType.js";
+import { resolveModelProfile } from "../profiles/impl/resolveModelProfile.js";
 import { resolveKimiCredential } from "./resolveKimiCredential.js";
 import { defineProvider, type Provider } from "./types.js";
 
@@ -24,7 +25,7 @@ export interface KimiProviderOptions {
 
 export function createKimiProvider(options: KimiProviderOptions = {}): Provider {
     const providerId = options.id ?? KIMI_PROVIDER_ID;
-    const models = [modelMoonshotKimiK3];
+    const models = modelsForProfileProviderType("kimi");
     const quota = createProviderQuotaCache(() =>
         fetchKimiProviderQuota({
             ...(options.apiKey === undefined ? {} : { apiKey: options.apiKey }),
@@ -38,6 +39,7 @@ export function createKimiProvider(options: KimiProviderOptions = {}): Provider 
     );
     return defineProvider({
         id: providerId,
+        profileType: "kimi",
         imageProfile: () => "codex",
         models,
         toolProfile: () => "kimi",
@@ -47,10 +49,16 @@ export function createKimiProvider(options: KimiProviderOptions = {}): Provider 
             if (availableModel === undefined) {
                 throw new Error(`Kimi model '${model.name}' is not available.`);
             }
+            const profile = resolveModelProfile("kimi", availableModel.id);
+            const maxCompletionTokens = profile?.parameters.maxOutputTokens;
+            if (profile === undefined || maxCompletionTokens === undefined) {
+                throw new Error(`Kimi model '${model.name}' has an incomplete profile.`);
+            }
             return createKimiStream({
-                apiModelId: KIMI_API_MODEL_ID,
+                apiModelId: profile.parameters.wireModelId ?? KIMI_API_MODEL_ID,
                 baseUrl: options.baseUrl ?? KIMI_DEFAULT_BASE_URL,
                 context,
+                maxCompletionTokens,
                 model: availableModel,
                 modelId: availableModel.id,
                 providerId,

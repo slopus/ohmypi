@@ -30,7 +30,12 @@ describe("createDebugProvider", () => {
             name: "Test model",
             thinkingLevels: ["off"],
         });
+        const extendProfilePromptContext = vi.fn((context) => ({
+            ...context,
+            cwd: "/debug/context",
+        }));
         const provider = defineProvider({
+            extendProfilePromptContext,
             id: "test-provider",
             models: [model],
             stream() {
@@ -56,5 +61,6 @@ describe("createDebugProvider", () => {
         await expect(stream.result()).resolves.toBe(message);
         expect(events).toEqual([{ message, reason: "stop", type: "done" }]);
         expect(record).toHaveBeenCalledTimes(3);
+        expect(debugProvider.extendProfilePromptContext).toBe(extendProfilePromptContext);
     });
 });

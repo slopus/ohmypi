@@ -26,13 +26,8 @@ import { getBedrockModelRoute } from "../providers/getBedrockModelRoute.js";
 import { modelMoonshotKimiK3, modelOpenaiGpt56Sol } from "../providers/models.js";
 import type { ServiceTier } from "../providers/types.js";
 import { routeProviderThroughGym } from "../providers/routeProviderThroughGym.js";
-import { claudeCollaborationTools } from "../tools/claude/index.js";
-import { codexCollaborationTools } from "../tools/codex/index.js";
-import { grokCollaborationTools } from "../tools/grok/index.js";
-import { agentTool } from "../tools/Agent.js";
-import { sendMessageTool } from "../tools/SendMessage.js";
 import { goalTools } from "../tools/goals/index.js";
-import { kimiAgentTool, kimiGoalTools, kimiSendMessageTool } from "../tools/kimi/index.js";
+import { kimiGoalTools } from "../tools/kimi/index.js";
 import type { CodingAssistantRuntime } from "./CodingAssistantRuntime.js";
 import { createDefaultInstructions } from "./createDefaultInstructions.js";
 import { createGymJustBashAgentContext } from "./createGymJustBashAgentContext.js";
@@ -41,6 +36,8 @@ import type { DurableSkillDefinition } from "../external-skills/types.js";
 import { resolveGeminiApiKey } from "../tools/webSearch/resolveGeminiApiKey.js";
 import { readAgentHistoryTool } from "../tools/read_agent_history.js";
 import { createAvailableGrokXSearchTool } from "./createAvailableGrokXSearchTool.js";
+import { selectCollaborationToolsForModel } from "./selectCollaborationToolsForModel.js";
+import { resolveModelProfileForProvider } from "../profiles/impl/resolveModelProfileForProvider.js";
 
 export interface CreateCodingAssistantAgentOptions {
     appendSystemPrompt?: string;
@@ -161,9 +158,7 @@ export function createCodingAssistantAgent(
         throw new Error(`Unknown model '${modelId}' for provider '${provider.id}'`);
     }
     const toolProfile = provider.toolProfile(model);
-    const usesClaudeTools = toolProfile === "claude";
-    const usesCodexTools = toolProfile === "codex";
-    const usesGrokTools = toolProfile === "grok";
+    const modelProfile = resolveModelProfileForProvider(provider, model);
     const usesKimiTools = toolProfile === "kimi";
     const geminiApiKey = resolveGeminiApiKey(env);
     const baseTools = selectToolsForModel({
@@ -180,17 +175,7 @@ export function createCodingAssistantAgent(
                   env,
                   providers: options.providers,
               });
-    const collaborationTools = (
-        usesCodexTools
-            ? codexCollaborationTools
-            : usesGrokTools
-              ? grokCollaborationTools
-              : usesKimiTools
-                ? [kimiAgentTool, kimiSendMessageTool]
-                : usesClaudeTools
-                  ? [agentTool, ...claudeCollaborationTools]
-                  : [agentTool, sendMessageTool]
-    ).filter(
+    const collaborationTools = selectCollaborationToolsForModel({ model, provider }).filter(
         (tool) =>
             workflowsEnabled ||
             ![
@@ -236,7 +221,11 @@ export function createCodingAssistantAgent(
         modelId,
         context,
         id: agentId,
-        instructions: options.instructions ?? createDefaultInstructions(runtimeCwd),
+        ...(options.instructions !== undefined
+            ? { instructions: options.instructions }
+            : modelProfile?.providerType === "claude" && modelProfile.prompt.original !== undefined
+              ? {}
+              : { instructions: createDefaultInstructions(runtimeCwd) }),
         ...(options.systemPrompt !== undefined ? { systemPrompt: options.systemPrompt } : {}),
         ...(options.durableSkills !== undefined ? { durableSkills: options.durableSkills } : {}),
         ...(options.messages !== undefined ? { messages: options.messages } : {}),

@@ -6,7 +6,12 @@ import { describe, expect, it } from "vitest";
 import { createNodeAgentContext, runAgentLoop } from "../agent/index.js";
 import { defineTool } from "../agent/types.js";
 import { NativeProcessManager } from "../processes/index.js";
-import { kimiAgentTool, kimiCodeTools, kimiGoalTools } from "../tools/kimi/index.js";
+import {
+    kimiAgentTool,
+    kimiCodeTools,
+    kimiGoalTools,
+    kimiSendMessageTool,
+} from "../tools/kimi/index.js";
 import { createKimiProvider } from "./kimi.js";
 import { modelMoonshotKimiK3 } from "./models.js";
 import { resolveKimiCredential } from "./resolveKimiCredential.js";
@@ -55,11 +60,13 @@ describeLive("Kimi K3 provider live", () => {
     }, 120_000);
 
     it("accepts every real Rig Kimi tool schema in one request", async () => {
-        const tools = [...kimiCodeTools, kimiAgentTool, ...kimiGoalTools].map((tool) => ({
-            description: tool.description,
-            name: tool.name,
-            parameters: tool.arguments,
-        }));
+        const tools = [...kimiCodeTools, kimiAgentTool, kimiSendMessageTool, ...kimiGoalTools].map(
+            (tool) => ({
+                description: tool.description,
+                name: tool.name,
+                parameters: tool.arguments,
+            }),
+        );
         const stream = createKimiProvider({
             sessionId: `kimi-live-schemas-${Date.now()}`,
         }).stream(

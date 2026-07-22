@@ -2,8 +2,6 @@ import { describe, expect, it } from "vitest";
 
 import {
     modelAnthropicFable5,
-    modelMoonshotKimiK25,
-    modelOpenaiGpt55,
     modelOpenaiGpt56Luna,
     modelOpenaiGpt56Sol,
     modelOpenaiGpt56Terra,
@@ -63,8 +61,11 @@ describe("createModelCatalog", () => {
         expect(catalog.defaultProviderId).toBe("codex");
         expect(catalog.defaultModelId).toBe(modelOpenaiGpt56Sol.id);
         expect(codex?.models).toContain(modelOpenaiGpt56Sol);
-        expect(codex?.models).toContain(modelOpenaiGpt55);
-        expect(bedrock?.models).toContain(modelOpenaiGpt55);
+        expect(codex?.models.map((model) => model.id)).toEqual([
+            modelOpenaiGpt56Sol.id,
+            modelOpenaiGpt56Terra.id,
+            modelOpenaiGpt56Luna.id,
+        ]);
         expect(bedrock?.models.map((model) => model.id)).toEqual(
             expect.arrayContaining([
                 modelOpenaiGpt56Sol.id,
@@ -72,15 +73,17 @@ describe("createModelCatalog", () => {
                 modelOpenaiGpt56Luna.id,
             ]),
         );
-        expect(bedrock?.models).toContain(modelMoonshotKimiK25);
         expect(bedrock?.models).toContain(modelZaiGlm5);
         expect(bedrock?.contextCompatibility).toBe("model_group");
         expect(bedrock?.contextCompatibilityKind).toBe("bedrock");
-        expect(modelMoonshotKimiK25.contextCompatibilityGroup).toBeUndefined();
         expect(modelZaiGlm5.contextCompatibilityGroup).toBeUndefined();
         expect(bedrock?.serviceTiers).toBeUndefined();
-        expect(catalog.models.filter((model) => model.id === modelOpenaiGpt55.id)).toEqual([
-            modelOpenaiGpt55,
+        expect(catalog.models.filter((model) => model.id === modelOpenaiGpt56Sol.id)).toEqual([
+            expect.objectContaining({
+                contextWindow: 272_000,
+                id: modelOpenaiGpt56Sol.id,
+                thinkingLevels: expect.not.arrayContaining(["ultra"]),
+            }),
         ]);
     });
 
@@ -158,8 +161,8 @@ describe("createModelCatalog", () => {
                 work_codex: {
                     authFile: "/tmp/codex-work-auth.json",
                     enabled: true,
-                    excludeModels: [modelOpenaiGpt55.id],
-                    includeModels: [modelOpenaiGpt56Sol.id, modelOpenaiGpt55.id],
+                    excludeModels: [modelOpenaiGpt56Luna.id],
+                    includeModels: [modelOpenaiGpt56Sol.id, modelOpenaiGpt56Luna.id],
                     type: "codex",
                 },
                 claude: { enabled: true, type: "claude" },

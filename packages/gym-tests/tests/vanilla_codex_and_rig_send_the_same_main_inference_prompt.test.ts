@@ -3,13 +3,11 @@ import { zstdDecompressSync } from "node:zlib";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { createPermissionInstructions } from "../../rig/sources/agent/createPermissionInstructions.js";
-import { GPT_5_4_SYSTEM_PROMPT } from "../../rig/sources/agent/prompts/gpt54SystemPrompt.js";
-import { GPT_5_5_SYSTEM_PROMPT } from "../../rig/sources/agent/prompts/gpt55SystemPrompt.js";
-import { GPT_5_6_SOL_SYSTEM_PROMPT } from "../../rig/sources/agent/prompts/gpt56SolSystemPrompt.js";
-import { GPT_5_6_TERRA_SYSTEM_PROMPT } from "../../rig/sources/agent/prompts/gpt56TerraSystemPrompt.js";
+import { GPT_5_6_SOL_SYSTEM_PROMPT } from "../../rig/sources/profiles/codex/prompts/gpt56SolSystemPrompt.js";
+import { GPT_5_6_TERRA_SYSTEM_PROMPT } from "../../rig/sources/profiles/codex/prompts/gpt56TerraSystemPrompt.js";
 import type { AnyDefinedTool } from "../../rig/sources/agent/types.js";
 import { createDefaultInstructions } from "../../rig/sources/runtime/createDefaultInstructions.js";
-import { CODEX_ULTRA_INSTRUCTIONS } from "../../rig/sources/providers/codexUltraInstructions.js";
+import { CODEX_ULTRA_INSTRUCTIONS } from "../../rig/sources/profiles/codex/appends/codexUltraInstructions.js";
 import { codexCollaborationTools, codexTools } from "../../rig/sources/tools/codex/index.js";
 import { goalTools } from "../../rig/sources/tools/goals/index.js";
 import {
@@ -45,18 +43,6 @@ const codexModels = [
         rigModelId: "openai/gpt-5.6-luna",
         systemPrompt: GPT_5_6_TERRA_SYSTEM_PROMPT,
         wireModelId: "gpt-5.6-luna",
-    },
-    {
-        name: "GPT-5.5",
-        rigModelId: "openai/gpt-5.5",
-        systemPrompt: GPT_5_5_SYSTEM_PROMPT,
-        wireModelId: "gpt-5.5",
-    },
-    {
-        name: "GPT-5.4",
-        rigModelId: "openai/gpt-5.4",
-        systemPrompt: GPT_5_4_SYSTEM_PROMPT,
-        wireModelId: "gpt-5.4",
     },
 ] as const satisfies readonly CodexModelCase[];
 const ultraCodexModels = codexModels.slice(0, 2);

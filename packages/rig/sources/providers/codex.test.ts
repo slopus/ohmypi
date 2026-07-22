@@ -7,7 +7,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { validJpeg32Base64, validPng32Base64 } from "../tools/testing/validImageFixtures.js";
 import { createCodexProvider } from "./codex.js";
-import { CODEX_ULTRA_INSTRUCTIONS } from "./codexUltraInstructions.js";
 import { modelOpenaiGpt55, modelOpenaiGpt56Sol } from "./models.js";
 import type { Context } from "./types.js";
 
@@ -169,11 +168,11 @@ describe("codex provider", () => {
     );
 
     it.each([
-        { thinking: "max", expectedEffort: "max", hasUltraInstructions: false },
-        { thinking: "ultra", expectedEffort: "max", hasUltraInstructions: true },
+        { thinking: "max", expectedEffort: "max" },
+        { thinking: "ultra", expectedEffort: "max" },
     ])(
         "maps GPT-5.6 $thinking reasoning to Codex $expectedEffort",
-        async ({ thinking, expectedEffort, hasUltraInstructions }) => {
+        async ({ thinking, expectedEffort }) => {
             let requestBody: unknown;
             vi.stubGlobal(
                 "fetch",
@@ -205,11 +204,7 @@ describe("codex provider", () => {
                 },
             });
             const instructions = (requestBody as { instructions?: unknown }).instructions;
-            if (hasUltraInstructions) {
-                expect(instructions).toContain(CODEX_ULTRA_INSTRUCTIONS);
-            } else {
-                expect(instructions).not.toContain(CODEX_ULTRA_INSTRUCTIONS);
-            }
+            expect(instructions).toBe("You are a helpful assistant.");
         },
     );
 });

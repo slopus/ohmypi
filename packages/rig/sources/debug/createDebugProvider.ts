@@ -23,6 +23,10 @@ export function createDebugProvider(
             ? {}
             : { contextCompatibilityKey: (model) => provider.contextCompatibilityKey!(model) }),
         id: provider.id,
+        ...(provider.extendProfilePromptContext === undefined
+            ? {}
+            : { extendProfilePromptContext: provider.extendProfilePromptContext }),
+        ...(provider.profileType === undefined ? {} : { profileType: provider.profileType }),
         imageProfile: (model) => provider.imageProfile(model),
         ...(provider.inferenceCrashContinuation === undefined
             ? {}

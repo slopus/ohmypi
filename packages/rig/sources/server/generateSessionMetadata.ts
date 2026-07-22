@@ -116,8 +116,8 @@ function normalizeLine(value: string): string {
 
 function selectMetadataModel(provider: Provider): Model {
     const preferred =
-        findModel(provider, "openai/gpt-5.4") ??
-        findModel(provider, "anthropic/haiku-4-5") ??
+        findModel(provider, "openai/gpt-5.6-sol") ??
+        findModel(provider, "anthropic/fable-5") ??
         provider.models.at(-1);
     if (preferred === undefined) {
         throw new Error(`Provider '${provider.id}' has no models for session metadata generation.`);

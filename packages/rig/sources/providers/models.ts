@@ -156,22 +156,6 @@ export const modelXaiGrokComposer25Fast = defineModel({
     contextWindow: 200_000,
 });
 
-export const modelMoonshotKimiK25 = defineModel({
-    id: "moonshot/kimi-k2.5",
-    name: "Kimi K2.5",
-    thinkingLevels: ["off", "on"],
-    defaultThinkingLevel: "on",
-    contextWindow: 256_000,
-});
-
-export const modelMoonshotKimiK2Thinking = defineModel({
-    id: "moonshot/kimi-k2-thinking",
-    name: "Kimi K2 Thinking",
-    thinkingLevels: ["on"],
-    defaultThinkingLevel: "on",
-    contextWindow: 256_000,
-});
-
 export const modelMoonshotKimiK3 = defineModel({
     id: "moonshot/kimi-k3",
     name: "Kimi K3",

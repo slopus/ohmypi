@@ -5,19 +5,20 @@ import { runAgentLoop } from "../agent/loop.js";
 import { defineTool } from "../agent/types.js";
 import { createJustBashToolHarness } from "../tools/testing/createJustBashToolHarness.js";
 import { validPng32Base64 } from "../tools/testing/validImageFixtures.js";
-import {
-    modelAnthropicFable5,
-    modelAnthropicOpus46,
-    modelAnthropicOpus47,
-    modelAnthropicOpus48,
-    modelAnthropicSonnet5,
-    modelAnthropicSonnet46,
-    modelAnthropicSonnet461m,
-} from "./models.js";
-import { createClaudeSdkProvider, type ClaudeSdkQuery } from "./claude-sdk.js";
+import { modelAnthropicFable5, modelAnthropicOpus48, modelAnthropicSonnet5 } from "./models.js";
+import { createClaudeSdkProvider, toZodSchema, type ClaudeSdkQuery } from "./claude-sdk.js";
 import type { Context } from "./types.js";
 
 describe("Claude SDK provider", () => {
+    it("preserves arbitrary metadata keys in nested tool objects", () => {
+        const schema = toZodSchema(Type.Object({}, { additionalProperties: Type.Unknown() }));
+
+        expect(schema.parse({ issue: "RIG-42", priority: 2 })).toEqual({
+            issue: "RIG-42",
+            priority: 2,
+        });
+    });
+
     it("preserves exhausted-credit classification and reset metadata from the SDK", async () => {
         const harness = createJustBashToolHarness();
         const provider = createClaudeSdkProvider({
@@ -185,6 +186,7 @@ describe("Claude SDK provider", () => {
                 CLAUDE_CONFIG_DIR: "/test/claude-config",
                 ENABLE_BETA_TRACING_DETAILED: "1",
                 OTEL_LOGS_EXPORTER: "otlp",
+                SHELL: "/bin/zsh",
             },
             pathToClaudeCodeExecutable: "/test/claude",
             sessionId: "11111111-1111-4111-8111-111111111111",
@@ -288,6 +290,17 @@ describe("Claude SDK provider", () => {
             OTEL_TRACES_EXPORTER: "none",
         });
         expect(calls[0]?.options?.env?.CLAUDE_CONFIG_DIR).toBe("/test/claude-config");
+        expect(
+            await provider.extendProfilePromptContext?.({
+                modelId: modelAnthropicFable5.id,
+                providerId: provider.id,
+            }),
+        ).toEqual({
+            claudeConfigDirectory: "/test/claude-config",
+            modelId: modelAnthropicFable5.id,
+            providerId: provider.id,
+            shell: "/bin/zsh",
+        });
         expect(calls[0]?.options?.includePartialMessages).toBe(true);
         expect(calls[0]?.options?.maxTurns).toBeUndefined();
         expect(calls[0]?.options?.env?.CLAUDE_CODE_MAX_OUTPUT_TOKENS).toBe("128000");
@@ -943,27 +956,6 @@ describe("Claude SDK provider", () => {
                 messages: [{ role: "user", content: "Say ok.", timestamp: 4 }],
             })
             .result();
-        await provider
-            .stream(modelAnthropicOpus47, {
-                messages: [{ role: "user", content: "Say ok.", timestamp: 5 }],
-            })
-            .result();
-        await provider
-            .stream(modelAnthropicOpus46, {
-                messages: [{ role: "user", content: "Say ok.", timestamp: 6 }],
-            })
-            .result();
-        await provider
-            .stream(modelAnthropicSonnet461m, {
-                messages: [{ role: "user", content: "Say ok.", timestamp: 7 }],
-            })
-            .result();
-        await provider
-            .stream(modelAnthropicSonnet46, {
-                messages: [{ role: "user", content: "Say ok.", timestamp: 8 }],
-            })
-            .result();
-
         expect(calls[0]?.options?.model).toBe("sonnet[1m]");
         expect(calls[0]?.options?.effort).toBe("xhigh");
         expect(calls[0]?.options?.thinking).toEqual({
@@ -979,10 +971,7 @@ describe("Claude SDK provider", () => {
         expect(calls[1]?.options?.env?.CLAUDE_CODE_EFFORT_LEVEL).toBe("ultracode");
         expect(calls[2]?.options?.model).toBe("opus[1m]");
         expect(calls[3]?.options?.model).toBe("claude-fable-5[1m]");
-        expect(calls[4]?.options?.model).toBe("claude-opus-4-7[1m]");
-        expect(calls[5]?.options?.model).toBe("claude-opus-4-6[1m]");
-        expect(calls[6]?.options?.model).toBe("claude-sonnet-4-6[1m]");
-        expect(calls[7]?.options?.model).toBe("claude-sonnet-4-6");
+        expect(calls[3]?.options?.env?.CLAUDE_CODE_MAX_OUTPUT_TOKENS).toBe("128000");
     });
 
     it("resolves a result when callers do not consume stream events", async () => {

@@ -1580,7 +1580,7 @@ describe("PersistentSessionStore", () => {
         const { cleanup, databasePath } = await createDatabasePath();
         const model = defineModel({
             defaultThinkingLevel: "off",
-            id: "anthropic/sonnet-4-6",
+            id: "anthropic/sonnet-5",
             name: "Claude Test",
             thinkingLevels: ["off"],
         });

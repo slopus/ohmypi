@@ -12,6 +12,8 @@ const MAX_WORKFLOW_SCRIPT_CHARS = 524_288;
 
 const WORKFLOW_DESCRIPTION = `Run a deterministic multi-agent workflow in the background using sandboxed Python.
 
+Provide exactly one of \`script\` or \`scriptPath\`.
+
 Only use this tool when the user explicitly asks for a workflow, multi-agent orchestration, or "ultracode". Workflows can spend substantially more tokens than a normal turn.
 
 The Python script coordinates agents but has no direct filesystem, shell, environment, or network access. Those capabilities remain inside the subagents. The final Python expression becomes the consolidated workflow result. Do not use top-level return.

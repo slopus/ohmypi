@@ -1,7 +1,8 @@
 import type { GrokOpenAIClient } from "./createGrokOpenAIClient.js";
 import { createGrokStream } from "./createGrokStream.js";
 import { GROK_DEFAULT_BASE_URL, GROK_PROVIDER_ID } from "./grok-constants.js";
-import { modelXaiGrok45, modelXaiGrokBuild, modelXaiGrokComposer25Fast } from "./models.js";
+import { modelsForProfileProviderType } from "../profiles/impl/modelsForProfileProviderType.js";
+import { resolveModelProfile } from "../profiles/impl/resolveModelProfile.js";
 import { resolveGrokCredential } from "./resolveGrokCredential.js";
 import { defineProvider, type Provider } from "./types.js";
 
@@ -20,10 +21,11 @@ export interface GrokProviderOptions {
 
 export function createGrokProvider(options: GrokProviderOptions = {}): Provider {
     const providerId = options.id ?? GROK_PROVIDER_ID;
-    const models = [modelXaiGrokBuild, modelXaiGrok45, modelXaiGrokComposer25Fast];
+    const models = modelsForProfileProviderType("grok");
     return defineProvider({
         contextCompatibility: "model_group",
         id: providerId,
+        profileType: "grok",
         imageProfile: () => "codex",
         toolProfile: () => "grok",
         models,
@@ -56,5 +58,7 @@ export function createGrokProvider(options: GrokProviderOptions = {}): Provider 
 export type GrokProvider = ReturnType<typeof createGrokProvider>;
 
 function toGrokApiModelId(modelId: string): string {
+    const profile = resolveModelProfile("grok", modelId);
+    if (profile?.parameters.wireModelId !== undefined) return profile.parameters.wireModelId;
     return modelId.startsWith("xai/") ? modelId.slice("xai/".length) : modelId;
 }

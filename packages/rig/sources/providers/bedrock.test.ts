@@ -7,14 +7,9 @@ import { BEDROCK_MODEL_ROUTES } from "./bedrock-model-routes.js";
 import {
     modelAnthropicOpus48,
     modelAnthropicSonnet5,
-    modelMoonshotKimiK25,
-    modelMoonshotKimiK2Thinking,
-    modelOpenaiGpt54,
-    modelOpenaiGpt55,
     modelOpenaiGpt56Luna,
     modelOpenaiGpt56Sol,
     modelOpenaiGpt56Terra,
-    modelZaiGlm47,
     modelZaiGlm47Flash,
     modelZaiGlm5,
 } from "./models.js";
@@ -63,7 +58,7 @@ describe("Amazon Bedrock provider", () => {
         expect(provider.imageProfile(modelOpenaiGpt56Sol)).toBe("codex");
         expect(provider.toolProfile(modelAnthropicOpus48)).toBe("claude");
         expect(provider.toolProfile(modelOpenaiGpt56Sol)).toBe("codex");
-        expect(provider.toolProfile(modelMoonshotKimiK25)).toBe("pi");
+        expect(provider.toolProfile(modelZaiGlm5)).toBe("pi");
     });
 
     it("routes Anthropic models through Bedrock Runtime with adaptive thinking", async () => {
@@ -101,7 +96,7 @@ describe("Amazon Bedrock provider", () => {
         });
     });
 
-    it("routes Kimi and GLM through native Bedrock Runtime Converse", async () => {
+    it("routes GLM through native Bedrock Runtime Converse", async () => {
         const piStream = {} as AssistantMessageEventStream;
         const streamRuntime = vi.fn(
             ((..._args: Parameters<PiBedrockRuntimeStream>) => piStream) as PiBedrockRuntimeStream,
@@ -112,39 +107,23 @@ describe("Amazon Bedrock provider", () => {
             streamRuntime,
         });
 
-        provider.stream(modelMoonshotKimiK25, { messages: [] }, { thinking: "off" });
         provider.stream(modelZaiGlm5, { messages: [] }, { thinking: "high" });
 
-        expect(streamRuntime).toHaveBeenCalledTimes(2);
+        expect(streamRuntime).toHaveBeenCalledOnce();
         expect(streamRuntime.mock.calls[0]?.[0]).toMatchObject({
-            api: "bedrock-converse-stream",
-            id: "moonshotai.kimi-k2.5",
-            input: ["text", "image"],
-            reasoning: true,
-        });
-        expect(streamRuntime.mock.calls[0]?.[2]).toMatchObject({
-            bearerToken: "bedrock-token",
-            maxTokens: 16_000,
-            region: "us-east-1",
-        });
-        const kimiPayload = await streamRuntime.mock.calls[0]?.[2]?.onPayload?.(
-            { messages: [] },
-            streamRuntime.mock.calls[0]![0],
-        );
-        expect(kimiPayload).toMatchObject({
-            additionalModelRequestFields: {
-                thinking: { type: "disabled" },
-            },
-        });
-        expect(streamRuntime.mock.calls[1]?.[0]).toMatchObject({
             api: "bedrock-converse-stream",
             id: "zai.glm-5",
             input: ["text"],
             reasoning: true,
         });
-        const glmPayload = await streamRuntime.mock.calls[1]?.[2]?.onPayload?.(
+        expect(streamRuntime.mock.calls[0]?.[2]).toMatchObject({
+            bearerToken: "bedrock-token",
+            maxTokens: 32_000,
+            region: "us-east-1",
+        });
+        const glmPayload = await streamRuntime.mock.calls[0]?.[2]?.onPayload?.(
             { messages: [] },
-            streamRuntime.mock.calls[1]![0],
+            streamRuntime.mock.calls[0]![0],
         );
         expect(glmPayload).toMatchObject({
             additionalModelRequestFields: {
@@ -165,20 +144,15 @@ describe("Amazon Bedrock provider", () => {
             streamRuntime,
         });
 
-        provider.stream(modelMoonshotKimiK2Thinking, { messages: [] });
-        provider.stream(modelZaiGlm47, { messages: [] }, { thinking: "off" });
+        provider.stream(modelZaiGlm47Flash, { messages: [] }, { thinking: "off" });
         provider.stream(modelZaiGlm5, { messages: [] }, { thinking: "max" });
 
-        expect(modelMoonshotKimiK25.thinkingLevels).toEqual(["off", "on"]);
-        expect(modelMoonshotKimiK2Thinking.thinkingLevels).toEqual(["on"]);
-        expect(modelZaiGlm47.thinkingLevels).toEqual(["off", "on"]);
         expect(modelZaiGlm47Flash.thinkingLevels).toEqual(["off", "on"]);
         expect(modelZaiGlm5.thinkingLevels).toEqual(["off", "high", "max"]);
 
-        expect(streamRuntime.mock.calls[0]?.[2]?.onPayload).toBeUndefined();
-        const glmOffPayload = await streamRuntime.mock.calls[1]?.[2]?.onPayload?.(
+        const glmOffPayload = await streamRuntime.mock.calls[0]?.[2]?.onPayload?.(
             { messages: [] },
-            streamRuntime.mock.calls[1]![0],
+            streamRuntime.mock.calls[0]![0],
         );
         expect(glmOffPayload).toMatchObject({
             additionalModelRequestFields: {
@@ -190,9 +164,9 @@ describe("Amazon Bedrock provider", () => {
                 .additionalModelRequestFields,
         ).not.toHaveProperty("reasoning_effort");
 
-        const glmMaxPayload = await streamRuntime.mock.calls[2]?.[2]?.onPayload?.(
+        const glmMaxPayload = await streamRuntime.mock.calls[1]?.[2]?.onPayload?.(
             { messages: [] },
-            streamRuntime.mock.calls[2]![0],
+            streamRuntime.mock.calls[1]![0],
         );
         expect(glmMaxPayload).toMatchObject({
             additionalModelRequestFields: {
@@ -200,17 +174,8 @@ describe("Amazon Bedrock provider", () => {
                 thinking: { type: "enabled" },
             },
         });
-        expect(streamRuntime.mock.calls[1]?.[2]?.maxTokens).toBe(4_000);
-        expect(streamRuntime.mock.calls[2]?.[2]?.maxTokens).toBe(32_000);
-    });
-
-    it("uses the endpoint-specific AWS model IDs for Kimi K2 Thinking", () => {
-        const route = getBedrockModelRoute(modelMoonshotKimiK2Thinking.id);
-
-        expect(route).toMatchObject({
-            apiModelId: "moonshot.kimi-k2-thinking",
-            mantleApiModelId: "moonshotai.kimi-k2-thinking",
-        });
+        expect(streamRuntime.mock.calls[0]?.[2]?.maxTokens).toBe(4_000);
+        expect(streamRuntime.mock.calls[1]?.[2]?.maxTokens).toBe(32_000);
     });
 
     it("uses the official OpenAI Bedrock client without automatic request replay", () => {
@@ -235,7 +200,7 @@ describe("Amazon Bedrock provider", () => {
     });
 
     it("sends an explicit none effort when OpenAI thinking is off", () => {
-        const modelRoute = getBedrockModelRoute(modelOpenaiGpt55.id);
+        const modelRoute = getBedrockModelRoute(modelOpenaiGpt56Sol.id);
         expect(modelRoute).toBeDefined();
 
         const request = createBedrockOpenAIRequest({
@@ -284,7 +249,7 @@ describe("Amazon Bedrock provider", () => {
         const response = {
             end_turn: false,
             id: "response-1",
-            model: "openai.gpt-5.5",
+            model: "openai.gpt-5.6-sol",
             status: "completed",
             usage: {
                 input_tokens: 12,
@@ -351,14 +316,14 @@ describe("Amazon Bedrock provider", () => {
         });
 
         const message = await provider
-            .stream(modelOpenaiGpt55, { messages: [] }, { thinking: "xhigh" })
+            .stream(modelOpenaiGpt56Sol, { messages: [] }, { thinking: "xhigh" })
             .result();
 
         expect(create).toHaveBeenCalledOnce();
         expect(streamRuntime).not.toHaveBeenCalled();
         expect(create).toHaveBeenCalledWith(
             expect.objectContaining({
-                model: "openai.gpt-5.5",
+                model: "openai.gpt-5.6-sol",
                 reasoning: { effort: "xhigh", summary: "auto" },
                 store: false,
                 stream: true,
@@ -368,7 +333,7 @@ describe("Amazon Bedrock provider", () => {
             content: [{ type: "text", text: "Hello from Bedrock" }],
             provider: "bedrock",
             responseId: "response-1",
-            responseModel: "openai.gpt-5.5",
+            responseModel: "openai.gpt-5.6-sol",
             endTurn: false,
             stopReason: "stop",
             usage: {
@@ -385,7 +350,7 @@ describe("Amazon Bedrock provider", () => {
         const response = {
             id: "response-incomplete",
             incomplete_details: { reason: "max_output_tokens" },
-            model: "openai.gpt-5.5",
+            model: "openai.gpt-5.6-sol",
             status: "incomplete",
         } as unknown as Response;
         const responseStream = {
@@ -402,7 +367,7 @@ describe("Amazon Bedrock provider", () => {
             region: "us-east-1",
         });
 
-        const message = await provider.stream(modelOpenaiGpt55, { messages: [] }).result();
+        const message = await provider.stream(modelOpenaiGpt56Sol, { messages: [] }).result();
 
         expect(message).toMatchObject({
             errorCode: "incomplete_response",
@@ -417,8 +382,6 @@ describe("Amazon Bedrock provider", () => {
             region: "us-west-2",
         });
 
-        expect(provider.models).toContain(modelOpenaiGpt54);
-        expect(provider.models).not.toContain(modelOpenaiGpt55);
         expect(provider.models.map((model) => model.id)).toContain(modelOpenaiGpt56Terra.id);
         expect(provider.models.map((model) => model.id)).toContain(modelOpenaiGpt56Luna.id);
         expect(provider.models.map((model) => model.id)).not.toContain(modelOpenaiGpt56Sol.id);
@@ -468,7 +431,7 @@ describe("Amazon Bedrock provider", () => {
         }
     });
 
-    it("applies the manual in-region availability map for Kimi and GLM", () => {
+    it("applies the manual in-region availability map for GLM", () => {
         const usProvider = createBedrockProvider({
             bearerToken: "bedrock-token",
             region: "us-east-1",
@@ -479,19 +442,10 @@ describe("Amazon Bedrock provider", () => {
         });
 
         expect(usProvider.models).toEqual(
-            expect.arrayContaining([
-                modelMoonshotKimiK25,
-                modelMoonshotKimiK2Thinking,
-                modelZaiGlm5,
-                modelZaiGlm47,
-                modelZaiGlm47Flash,
-            ]),
+            expect.arrayContaining([modelZaiGlm5, modelZaiGlm47Flash]),
         );
         expect(frankfurtProvider.models).toContain(modelZaiGlm47Flash);
-        expect(frankfurtProvider.models).not.toContain(modelMoonshotKimiK25);
-        expect(frankfurtProvider.models).not.toContain(modelMoonshotKimiK2Thinking);
         expect(frankfurtProvider.models).not.toContain(modelZaiGlm5);
-        expect(frankfurtProvider.models).not.toContain(modelZaiGlm47);
     });
 
     it("does not expose commercial Runtime models in unsupported AWS partitions", () => {
@@ -500,7 +454,7 @@ describe("Amazon Bedrock provider", () => {
             region: "us-gov-west-1",
         });
 
-        expect(provider.models).toContain(modelOpenaiGpt54);
+        expect(provider.models).toEqual([]);
         expect(provider.models).not.toContain(modelAnthropicOpus48);
     });
 });

@@ -28,7 +28,9 @@
         "access": "public"
     },
     "scripts": {
-        "build": "tsc -p tsconfig.build.json",
+        "build": "node --eval \"import('node:fs/promises').then(({ rm }) => rm('dist', { force: true, recursive: true }))\" && tsc -p tsconfig.build.json && tsx sources/profiles/claude/copyClaudeProfileAssets.ts",
+        "capture:claude-profile": "tsx sources/profiles/claude/captureClaudeSdkGoldens.ts",
+        "check:claude-profile": "tsx sources/profiles/claude/captureClaudeSdkGoldens.ts --check",
         "check": "tsc --noEmit",
         "dev": "pnpm --filter @slopus/rig-dev dev",
         "start": "node dist/main.js",

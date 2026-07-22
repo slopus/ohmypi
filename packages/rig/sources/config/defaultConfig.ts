@@ -2,7 +2,7 @@ import type { RigConfig } from "./types.js";
 
 export const DEFAULT_RIG_CONFIG: RigConfig = {
     defaults: {
-        modelId: "openai/gpt-5.5",
+        modelId: "openai/gpt-5.6-sol",
         permissionMode: "workspace_write",
     },
     features: {

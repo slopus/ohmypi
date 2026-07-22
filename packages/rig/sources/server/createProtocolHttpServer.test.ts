@@ -890,7 +890,7 @@ describe("createProtocolHttpServer", () => {
         try {
             const created = await client.createSession({
                 cwd: "/tmp/rig-protocol-test",
-                modelId: modelOpenaiGpt55.id,
+                modelId: modelOpenaiGpt56Sol.id,
             });
 
             const changed = await client.changeEffort(created.session.id, { effort: "high" });
@@ -900,7 +900,7 @@ describe("createProtocolHttpServer", () => {
             expect(events.events.at(-1)).toMatchObject({
                 data: {
                     effort: "high",
-                    modelId: modelOpenaiGpt55.id,
+                    modelId: modelOpenaiGpt56Sol.id,
                 },
                 type: "effort_changed",
             });

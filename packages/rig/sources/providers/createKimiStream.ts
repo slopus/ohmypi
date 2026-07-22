@@ -20,6 +20,7 @@ export function createKimiStream(options: {
     }) => KimiChatClient;
     context: Context;
     env?: NodeJS.ProcessEnv;
+    maxCompletionTokens: number;
     model: Model;
     modelId: string;
     providerId: string;
@@ -35,6 +36,7 @@ export function createKimiStream(options: {
     const request = createKimiChatRequest({
         apiModelId: options.apiModelId,
         context: options.context,
+        maxCompletionTokens: options.maxCompletionTokens,
         model: options.model,
         ...(options.sessionId === undefined ? {} : { sessionId: options.sessionId }),
         ...(options.streamOptions === undefined ? {} : { streamOptions: options.streamOptions }),

@@ -19,11 +19,16 @@ describe("routeProviderThroughGym", () => {
                 weekly: { status: "unavailable" as const },
             },
         }));
+        const extendProfilePromptContext = vi.fn((context) => ({
+            ...context,
+            shell: "/bin/zsh",
+        }));
         const native = defineProvider({
             contextCompatibility: "model_group",
             contextCompatibilityKind: "claude_code",
             contextCompatibilityKey: () => "us-east-1",
             id: "codex",
+            extendProfilePromptContext,
             imageProfile: () => "claude",
             models: [model],
             quota,
@@ -47,5 +52,6 @@ describe("routeProviderThroughGym", () => {
         expect(routed.imageProfile(model)).toBe("claude");
         expect(routed.toolProfile(model)).toBe("grok");
         expect(routed.models).toEqual([model]);
+        expect(routed.extendProfilePromptContext).toBe(extendProfilePromptContext);
     });
 });

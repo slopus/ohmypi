@@ -20,16 +20,8 @@ import { z, type ZodTypeAny } from "zod/v4";
 import type { AgentContext, AnyDefinedTool } from "../agent/index.js";
 import { errorToMessage } from "../errorToMessage.js";
 import { claudeCodeTools } from "../tools/claude/index.js";
-import {
-    modelAnthropicFable5,
-    modelAnthropicHaiku45,
-    modelAnthropicOpus46,
-    modelAnthropicOpus47,
-    modelAnthropicOpus48,
-    modelAnthropicSonnet5,
-    modelAnthropicSonnet46,
-    modelAnthropicSonnet461m,
-} from "./models.js";
+import { modelsForProfileProviderType } from "../profiles/impl/modelsForProfileProviderType.js";
+import { resolveModelProfile } from "../profiles/impl/resolveModelProfile.js";
 import { CLAUDE_SDK_PRIVACY_ENVIRONMENT } from "./claudeSdkPrivacyEnvironment.js";
 import { classifyClaudeProviderError } from "./classifyClaudeProviderError.js";
 import { resolveClaudeCodeExecutablePath } from "./resolveClaudeCodeExecutablePath.js";
@@ -74,6 +66,7 @@ export interface ClaudeSdkProviderOptions {
 
 export function createClaudeSdkProvider(options: ClaudeSdkProviderOptions) {
     const query = options.query ?? defaultClaudeSdkQuery;
+    const environment = options.env ?? process.env;
     const tools = options.tools ?? claudeCodeTools;
     const now = options.now ?? Date.now;
     const providerSessionId = options.sessionId ?? randomUUID();
@@ -108,21 +101,20 @@ export function createClaudeSdkProvider(options: ClaudeSdkProviderOptions) {
         contextCompatibility: "model_group",
         contextCompatibilityKind: "claude_code",
         id: options.id ?? CLAUDE_PROVIDER_ID,
+        profileType: "claude",
         inferenceCrashContinuation: {
             userMessage: "Continue after the inference crash.",
         },
+        extendProfilePromptContext: (context) => ({
+            ...context,
+            ...(environment.CLAUDE_CONFIG_DIR === undefined
+                ? {}
+                : { claudeConfigDirectory: environment.CLAUDE_CONFIG_DIR }),
+            ...(environment.SHELL === undefined ? {} : { shell: environment.SHELL }),
+        }),
         imageProfile: () => "claude",
         toolProfile: () => "claude",
-        models: [
-            modelAnthropicFable5,
-            modelAnthropicOpus48,
-            modelAnthropicSonnet5,
-            modelAnthropicOpus47,
-            modelAnthropicOpus46,
-            modelAnthropicSonnet461m,
-            modelAnthropicSonnet46,
-            modelAnthropicHaiku45,
-        ],
+        models: modelsForProfileProviderType("claude"),
         quota: (quotaOptions) => quota.get(quotaOptions),
         compact(model, context, compactionOptions) {
             return this.stream(
@@ -367,6 +359,7 @@ function toClaudeSdkOptions(options: {
     streamOptions: StreamOptions | undefined;
     tools: readonly ProviderTool[];
 }): ClaudeSdkOptions {
+    const profile = resolveModelProfile("claude", options.model.id);
     const abortController = toAbortController(options.streamOptions?.signal);
     const mcpTools = options.tools.map(toClaudeSdkTool);
     const mcpToolNames = options.tools.map(
@@ -393,7 +386,7 @@ function toClaudeSdkOptions(options: {
             ...CLAUDE_SDK_PRIVACY_ENVIRONMENT,
             CLAUDE_CODE_DISABLE_BUNDLED_SKILLS: "1",
             CLAUDE_AGENT_SDK_MCP_NO_PREFIX: "1",
-            CLAUDE_CODE_MAX_OUTPUT_TOKENS: "128000",
+            CLAUDE_CODE_MAX_OUTPUT_TOKENS: String(profile?.parameters.maxOutputTokens ?? 128_000),
             ...(options.streamOptions?.thinking === "ultra"
                 ? { CLAUDE_CODE_EFFORT_LEVEL: "ultracode" }
                 : {}),
@@ -463,9 +456,10 @@ function toZodRawShape(schema: TSchema): Record<string, ZodTypeAny> {
     );
 }
 
-function toZodSchema(schema: TSchema): ZodTypeAny {
+export function toZodSchema(schema: TSchema): ZodTypeAny {
     const jsonSchema = schema as TSchema & {
         anyOf?: TSchema[];
+        additionalProperties?: boolean | TSchema;
         const?: unknown;
         description?: string;
         enum?: unknown[];
@@ -494,7 +488,28 @@ function toZodSchema(schema: TSchema): ZodTypeAny {
             jsonSchema.items === undefined ? z.unknown() : toZodSchema(jsonSchema.items),
         );
     } else if (jsonSchema.type === "object") {
-        zodSchema = z.object(toZodRawShape(schema));
+        const properties = jsonSchema.properties ?? {};
+        const additionalProperties = jsonSchema.additionalProperties;
+        if (
+            Object.keys(properties).length === 0 &&
+            additionalProperties !== false &&
+            additionalProperties !== undefined
+        ) {
+            zodSchema = z.record(
+                z.string(),
+                typeof additionalProperties === "object"
+                    ? toZodSchema(additionalProperties)
+                    : z.unknown(),
+            );
+        } else {
+            const objectSchema = z.object(toZodRawShape(schema));
+            zodSchema =
+                additionalProperties === true
+                    ? objectSchema.catchall(z.unknown())
+                    : typeof additionalProperties === "object"
+                      ? objectSchema.catchall(toZodSchema(additionalProperties))
+                      : objectSchema;
+        }
     } else {
         zodSchema = z.unknown();
     }
@@ -635,6 +650,8 @@ function isClaudeSdkEffortLevel(thinking: string): thinking is EffortLevel {
 }
 
 function toClaudeSdkModelId(model: Model): string {
+    const profile = resolveModelProfile("claude", model.id);
+    if (profile?.parameters.wireModelId !== undefined) return profile.parameters.wireModelId;
     const baseModelId =
         model.id === "anthropic/opus-4-8"
             ? "opus"

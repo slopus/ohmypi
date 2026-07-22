@@ -27,11 +27,13 @@ export interface CreateGymProviderOptions {
     contextCompatibilityKind?: Provider["contextCompatibilityKind"];
     contextCompatibilityKey?: Provider["contextCompatibilityKey"];
     endpoint: string;
+    extendProfilePromptContext?: Provider["extendProfilePromptContext"];
     fetch?: typeof globalThis.fetch;
     imageProfile?: Provider["imageProfile"];
     inferenceCrashContinuation?: Provider["inferenceCrashContinuation"];
     models?: readonly Model[];
     providerId?: string;
+    profileType?: Provider["profileType"];
     serviceTiers?: readonly ServiceTier[];
     toolProfile?: Provider["toolProfile"];
     token?: string;
@@ -53,6 +55,10 @@ export function createGymProvider(options: CreateGymProviderOptions) {
             ? {}
             : { contextCompatibilityKey: options.contextCompatibilityKey }),
         id: providerId,
+        ...(options.profileType === undefined ? {} : { profileType: options.profileType }),
+        ...(options.extendProfilePromptContext === undefined
+            ? {}
+            : { extendProfilePromptContext: options.extendProfilePromptContext }),
         ...(options.inferenceCrashContinuation === undefined
             ? {}
             : { inferenceCrashContinuation: options.inferenceCrashContinuation }),

@@ -55,4 +55,16 @@ describe("Claude Code Read tool", () => {
 
         expect("text" in result ? result.text : "").toContain("not supported");
     });
+
+    it("rejects PDFs instead of decoding binary bytes as text", async () => {
+        const harness = createJustBashToolHarness({
+            files: { "/workspace/example.pdf": "%PDF-1.7\0binary" },
+        });
+
+        const result = await harness.runTool(claudeReadTool, {
+            file_path: "/workspace/example.pdf",
+        });
+
+        expect("text" in result ? result.text : "").toContain("PDF rendering is not supported");
+    });
 });

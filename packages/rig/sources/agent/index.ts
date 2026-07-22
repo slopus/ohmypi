@@ -18,7 +18,6 @@ export { formatSkillInvocation } from "./skills/formatSkillInvocation.js";
 export { loadSkillInstructions } from "./skills/loadSkillInstructions.js";
 export { loadSkills } from "./skills/loadSkills.js";
 export type { Skill } from "./skills/Skill.js";
-export { selectSystemPromptForModel } from "./selectSystemPromptForModel.js";
 export { printAgentMessageToConsole } from "./printAgentMessageToConsole.js";
 export type { AgentConsole } from "./printAgentMessageToConsole.js";
 export { agentMessageToText } from "./agentMessageToText.js";

@@ -208,6 +208,7 @@ export async function runAgentLoop(options: RunAgentLoopOptions): Promise<AgentL
         ...(options.instructions !== undefined ? { instructions: options.instructions } : {}),
         messages: contextTranscript,
         context: options.context,
+        ...(options.effort === undefined ? {} : { effort: options.effort }),
         tools: options.tools,
         ...(options.durableSkills === undefined ? {} : { durableSkills: options.durableSkills }),
     });

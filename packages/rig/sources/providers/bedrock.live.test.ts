@@ -2,8 +2,6 @@ import { describe, expect, it } from "vitest";
 
 import {
     modelAnthropicHaiku45,
-    modelMoonshotKimiK25,
-    modelMoonshotKimiK2Thinking,
     modelOpenaiGpt54,
     modelZaiGlm47Flash,
     modelZaiGlm5,
@@ -21,10 +19,6 @@ const describeLive = LIVE && HAS_BEDROCK_TOKEN ? describe : describe.skip;
 const LIVE_REGION = resolveBedrockRegion(process.env);
 const GPT_54_REGIONS = ["us-east-1", "us-east-2", "us-west-2", "us-gov-west-1"];
 const LIVE_OPENAI_MODEL = GPT_54_REGIONS.includes(LIVE_REGION) ? modelOpenaiGpt54 : undefined;
-const LIVE_KIMI_MODEL = [modelMoonshotKimiK25, modelMoonshotKimiK2Thinking].find((model) => {
-    const route = getBedrockModelRoute(model.id);
-    return route !== undefined && isBedrockModelAvailableInRegion(route, LIVE_REGION);
-});
 const LIVE_GLM_MODEL = [modelZaiGlm5, modelZaiGlm47Flash].find((model) => {
     const route = getBedrockModelRoute(model.id);
     return route !== undefined && isBedrockModelAvailableInRegion(route, LIVE_REGION);
@@ -83,14 +77,6 @@ describeLive("Amazon Bedrock provider live", () => {
         "streams an OpenAI model through Bedrock Mantle using the developer environment",
         async () => {
             await expectOkFromModel(LIVE_OPENAI_MODEL!);
-        },
-        120_000,
-    );
-
-    it.skipIf(LIVE_KIMI_MODEL === undefined)(
-        "streams a Kimi model through Bedrock Runtime using the developer environment",
-        async () => {
-            await expectOkFromModel(LIVE_KIMI_MODEL!, LIVE_KIMI_MODEL!.defaultThinkingLevel);
         },
         120_000,
     );

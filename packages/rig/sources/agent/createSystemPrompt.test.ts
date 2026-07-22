@@ -6,12 +6,10 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { AgentContext } from "./context/AgentContext.js";
 import { createNodeFileSystemContext } from "./context/createNodeFileSystemContext.js";
 import { createSystemPrompt } from "./createSystemPrompt.js";
-import { CLAUDE_CODE_SYSTEM_PROMPT } from "./prompts/claudeCodeSystemPrompt.js";
-import { GPT_5_4_SYSTEM_PROMPT } from "./prompts/gpt54SystemPrompt.js";
-import { GPT_5_5_SYSTEM_PROMPT } from "./prompts/gpt55SystemPrompt.js";
-import { GPT_5_6_SOL_SYSTEM_PROMPT } from "./prompts/gpt56SolSystemPrompt.js";
-import { GPT_5_6_TERRA_SYSTEM_PROMPT } from "./prompts/gpt56TerraSystemPrompt.js";
-import { KIMI_SYSTEM_PROMPT } from "./prompts/kimiSystemPrompt.js";
+import { GPT_5_6_SOL_SYSTEM_PROMPT } from "../profiles/codex/prompts/gpt56SolSystemPrompt.js";
+import { GPT_5_6_TERRA_SYSTEM_PROMPT } from "../profiles/codex/prompts/gpt56TerraSystemPrompt.js";
+import { KIMI_SYSTEM_PROMPT } from "../profiles/kimi/prompts/systemPrompt.js";
+import { CODEX_ULTRA_INSTRUCTIONS } from "../profiles/codex/appends/codexUltraInstructions.js";
 import type { Message } from "./types.js";
 import { createPermissionContext, type PermissionMode } from "../permissions/index.js";
 import { defineModel, defineProvider, type Model, type Provider } from "../providers/types.js";
@@ -87,7 +85,7 @@ describe("createSystemPrompt", () => {
         );
     });
 
-    it("adds the GPT-5.5 prompt and AGENTS.md instructions from project root to cwd", async () => {
+    it("adds the GPT-5.6 prompt and AGENTS.md instructions from project root to cwd", async () => {
         const root = await makeTempDir();
         const nested = join(root, "packages", "app");
         await mkdir(nested, { recursive: true });
@@ -98,8 +96,8 @@ describe("createSystemPrompt", () => {
         await writeFile(join(nested, "AGENTS.md"), "nested rule");
 
         const model = defineModel({
-            id: "openai/gpt-5.5",
-            name: "GPT-5.5",
+            id: "openai/gpt-5.6-sol",
+            name: "GPT-5.6 Sol",
             thinkingLevels: ["off", "medium"],
             defaultThinkingLevel: "medium",
         });
@@ -117,8 +115,8 @@ describe("createSystemPrompt", () => {
             context: contextFor(nested),
         });
 
-        expect(prompt?.startsWith(GPT_5_5_SYSTEM_PROMPT)).toBe(true);
-        expect(prompt).toContain("You are Codex, a coding agent based on GPT-5.");
+        expect(prompt?.startsWith(GPT_5_6_SOL_SYSTEM_PROMPT)).toBe(true);
+        expect(prompt).toContain("You are Codex, an agent based on GPT-5.");
         expect(prompt).not.toContain("You are GPT-5.2 running in the Codex CLI");
         expect(prompt).not.toContain("IGN-CMD");
         expect(prompt).toContain("Base instructions.");
@@ -127,30 +125,6 @@ describe("createSystemPrompt", () => {
         expect(prompt).toContain("<INSTRUCTIONS>\nroot rule\n\nnested rule\n</INSTRUCTIONS>");
         expect(prompt).not.toContain("do not include override");
         expect(prompt).not.toContain("do not include claude");
-    });
-
-    it("uses the GPT-5.4 prompt for GPT-5.4 models", async () => {
-        const cwd = await makeTempDir();
-        const model = defineModel({
-            id: "openai/gpt-5.4",
-            name: "GPT-5.4",
-            thinkingLevels: ["off", "medium"],
-            defaultThinkingLevel: "medium",
-        });
-
-        const prompt = await createSystemPrompt({
-            provider: providerFor("codex", model),
-            model,
-            messages: [],
-            context: contextFor(cwd),
-        });
-
-        expect(prompt).toBe(
-            `${GPT_5_4_SYSTEM_PROMPT}\n\n${modelIdentityInstructions(model.id, "codex")}`,
-        );
-        expect(prompt).toContain("You are Codex, a coding agent based on GPT-5.");
-        expect(prompt).not.toContain("You are GPT-5.2 running in the Codex CLI");
-        expect(prompt).not.toContain("IGN-CMD");
     });
 
     it("uses the current Codex prompt for GPT-5.6 models", async () => {
@@ -172,6 +146,26 @@ describe("createSystemPrompt", () => {
         ).resolves.toBe(
             `${GPT_5_6_SOL_SYSTEM_PROMPT}\n\n${modelIdentityInstructions(model.id, "codex")}`,
         );
+    });
+
+    it("adds Codex Ultra instructions through the profile recipe", async () => {
+        const cwd = await makeTempDir();
+        const model = defineModel({
+            id: "openai/gpt-5.6-sol",
+            name: "GPT-5.6 Sol",
+            thinkingLevels: ["max", "ultra"],
+            defaultThinkingLevel: "max",
+        });
+
+        const prompt = await createSystemPrompt({
+            provider: providerFor("codex", model),
+            model,
+            effort: "ultra",
+            messages: [],
+            context: contextFor(cwd),
+        });
+
+        expect(prompt).toContain(CODEX_ULTRA_INSTRUCTIONS);
     });
 
     it("uses Terra's current Codex prompt for GPT-5.6 Terra and Luna", async () => {
@@ -490,43 +484,47 @@ describe("createSystemPrompt", () => {
     it("uses the Claude Code prompt for modern Anthropic models", async () => {
         const cwd = await makeTempDir();
         const model = defineModel({
-            id: "anthropic/sonnet-4-6",
-            name: "Sonnet 4.6",
+            id: "anthropic/sonnet-5",
+            name: "Sonnet 5",
             thinkingLevels: ["off", "medium"],
             defaultThinkingLevel: "medium",
         });
 
-        await expect(
-            createSystemPrompt({
-                provider: providerFor("anthropic", model),
-                model,
-                messages: [],
-                context: contextFor(cwd),
-            }),
-        ).resolves.toBe(
-            `${CLAUDE_CODE_SYSTEM_PROMPT}\n\n${modelIdentityInstructions(model.id, "anthropic")}`,
+        const prompt = await createSystemPrompt({
+            provider: providerFor("claude", model),
+            model,
+            messages: [],
+            context: contextFor(cwd),
+        });
+
+        expect(prompt).toMatch(/^You are Rig, a coding agent powered by Claude Sonnet 5\./u);
+        expect(prompt).toContain(
+            "You are an interactive agent that helps users with software engineering tasks.",
         );
+        expect(prompt).toContain(`Primary working directory: ${cwd}`);
+        expect(prompt).toContain(`Is a git repository: false`);
+        expect(prompt).not.toContain(`${join(cwd, ".home", ".claude")}/projects/`);
+        expect(prompt).not.toContain("# auto memory");
+        expect(prompt).not.toContain("$CLAUDE_RUNTIME_");
     });
 
     it("uses Moonshot's official Kimi identity prompt", async () => {
         const cwd = await makeTempDir();
         const model = defineModel({
-            id: "moonshot/kimi-k2.5",
-            name: "Kimi K2.5",
+            id: "moonshot/kimi-k3",
+            name: "Kimi K3",
             thinkingLevels: ["off", "on"],
             defaultThinkingLevel: "on",
         });
 
         await expect(
             createSystemPrompt({
-                provider: providerFor("bedrock", model),
+                provider: providerFor("kimi", model),
                 model,
                 messages: [],
                 context: contextFor(cwd),
             }),
-        ).resolves.toBe(
-            `${KIMI_SYSTEM_PROMPT}\n\n${modelIdentityInstructions(model.id, "bedrock")}`,
-        );
+        ).resolves.toBe(`${KIMI_SYSTEM_PROMPT}\n\n${modelIdentityInstructions(model.id, "kimi")}`);
     });
 
     it("assembles explicit instructions for unsupported test models", async () => {
@@ -709,8 +707,15 @@ describe("createSystemPrompt", () => {
 });
 
 function providerFor(id: string, model: Model): Provider {
+    const profileType =
+        id === "anthropic"
+            ? "claude"
+            : id === "codex" || id === "bedrock" || id === "claude" || id === "kimi"
+              ? id
+              : undefined;
     return defineProvider({
         id,
+        ...(profileType === undefined ? {} : { profileType }),
         models: [model],
         stream() {
             throw new Error("stream is not used by createSystemPrompt tests");

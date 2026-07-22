@@ -600,6 +600,7 @@ export class Agent {
                             : {}),
                         messages,
                         context: this.context,
+                        ...(this.#effort === undefined ? {} : { effort: this.#effort }),
                         tools: this.#tools,
                         durableSkills: this.#durableSkills,
                     });

@@ -7,6 +7,8 @@
 
 import type { TSchema } from "@sinclair/typebox";
 import type { ProviderQuota } from "./providerQuota.js";
+import type { ProfileProviderType } from "../profiles/impl/ProfileProviderType.js";
+import type { ProfilePromptContext } from "../profiles/impl/types.js";
 
 export type StopReason = "stop" | "length" | "toolUse" | "error" | "aborted";
 export type ProviderErrorCode = "incomplete_response" | "invalid_image_request";
@@ -195,6 +197,8 @@ export interface InferenceStream extends AsyncIterable<AssistantMessageEvent> {
 /** A provider exposes models and streaming inference. */
 export interface Provider {
     readonly id: string;
+    /** Stable profile key; unlike id, this does not change for named provider accounts. */
+    readonly profileType?: ProfileProviderType;
     readonly models: readonly Model[];
     readonly contextCompatibility: ProviderContextCompatibility;
     readonly contextCompatibilityKind?: ProviderContextCompatibilityKind;
@@ -202,6 +206,9 @@ export interface Provider {
     readonly serviceTiers?: readonly ServiceTier[];
     /** Extra user turn required by adapters that cannot continue after an assistant turn. */
     readonly inferenceCrashContinuation?: { readonly userMessage: string };
+    readonly extendProfilePromptContext?: (
+        context: ProfilePromptContext,
+    ) => ProfilePromptContext | Promise<ProfilePromptContext>;
     imageProfile(model: Model): ProviderImageProfile;
     toolProfile(model: Model): ProviderToolProfile;
     quota?(options?: { fresh?: boolean }): Promise<ProviderQuota>;
@@ -240,12 +247,16 @@ export function defineModel<const TThinkingLevel extends string>(model: {
 /** Statically typed helper for constructing a provider definition. */
 export function defineProvider(provider: {
     id: string;
+    profileType?: ProfileProviderType;
     models: readonly Model[];
     contextCompatibility?: ProviderContextCompatibility;
     contextCompatibilityKind?: ProviderContextCompatibilityKind;
     contextCompatibilityKey?: (model: Model) => string;
     serviceTiers?: readonly ServiceTier[];
     inferenceCrashContinuation?: { readonly userMessage: string };
+    extendProfilePromptContext?: (
+        context: ProfilePromptContext,
+    ) => ProfilePromptContext | Promise<ProfilePromptContext>;
     imageProfile?: (model: Model) => ProviderImageProfile;
     toolProfile?: (model: Model) => ProviderToolProfile;
     quota?: (options?: { fresh?: boolean }) => Promise<ProviderQuota>;

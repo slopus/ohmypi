@@ -1,6 +1,5 @@
 import type { KimiChatRequest } from "./kimi-chat-types.js";
 import { estimateKimiInputTokens } from "./estimateKimiInputTokens.js";
-import { KIMI_MAX_COMPLETION_TOKENS } from "./kimi-constants.js";
 import { toKimiChatMessages } from "./toKimiChatMessages.js";
 import { toKimiChatTools } from "./toKimiChatTools.js";
 import type { Context, Model, StreamOptions } from "./types.js";
@@ -8,6 +7,7 @@ import type { Context, Model, StreamOptions } from "./types.js";
 export function createKimiChatRequest(options: {
     apiModelId: string;
     context: Context;
+    maxCompletionTokens: number;
     model: Model;
     sessionId?: string;
     streamOptions?: StreamOptions;
@@ -16,7 +16,7 @@ export function createKimiChatRequest(options: {
     const maxCompletionTokens = Math.max(
         1,
         Math.min(
-            KIMI_MAX_COMPLETION_TOKENS,
+            options.maxCompletionTokens,
             contextWindow - estimateKimiInputTokens(options.context),
         ),
     );

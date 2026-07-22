@@ -52,7 +52,7 @@ describe("follow-up tools across provider profiles", () => {
                             spawnCall("claude", "anthropic/sonnet-4-6", "high"),
                             spawnCall("grok", "xai/grok-4.5", "high"),
                             spawnCall("kimi", "moonshot/kimi-k3", "max"),
-                            spawnCall("bedrock", "moonshot/kimi-k2.5", "on"),
+                            spawnCall("bedrock", "zai/glm-5", "max"),
                         ],
                     };
                 }

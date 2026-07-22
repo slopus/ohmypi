@@ -15,15 +15,10 @@ import { applyCodexImageDetailsToPayload } from "./applyCodexImageDetailsToPaylo
 import { classifyCodexErrorCode } from "./classifyCodexErrorCode.js";
 import { classifyCodexProviderError } from "./classifyCodexProviderError.js";
 import { collectOriginalImageUrls } from "./collectOriginalImageUrls.js";
-import { CODEX_ULTRA_INSTRUCTIONS } from "./codexUltraInstructions.js";
 import { createPiCodexModel } from "./createPiCodexModel.js";
-import {
-    modelOpenaiGpt54,
-    modelOpenaiGpt55,
-    modelOpenaiGpt56Luna,
-    modelOpenaiGpt56Sol,
-    modelOpenaiGpt56Terra,
-} from "./models.js";
+import { modelsForProfileProviderType } from "../profiles/impl/modelsForProfileProviderType.js";
+import { resolveModelProfile } from "../profiles/impl/resolveModelProfile.js";
+import { serviceTiersForProfileProviderType } from "../profiles/impl/serviceTiersForProfileProviderType.js";
 import { normalizeCodexThinkingLevel } from "./normalizeCodexThinkingLevel.js";
 import { toPiContext, wrapPiStream } from "./pi-bridge.js";
 import { defineProvider, type Provider, type StreamOptions } from "./types.js";
@@ -35,6 +30,8 @@ import { unavailableProviderQuota } from "./unavailableProviderQuota.js";
 const CODEX_PROVIDER_ID = "openai-codex";
 
 function toPiCodexModelId(id: string): string {
+    const profile = resolveModelProfile("codex", id);
+    if (profile?.parameters.wireModelId !== undefined) return profile.parameters.wireModelId;
     return id.startsWith("openai/") ? id.slice("openai/".length) : id;
 }
 
@@ -49,13 +46,7 @@ export interface CodexProviderOptions {
     transport?: SimpleStreamOptions["transport"];
 }
 
-const codexModels = [
-    modelOpenaiGpt56Sol,
-    modelOpenaiGpt56Terra,
-    modelOpenaiGpt56Luna,
-    modelOpenaiGpt55,
-    modelOpenaiGpt54,
-] as const;
+const codexModels = modelsForProfileProviderType("codex");
 export function createCodexProvider(options: CodexProviderOptions = {}): Provider {
     const authPath = getCodexAuthPath({
         ...(options.codexAuthPath === undefined ? {} : { authFile: options.codexAuthPath }),
@@ -90,10 +81,11 @@ export function createCodexProvider(options: CodexProviderOptions = {}): Provide
     return defineProvider({
         contextCompatibility: "model_group",
         id: options.id ?? "codex",
+        profileType: "codex",
         imageProfile: () => "codex",
         toolProfile: () => "codex",
         models: codexModels,
-        serviceTiers: ["fast"],
+        serviceTiers: serviceTiersForProfileProviderType("codex"),
         quota: (quotaOptions) => quota.get(quotaOptions),
         stream(model, context, streamOptions) {
             const piModel = piModelById.get(toPiCodexModelId(model.id));
@@ -101,17 +93,10 @@ export function createCodexProvider(options: CodexProviderOptions = {}): Provide
                 throw new Error(`Unknown codex model: ${model.id}`);
             }
 
-            const piContext = toPiContext(context);
-            if (streamOptions?.thinking === "ultra") {
-                piContext.systemPrompt = [piContext.systemPrompt, CODEX_ULTRA_INSTRUCTIONS]
-                    .filter((part): part is string => part !== undefined && part.length > 0)
-                    .join("\n\n");
-            }
-
             return wrapPiStream(
                 streamOpenAICodexResponses(
                     piModel,
-                    piContext,
+                    toPiContext(context),
                     toPiStreamOptions(
                         piModel,
                         streamOptions,

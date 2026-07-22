@@ -1,9 +1,14 @@
 import { describe, expect, it } from "vitest";
 
-import { kimiAgentTool, kimiCodeTools, kimiGoalTools } from "../tools/kimi/index.js";
+import {
+    kimiAgentTool,
+    kimiCodeTools,
+    kimiGoalTools,
+    kimiSendMessageTool,
+} from "../tools/kimi/index.js";
 import { normalizeKimiToolSchema } from "./normalizeKimiToolSchema.js";
 
-const allKimiTools = [...kimiCodeTools, kimiAgentTool, ...kimiGoalTools];
+const allKimiTools = [...kimiCodeTools, kimiAgentTool, kimiSendMessageTool, ...kimiGoalTools];
 
 describe("normalizeKimiToolSchema", () => {
     it("keeps the type on anyOf items instead of the parent, as Moonshot requires", () => {

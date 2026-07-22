@@ -1,4 +1,4 @@
-import { KIMI_COMPACTION_SYSTEM_PROMPT } from "../prompts/kimiCompactionSystemPrompt.js";
+import { KIMI_COMPACTION_SYSTEM_PROMPT } from "../../profiles/kimi/prompts/compactionSystemPrompt.js";
 import type { Model } from "../../providers/types.js";
 
 const DEFAULT_COMPACTION_SYSTEM_PROMPT = `Create a detailed continuation brief for a coding agent that will continue this conversation without access to the original history.

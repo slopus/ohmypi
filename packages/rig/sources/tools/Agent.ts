@@ -25,10 +25,12 @@ export const agentTool = defineTool({
     description:
         "Start a subagent for a focused, self-contained task. Run it in the foreground when its result is needed immediately, or in the background to keep working while it runs.",
     arguments: Type.Object({
-        context: Type.Union([Type.Literal("parent"), Type.Literal("task")], {
-            description:
-                "Use parent to continue with the parent thread context, or task to start with only the delegated prompt.",
-        }),
+        context: Type.Optional(
+            Type.Union([Type.Literal("parent"), Type.Literal("task")], {
+                description:
+                    "Rig extension: use parent to continue with the parent thread context, or task to start with only the delegated prompt. Defaults to task.",
+            }),
+        ),
         description: Type.String({
             description: "A short, human-readable description of the delegated task.",
         }),
@@ -60,7 +62,15 @@ export const agentTool = defineTool({
     returnType: Type.Union([completedAgentResultSchema, backgroundAgentResultSchema]),
     shouldReviewInAutoMode: () => false,
     execute: async (
-        { context: contextMode, description, effort, model, prompt, provider, run_in_background },
+        {
+            context: contextMode = "task",
+            description,
+            effort,
+            model,
+            prompt,
+            provider,
+            run_in_background,
+        },
         context,
         execution,
     ) => {

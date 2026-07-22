@@ -2,7 +2,6 @@ import type { AgentContext } from "./context/AgentContext.js";
 import { createAvailableModelsInstructions } from "./createAvailableModelsInstructions.js";
 import { createPermissionInstructions } from "./createPermissionInstructions.js";
 import { loadAgentsMdInstructions } from "./loadAgentsMdInstructions.js";
-import { selectSystemPromptForModel } from "./selectSystemPromptForModel.js";
 import { loadSkillInstructions } from "./skills/loadSkillInstructions.js";
 import { formatSkillsForPrompt } from "./skills/formatSkillsForPrompt.js";
 import { systemMessageToText } from "./systemMessageToText.js";
@@ -10,6 +9,9 @@ import type { AnyDefinedTool, Message } from "./types.js";
 import type { Model, Provider } from "../providers/types.js";
 import { createSecretInstructions } from "../secrets/index.js";
 import type { DurableSkillDefinition } from "../external-skills/types.js";
+import { computeProfileSystemPrompt } from "../profiles/impl/computeProfileSystemPrompt.js";
+import { createProfilePromptContext } from "../profiles/impl/createProfilePromptContext.js";
+import { resolveModelProfileForProvider } from "../profiles/impl/resolveModelProfileForProvider.js";
 
 export interface CreateSystemPromptOptions {
     appendSystemPrompt?: string;
@@ -22,24 +24,29 @@ export interface CreateSystemPromptOptions {
     context: AgentContext;
     tools?: readonly AnyDefinedTool[];
     durableSkills?: readonly DurableSkillDefinition[];
+    effort?: string;
 }
 
 export async function createSystemPrompt(
     options: CreateSystemPromptOptions,
 ): Promise<string | undefined> {
+    const profile = resolveModelProfileForProvider(options.provider, options.model);
+    const promptContext = await createProfilePromptContext({
+        agentContext: options.context,
+        ...(options.effort === undefined ? {} : { effort: options.effort }),
+        model: options.model,
+        profile,
+        provider: options.provider,
+    });
     if (options.systemPrompt !== undefined) {
+        const exactPrompt = computeProfileSystemPrompt(profile, promptContext, {
+            originalOverride: options.systemPrompt,
+        });
         const skillInstructions = formatSkillsForPrompt([], options.durableSkills ?? []);
-        if (skillInstructions === undefined) return options.systemPrompt;
-        return `${options.systemPrompt}\n\n${skillInstructions}`;
+        if (skillInstructions === undefined) return exactPrompt;
+        return `${exactPrompt}\n\n${skillInstructions}`;
     }
-    const parts: string[] = [];
-    const modelPrompt = selectSystemPromptForModel(options.provider, options.model);
-    if (modelPrompt !== undefined && modelPrompt.length > 0) {
-        parts.push(modelPrompt);
-    }
-    parts.push(
-        `# Runtime model\nModel ID: ${options.model.id}\nProvider ID: ${options.provider.id}`,
-    );
+    const parts: string[] = [computeProfileSystemPrompt(profile, promptContext)];
 
     if (options.instructions !== undefined && options.instructions.length > 0) {
         parts.push(options.instructions);
