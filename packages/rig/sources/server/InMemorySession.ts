@@ -3448,7 +3448,7 @@ export class InMemorySession {
                               agentManager.readChatHistory(this.id, historyOptions),
                       },
                   }),
-            messages: this.#committedMessages(),
+            messages: this.#contextMessages ?? this.#committedMessages(),
             modelId: this.#modelId,
             permissionMode: this.#permissionMode,
             providerId: this.#providerId,

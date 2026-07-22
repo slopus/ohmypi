@@ -9,6 +9,19 @@ import type { GlobalEventQueueEntry, SessionEvent } from "../protocol/index.js";
 import { ProtocolHttpClient } from "./ProtocolHttpClient.js";
 
 describe("ProtocolHttpClient", () => {
+    it("rejects a transcript limit on event catch-up", async () => {
+        const client = new ProtocolHttpClient({
+            socketPath: "/tmp/rig-client-no-request.sock",
+            token: "test-token",
+        });
+
+        await expect(
+            client.getEvents("session-1", "event-1" as SessionEvent["id"], {
+                messageLimit: 30,
+            }),
+        ).rejects.toThrow("only supported while loading initial history");
+    });
+
     it("targets abort requests to the expected run", async () => {
         const directory = await mkdtemp(join(tmpdir(), "rig-client-test-"));
         const socketPath = join(directory, "server.sock");

@@ -1495,24 +1495,47 @@ describe("PersistentSessionStore", () => {
         }
     });
 
-    it("restores compacted model context separately from the visible transcript", async () => {
+    it("resumes from compacted model context instead of the visible transcript", async () => {
         const { cleanup, databasePath } = await createDatabasePath();
         const summaryMessage = textUserMessage(
             "summary-1",
             "<conversation_summary>Earlier work.</conversation_summary>",
         );
+        const visibleMessage = textUserMessage("visible-1", "The original full transcript.");
         try {
             const store = new PersistentSessionStore({ databasePath });
             const state = sessionState({ contextMessages: [summaryMessage] });
             store.saveSession(state);
+            store.upsertMessage(state.id, {
+                isPartial: false,
+                message: visibleMessage,
+                position: 0,
+                runId: "run-1",
+            });
             store.close();
 
-            const restoredStore = new PersistentSessionStore({ databasePath });
+            let restoredRuntimeOptions:
+                | { contextMessages?: readonly unknown[]; messages?: readonly unknown[] }
+                | undefined;
+            const restoredStore = new PersistentSessionStore({
+                createRuntime: (options) => {
+                    restoredRuntimeOptions = options;
+                    throw new Error("Captured resumed runtime options.");
+                },
+                databasePath,
+            });
             try {
                 const restored = restoredStore.get(state.id);
 
-                expect(restored?.snapshot().snapshot.messages).toEqual([]);
+                expect(restored?.snapshot().snapshot.messages).toEqual([visibleMessage]);
                 expect(restored?.snapshot().snapshot.contextMessages).toEqual([summaryMessage]);
+                expect(() => restored?.externalControlContext()).toThrow(
+                    "Captured resumed runtime options.",
+                );
+                expect(restoredRuntimeOptions).toMatchObject({
+                    contextMessages: [summaryMessage],
+                    messages: [summaryMessage],
+                });
             } finally {
                 restoredStore.close();
             }

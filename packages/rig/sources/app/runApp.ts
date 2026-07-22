@@ -36,6 +36,8 @@ import {
     registerRigDebugRoot,
 } from "../debug/index.js";
 
+const INITIAL_TUI_MESSAGE_LIMIT = 30;
+
 export interface RunAppOptions {
     apiKey?: string;
     compactCompletedTurns?: boolean;
@@ -132,7 +134,9 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
             const [openedSession, modelsResponse] = await Promise.all([
                 options.resumeSessionId === undefined
                     ? connection.client.createSession(agentOptions)
-                    : connection.client.getSession(options.resumeSessionId),
+                    : connection.client.getSession(options.resumeSessionId, {
+                          messageLimit: INITIAL_TUI_MESSAGE_LIMIT,
+                      }),
                 connection.client.models(),
             ]);
             if (options.resumeSessionId !== undefined) {
@@ -142,7 +146,9 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
             const loadedHistory =
                 options.resumeSessionId === undefined
                     ? { events: [] as SessionEvent[] }
-                    : await connection.client.getEvents(openedSession.session.id);
+                    : await connection.client.getEvents(openedSession.session.id, undefined, {
+                          messageLimit: INITIAL_TUI_MESSAGE_LIMIT,
+                      });
 
             return {
                 history: loadedHistory,

@@ -834,6 +834,23 @@ describe("createProtocolHttpServer", () => {
         }
     });
 
+    it("rejects a transcript limit while catching up from an event cursor", async () => {
+        const { client, close, socketPath } = await startServer();
+        try {
+            const created = await client.createSession({ cwd: "/tmp/rig-limited-event-catchup" });
+            const response = await requestRawJson(
+                socketPath,
+                `/sessions/${encodeURIComponent(created.session.id)}/events?after=event-1&message_limit=30`,
+                { body: "", method: "GET" },
+            );
+
+            expect(response.statusCode).toBe(400);
+            expect(response.body).toContain("only supported while loading initial history");
+        } finally {
+            await close();
+        }
+    });
+
     it("requires bearer auth", async () => {
         const { close, socketPath } = await startServer();
         try {

@@ -64,11 +64,13 @@ import { FileSearchService, type FileSearchServiceContract } from "./FileSearchS
 import type { SessionEventLog } from "./SessionEventLog.js";
 import { isTransientInferenceSessionEvent } from "./isTransientInferenceSessionEvent.js";
 import { isSubmitMessageRequest } from "./isSubmitMessageRequest.js";
+import { limitProtocolSessionMessages } from "./limitProtocolSessionMessages.js";
 import type { GlobalEventQueue } from "./GlobalEventQueue.js";
 import type { SessionStore } from "./SessionStore.js";
 import { isGlobalEventRoute } from "./isGlobalEventRoute.js";
 import { parseGlobalEventCursor } from "./parseGlobalEventCursor.js";
 import { parseGlobalEventLimit } from "./parseGlobalEventLimit.js";
+import { selectRecentSessionEvents } from "./selectRecentSessionEvents.js";
 import { sendJson } from "./sendJson.js";
 import { streamGlobalEvents } from "./streamGlobalEvents.js";
 import { INVALID_PERMISSION_MODE_MESSAGE, isPermissionMode } from "../permissions/index.js";
@@ -574,7 +576,14 @@ async function handleRequest(
     }
 
     if (request.method === "GET" && route.name === "session") {
-        sendJson(response, 200, { session: session.snapshot() });
+        const messageLimit = parseLimit(url.searchParams.get("message_limit"));
+        if (url.searchParams.has("message_limit") && messageLimit === undefined) {
+            sendJson(response, 400, { error: "Session message limit is invalid." });
+            return;
+        }
+        sendJson(response, 200, {
+            session: limitProtocolSessionMessages(session.snapshot(), messageLimit),
+        });
         return;
     }
 
@@ -1003,16 +1012,29 @@ async function handleRequest(
 
     if (request.method === "GET" && route.name === "events") {
         const after = url.searchParams.get("after") ?? undefined;
+        if (after !== undefined && url.searchParams.has("message_limit")) {
+            sendJson(response, 400, {
+                error: "A session message limit is only supported while loading initial history.",
+            });
+            return;
+        }
+        const messageLimit = parseLimit(url.searchParams.get("message_limit"));
+        if (url.searchParams.has("message_limit") && messageLimit === undefined) {
+            sendJson(response, 400, { error: "Session message limit is invalid." });
+            return;
+        }
         const events = session.events.since(after);
         if (events === undefined) {
             sendJson(response, 409, { error: "Event cursor not found" });
             return;
         }
         sendJson(response, 200, {
-            events:
+            events: selectRecentSessionEvents(
                 after === undefined
                     ? events.filter((event) => !isTransientInferenceSessionEvent(event))
                     : events,
+                after === undefined ? messageLimit : undefined,
+            ),
         });
         return;
     }

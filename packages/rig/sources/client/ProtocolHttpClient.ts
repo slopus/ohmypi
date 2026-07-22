@@ -416,8 +416,16 @@ export class ProtocolHttpClient {
         );
     }
 
-    getSession(sessionId: string): Promise<{ session: ProtocolSession }> {
-        return this.#requestJson("GET", `/sessions/${encodeURIComponent(sessionId)}`);
+    getSession(
+        sessionId: string,
+        options: { messageLimit?: number } = {},
+    ): Promise<{ session: ProtocolSession }> {
+        const parameters = new URLSearchParams();
+        if (options.messageLimit !== undefined) {
+            parameters.set("message_limit", String(options.messageLimit));
+        }
+        const suffix = parameters.size === 0 ? "" : `?${parameters.toString()}`;
+        return this.#requestJson("GET", `/sessions/${encodeURIComponent(sessionId)}${suffix}`);
     }
 
     getSessionUsage(sessionId: string): Promise<GetSessionUsageResponse> {
@@ -431,11 +439,23 @@ export class ProtocolHttpClient {
         );
     }
 
-    getEvents(sessionId: string, after?: EventId): Promise<{ events: SessionEvent[] }> {
-        const path =
-            after === undefined
-                ? `/sessions/${encodeURIComponent(sessionId)}/events`
-                : `/sessions/${encodeURIComponent(sessionId)}/events?after=${encodeURIComponent(after)}`;
+    getEvents(
+        sessionId: string,
+        after?: EventId,
+        options: { messageLimit?: number } = {},
+    ): Promise<{ events: SessionEvent[] }> {
+        if (after !== undefined && options.messageLimit !== undefined) {
+            return Promise.reject(
+                new Error("A session message limit is only supported while loading initial history."),
+            );
+        }
+        const parameters = new URLSearchParams();
+        if (after !== undefined) parameters.set("after", after);
+        if (options.messageLimit !== undefined) {
+            parameters.set("message_limit", String(options.messageLimit));
+        }
+        const suffix = parameters.size === 0 ? "" : `?${parameters.toString()}`;
+        const path = `/sessions/${encodeURIComponent(sessionId)}/events${suffix}`;
         return this.#requestJson("GET", path);
     }
 
