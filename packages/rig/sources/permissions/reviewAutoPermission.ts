@@ -27,6 +27,7 @@ export async function reviewAutoPermission(options: {
     now: () => number;
     provider: Provider;
     signal?: AbortSignal;
+    startDate?: string;
     toolName: string;
 }): Promise<AutoPermissionReview> {
     const transcript = createAutoPermissionTranscript(options.messages);
@@ -49,7 +50,10 @@ export async function reviewAutoPermission(options: {
                 ],
                 tools: [],
             },
-            options.signal === undefined ? {} : { signal: options.signal },
+            {
+                ...(options.signal === undefined ? {} : { signal: options.signal }),
+                ...(options.startDate === undefined ? {} : { startDate: options.startDate }),
+            },
         );
         for await (const _event of stream) {
             if (options.signal?.aborted) throw new Error("Permission review was stopped.");

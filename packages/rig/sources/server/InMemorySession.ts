@@ -4,6 +4,7 @@ import { isDeepStrictEqual } from "node:util";
 import { createId } from "@paralleldrive/cuid2";
 
 import { errorToMessage } from "../errorToMessage.js";
+import { toLocalDate } from "../providers/toLocalDate.js";
 import { assistantMessageToAgentMessage } from "../agent/assistantMessageToAgentMessage.js";
 import { isInternalMessage } from "../agent/isInternalMessage.js";
 import { findFirstUserRequestText, findLastAgentResponseText } from "../agent/index.js";
@@ -3459,6 +3460,9 @@ export class InMemorySession {
                     this.requestUserInput(request, requestOptions),
             },
             sessionId: this.#agentMetadata.rootSessionId,
+            startDate: toLocalDate(
+                this.events.firstMessageCreatedAt() ?? this.events.firstCreatedAt() ?? this.#now(),
+            ),
             ...(this.#systemPrompt !== undefined ? { systemPrompt: this.#systemPrompt } : {}),
             ...(this.#durableSkillDefinitions.length === 0
                 ? {}
@@ -3841,6 +3845,11 @@ export class InMemorySession {
                 provider: this.#ensureRuntime().provider,
                 sessionId: this.id,
                 signal: controller.signal,
+                startDate: toLocalDate(
+                    this.events.firstMessageCreatedAt() ??
+                        this.events.firstCreatedAt() ??
+                        this.#now(),
+                ),
                 transcript,
             });
             if (

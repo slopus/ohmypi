@@ -49,6 +49,7 @@ import type {
     Usage,
     UserContent as ProviderUserContent,
 } from "../providers/types.js";
+import { toLocalDate } from "../providers/toLocalDate.js";
 import { requestAutoPermissionApproval, reviewAutoPermission } from "../permissions/index.js";
 import type { DebugLog } from "../debug/index.js";
 import type { DurableSkillDefinition } from "../external-skills/types.js";
@@ -83,6 +84,7 @@ export interface RunAgentLoopOptions {
     >;
     signal?: AbortSignal;
     sessionId?: string;
+    startDate?: string;
     idFactory?: () => string;
     now?: () => number;
     onEvent?: (event: AgentLoopEvent) => void | Promise<void>;
@@ -191,6 +193,7 @@ export async function runAgentLoop(options: RunAgentLoopOptions): Promise<AgentL
     const model = findModel(options.provider, options.modelId);
     const idFactory = options.idFactory ?? createId;
     const now = options.now ?? Date.now;
+    const startDate = options.startDate ?? toLocalDate(now());
     const transcript: Message[] = [...options.messages];
     const contextTranscript: Message[] = [...(options.contextMessages ?? options.messages)];
     const providerMessages = toProviderMessages(contextTranscript, {
@@ -265,7 +268,7 @@ export async function runAgentLoop(options: RunAgentLoopOptions): Promise<AgentL
                     const stream = options.provider.stream(
                         model,
                         toProviderContext(systemPrompt, preparedProviderMessages, providerTools),
-                        toStreamOptions(options),
+                        toStreamOptions(options, startDate),
                     );
 
                     for await (const event of stream) {
@@ -595,6 +598,7 @@ export async function runAgentLoop(options: RunAgentLoopOptions): Promise<AgentL
                                         }),
                                     ),
                                 provider: options.provider,
+                                startDate,
                                 ...(options.signal === undefined ? {} : { signal: options.signal }),
                             }),
                         ] as const,
@@ -973,11 +977,12 @@ function findModel(provider: Provider, modelId: string): Model {
     return model;
 }
 
-function toStreamOptions(options: RunAgentLoopOptions): StreamOptions {
+function toStreamOptions(options: RunAgentLoopOptions, startDate: string): StreamOptions {
     return {
         ...(options.signal !== undefined ? { signal: options.signal } : {}),
         ...(options.sessionId !== undefined ? { sessionId: options.sessionId } : {}),
         ...(options.serviceTier !== undefined ? { serviceTier: options.serviceTier } : {}),
+        startDate,
         ...(options.effort !== undefined ? { thinking: options.effort } : {}),
     };
 }
@@ -1213,6 +1218,7 @@ async function prepareToolPermission(
         }) => void | Promise<void>;
         provider: Provider;
         signal?: AbortSignal;
+        startDate: string;
     },
 ): Promise<PreparedToolPermission> {
     const tool = toolsByName.get(toolCall.name);
@@ -1244,6 +1250,7 @@ async function prepareToolPermission(
             model: options.model,
             now: options.now,
             provider: options.provider,
+            startDate: options.startDate,
             ...(options.signal === undefined ? {} : { signal: options.signal }),
             toolName: tool.name,
         });

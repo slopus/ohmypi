@@ -28,6 +28,7 @@ export async function compactConversation(options: {
     preserveLatestUserMessage: boolean;
     signal?: AbortSignal;
     serviceTier?: ServiceTier;
+    startDate?: string;
     thinking?: string;
 }): Promise<CompactConversationResult> {
     const estimatedTokensBefore = estimateMessagesTokens(options.messages);
@@ -57,6 +58,7 @@ export async function compactConversation(options: {
         provider: options.provider,
         model: options.model,
         now: options.now,
+        ...(options.startDate === undefined ? {} : { startDate: options.startDate }),
         ...(options.serviceTier !== undefined ? { serviceTier: options.serviceTier } : {}),
         ...(options.thinking !== undefined ? { thinking: options.thinking } : {}),
         ...(options.signal !== undefined ? { signal: options.signal } : {}),

@@ -1,4 +1,5 @@
 import { modelXaiGrok45 } from "../../../providers/models.js";
+import { toLocalDate } from "../../../providers/toLocalDate.js";
 import type { Provider, TextContent, XSearchServerTool } from "../../../providers/types.js";
 import type { XSearchInput, XSearchOutput } from "./types.js";
 
@@ -13,6 +14,7 @@ export async function performGrokXSearch(
     }
 
     const startedAt = performance.now();
+    const timestamp = Date.now();
     const serverTool: XSearchServerTool = {
         type: "x_search",
         ...(input.allowed_x_handles === undefined
@@ -33,13 +35,14 @@ export async function performGrokXSearch(
     const stream = provider.stream(
         model,
         {
-            messages: [{ role: "user", content: input.query, timestamp: Date.now() }],
+            messages: [{ role: "user", content: input.query, timestamp }],
             serverTools: [serverTool],
             systemPrompt:
                 "Search X for the user's request. Return a concise synthesis with direct x.com links for the relevant posts. Use the native X search tool before answering.",
         },
         {
             ...(signal === undefined ? {} : { signal }),
+            startDate: toLocalDate(timestamp),
             thinking: "low",
         },
     );

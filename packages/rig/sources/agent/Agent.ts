@@ -13,6 +13,7 @@ import { createDebugProvider, type DebugLog } from "../debug/index.js";
 import { printAgentMessageToConsole, type AgentConsole } from "./printAgentMessageToConsole.js";
 import type { AnyDefinedTool, ContentBlock, Message, SystemMessage, UserMessage } from "./types.js";
 import type { Context, Model, Provider, ServiceTier } from "../providers/types.js";
+import { toLocalDate } from "../providers/toLocalDate.js";
 import type { PermissionMode } from "../permissions/index.js";
 import { isPermissionReduction } from "../permissions/index.js";
 import type { DurableSkillDefinition } from "../external-skills/types.js";
@@ -55,6 +56,7 @@ export interface AgentOptions {
     id?: string;
     effort?: string;
     serviceTier?: ServiceTier;
+    startDate?: string;
     messages?: readonly Message[];
     contextMessages?: readonly Message[];
     instructions?: string;
@@ -103,6 +105,7 @@ export class Agent {
     #model: Model;
     #effort: string | undefined;
     #serviceTier: ServiceTier | undefined;
+    readonly #startDate: string;
     #instructions: string | undefined;
     #systemPrompt: string | undefined;
     #tools: readonly AnyDefinedTool[];
@@ -143,6 +146,7 @@ export class Agent {
             [];
         this.#durableSkills = [...(options.durableSkills ?? [])];
         this.#now = options.now ?? Date.now;
+        this.#startDate = options.startDate ?? toLocalDate(this.#now());
         this.#console = options.console ?? console;
         this.#printToConsole = options.printToConsole ?? true;
         this.#onEvent = options.onEvent;
@@ -397,6 +401,7 @@ export class Agent {
                 tools: this.#tools,
                 messages: this.#messages,
                 sessionId: runId,
+                startDate: this.#startDate,
                 idFactory: this.#idFactory,
                 now: this.#now,
                 context: this.context,
@@ -624,6 +629,7 @@ export class Agent {
             now: this.#now,
             force: options.force,
             preserveLatestUserMessage: options.preserveLatestUserMessage,
+            startDate: this.#startDate,
             ...(options.reportedTokens === undefined
                 ? {}
                 : { reportedTokens: options.reportedTokens }),

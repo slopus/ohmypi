@@ -470,6 +470,7 @@ describe("Agent", () => {
             defaultThinkingLevel: "off",
         });
         const streamOptions: (StreamOptions | undefined)[] = [];
+        let currentTime = new Date(2024, 0, 2, 12).getTime();
         const provider = defineProvider({
             id: "codex",
             models: [firstModel, secondModel],
@@ -492,15 +493,21 @@ describe("Agent", () => {
             provider,
             modelId: firstModel.id,
             context: createJustBashToolHarness().context,
+            now: () => currentTime,
             serviceTier: "fast",
             printToConsole: false,
         });
 
         agent.setModel(secondModel.id, undefined);
         await agent.send("Use fast inference.");
+        currentTime = new Date(2024, 1, 3, 12).getTime();
+        await agent.send("Keep using fast inference.");
 
         expect(agent.snapshot().serviceTier).toBe("fast");
-        expect(streamOptions).toMatchObject([{ serviceTier: "fast" }]);
+        expect(streamOptions).toMatchObject([
+            { serviceTier: "fast", startDate: "2024-01-02" },
+            { serviceTier: "fast", startDate: "2024-01-02" },
+        ]);
 
         agent.setServiceTier(undefined);
         expect(agent.snapshot().serviceTier).toBeUndefined();

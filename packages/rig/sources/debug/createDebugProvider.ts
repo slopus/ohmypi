@@ -91,6 +91,7 @@ function serializableStreamOptions(options: StreamOptions): Record<string, unkno
     return {
         ...(options.sessionId === undefined ? {} : { sessionId: options.sessionId }),
         ...(options.serviceTier === undefined ? {} : { serviceTier: options.serviceTier }),
+        ...(options.startDate === undefined ? {} : { startDate: options.startDate }),
         ...(options.thinking === undefined ? {} : { thinking: options.thinking }),
         ...(options.signal === undefined
             ? {}

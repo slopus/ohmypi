@@ -183,6 +183,7 @@ describe("Claude SDK provider", () => {
             env: {
                 BETA_TRACING_ENDPOINT: "https://telemetry.example.test",
                 CLAUDE_CODE_ENABLE_TELEMETRY: "1",
+                CLAUDE_CODE_OVERRIDE_DATE: "1900-01-01",
                 CLAUDE_CONFIG_DIR: "/test/claude-config",
                 ENABLE_BETA_TRACING_DETAILED: "1",
                 OTEL_LOGS_EXPORTER: "otlp",
@@ -244,12 +245,14 @@ describe("Claude SDK provider", () => {
                 {
                     role: "user",
                     content: "Say ok.",
-                    timestamp: 1,
+                    timestamp: new Date(2024, 0, 2, 12).getTime(),
                 },
             ],
         };
 
-        const stream = provider.stream(modelAnthropicFable5, context);
+        const stream = provider.stream(modelAnthropicFable5, context, {
+            startDate: "2024-01-02",
+        });
         for await (const _event of stream) {
             // Drain the stream.
         }
@@ -261,7 +264,11 @@ describe("Claude SDK provider", () => {
         expect(calls[0]?.options?.allowedTools).toEqual(["mcp__rig__Read"]);
         expect(calls[0]?.options?.toolAliases).toBeUndefined();
         expect(calls[0]?.options?.extraArgs).toEqual({ "disable-slash-commands": null });
+        expect(calls[0]?.options?.env?.CLAUDE_AGENT_SDK_DISABLE_BUILTIN_AGENTS).toBe("1");
+        expect(calls[0]?.options?.env?.CLAUDE_CODE_DISABLE_ATTACHMENTS).toBe("1");
         expect(calls[0]?.options?.env?.CLAUDE_CODE_DISABLE_BUNDLED_SKILLS).toBe("1");
+        expect(calls[0]?.options?.env?.CLAUDE_CODE_DISABLE_CLAUDE_MDS).toBe("1");
+        expect(calls[0]?.options?.env?.CLAUDE_CODE_OVERRIDE_DATE).toBe("2024-01-02");
         expect(calls[0]?.options?.env?.CLAUDE_AGENT_SDK_MCP_NO_PREFIX).toBe("1");
         expect(calls[0]?.options?.env).toMatchObject({
             ANT_OTEL_LOGS_EXPORTER: "none",

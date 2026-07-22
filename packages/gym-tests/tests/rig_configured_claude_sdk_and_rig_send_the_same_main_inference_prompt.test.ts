@@ -23,8 +23,6 @@ const BLOCK_MARKER = "RIG_GYM_BLOCKED_BEFORE_ANTHROPIC";
 const DIRECT_PROBE_PATH = "direct-claude-sdk-probe.mjs";
 const DIRECT_OPTIONS_PATH = "direct-claude-sdk-options.json";
 const MCP_DESCRIPTION_LIMIT = 2_048;
-const RIG_MCP_INSTRUCTIONS =
-    "Use these rig project tools for filesystem, shell, search, and editing work. Claude Code built-in tools are disabled for this session.";
 const USER_PROMPT = "CLAUDE_PAYLOAD_INSPECTION_MARKER";
 const ULTRACODE_PROMPT = "Use ultracode for CLAUDE_ULTRACODE_PAYLOAD_INSPECTION_MARKER.";
 const running = new Set<Gym>();
@@ -166,7 +164,6 @@ async function createBlockedClaudeGym(
         },
         files: {
             [DIRECT_OPTIONS_PATH]: JSON.stringify({
-                mcpInstructions: RIG_MCP_INSTRUCTIONS,
                 model: modelCase.sdkModelId,
                 effort,
                 systemPrompt: rigSystemPromptTemplate(modelCase),
@@ -247,7 +244,6 @@ const stream = query({
         mcpServers: {
             rig: createSdkMcpServer({
                 name: "rig",
-                instructions: options.mcpInstructions,
                 tools,
                 alwaysLoad: true,
             }),
@@ -255,7 +251,10 @@ const stream = query({
         model: options.model,
         env: {
             ...process.env,
+            CLAUDE_AGENT_SDK_DISABLE_BUILTIN_AGENTS: "1",
+            CLAUDE_CODE_DISABLE_ATTACHMENTS: "1",
             CLAUDE_CODE_DISABLE_BUNDLED_SKILLS: "1",
+            CLAUDE_CODE_DISABLE_CLAUDE_MDS: "1",
             CLAUDE_AGENT_SDK_MCP_NO_PREFIX: "1",
             CLAUDE_CODE_MAX_OUTPUT_TOKENS: "128000",
             ...(options.ultracode
@@ -565,7 +564,8 @@ function expectExactRigPayload(
 
     const messageText = JSON.stringify(payload.messages);
     expect(messageText).toContain(userPrompt);
-    expect(messageText).toContain(RIG_MCP_INSTRUCTIONS);
+    expect(messageText).not.toContain("# MCP Server Instructions");
+    expect(messageText).not.toContain("Available agent types for the Agent tool:");
     expect(messageText).not.toContain("Create settled session metadata");
     expect(payload.tools).toEqual(expectedApiTools(rigTools(modelCase)));
 }

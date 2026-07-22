@@ -60,6 +60,7 @@ export interface CreateCodingAssistantAgentOptions {
     permissionMode?: PermissionMode;
     providers?: ConfigProviders;
     serviceTier?: ServiceTier;
+    startDate?: string;
     secrets?: SessionSecretContext;
     subagents?: SubagentContext;
     systemPrompt?: string;
@@ -232,6 +233,7 @@ export function createCodingAssistantAgent(
         ...(options.contextMessages !== undefined
             ? { contextMessages: options.contextMessages }
             : {}),
+        ...(options.startDate !== undefined ? { startDate: options.startDate } : {}),
         tools,
         printToConsole: false,
     };

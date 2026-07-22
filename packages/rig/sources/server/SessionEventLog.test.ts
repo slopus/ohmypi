@@ -70,6 +70,14 @@ describe("SessionEventLog", () => {
         expect(log.messageSubmission("missing-message")).toBeUndefined();
     });
 
+    it("retains the oldest durable message time independently of earlier session events", () => {
+        const firstMessage = messageSubmittedEvent(FIRST, "first-message", 1_700_000_100_000);
+        const laterMessage = messageSubmittedEvent(DURABLE, "later-message", 1_700_000_200_000);
+        const log = new SessionEventLog({ events: [event(OMITTED), firstMessage, laterMessage] });
+
+        expect(log.firstMessageCreatedAt()).toBe(1_700_000_100_000);
+    });
+
     it("drops transient payloads while preserving delivery, final state, and every scoped cursor", () => {
         const listener = vi.fn();
         const createId = createEventIdFactory({ now: () => 1_700_000_000_000 });
@@ -117,9 +125,13 @@ function event(id: string): SessionEvent {
     };
 }
 
-function messageSubmittedEvent(id: string, messageId: string): SessionEvent {
+function messageSubmittedEvent(
+    id: string,
+    messageId: string,
+    createdAt = 1_700_000_000_000,
+): SessionEvent {
     return {
-        createdAt: 1_700_000_000_000,
+        createdAt,
         data: {
             delivery: "run",
             displayText: "Continue.",

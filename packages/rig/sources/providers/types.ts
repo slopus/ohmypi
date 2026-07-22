@@ -156,6 +156,8 @@ export interface StreamOptions<TThinkingLevel extends string = string> {
     signal?: AbortSignal;
     sessionId?: string;
     serviceTier?: ServiceTier;
+    /** Local calendar date when the inference session began, formatted as YYYY-MM-DD. */
+    startDate?: string;
     thinking?: TThinkingLevel;
 }
 

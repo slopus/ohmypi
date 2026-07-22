@@ -1,4 +1,5 @@
 import type { Model, Provider, StreamOptions } from "../providers/types.js";
+import { toLocalDate } from "../providers/toLocalDate.js";
 
 const METADATA_PROMPT = `Create settled session metadata from the visible conversation.
 
@@ -24,12 +25,15 @@ export async function generateSessionMetadata(options: {
     provider: Provider;
     sessionId: string;
     signal?: AbortSignal;
+    startDate?: string;
     transcript: string;
 }): Promise<GeneratedSessionMetadata> {
     const now = options.now ?? Date.now;
+    const timestamp = now();
     const model = selectMetadataModel(options.provider);
     const streamOptions: StreamOptions = {
         sessionId: `${options.sessionId}:title`,
+        startDate: options.startDate ?? toLocalDate(timestamp),
         thinking: "off",
         ...(options.signal === undefined ? {} : { signal: options.signal }),
     };
@@ -51,7 +55,7 @@ export async function generateSessionMetadata(options: {
                             ].join("\n"),
                         },
                     ],
-                    timestamp: now(),
+                    timestamp,
                 },
             ],
             tools: [],

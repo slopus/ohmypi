@@ -8,6 +8,7 @@ import {
     type AssistantMessage,
     type Context,
     type InferenceStream,
+    type StreamOptions,
 } from "../../providers/types.js";
 import { requestCompactionSummary } from "./requestCompactionSummary.js";
 
@@ -21,18 +22,26 @@ const model = defineModel({
 describe("requestCompactionSummary", () => {
     it("preserves the cached wire prefix and appends one summary request", async () => {
         const observedContexts: Context[] = [];
+        const observedOptions: (StreamOptions | undefined)[] = [];
         const context = compactionContext();
         const provider = defineProvider({
             id: "test",
             models: [model],
-            stream(_model, requestContext) {
+            stream(_model, requestContext, streamOptions) {
                 observedContexts.push(requestContext);
+                observedOptions.push(streamOptions);
                 return textStream("Cached summary.");
             },
         });
 
         await expect(
-            requestCompactionSummary({ context, model, now: () => 4, provider }),
+            requestCompactionSummary({
+                context,
+                model,
+                now: () => 4,
+                provider,
+                startDate: "2024-01-02",
+            }),
         ).resolves.toBe("Cached summary.");
 
         expect(observedContexts).toEqual([
@@ -48,6 +57,7 @@ describe("requestCompactionSummary", () => {
                 ],
             },
         ]);
+        expect(observedOptions).toMatchObject([{ intent: "compaction", startDate: "2024-01-02" }]);
     });
 
     it("uses provider-native compaction before the manual stream fallback", async () => {

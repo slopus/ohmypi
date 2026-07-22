@@ -57,6 +57,10 @@ export class SessionEventLog {
         return this.#events.at(0)?.createdAt;
     }
 
+    firstMessageCreatedAt(): number | undefined {
+        return this.#events.find((event) => event.type === "message_submitted")?.createdAt;
+    }
+
     lastEventId(): EventId | undefined {
         return this.#lastEventId;
     }

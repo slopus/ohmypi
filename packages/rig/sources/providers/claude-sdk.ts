@@ -138,6 +138,9 @@ export function createClaudeSdkProvider(options: ClaudeSdkProviderOptions) {
                     ...(compactionOptions.serviceTier === undefined
                         ? {}
                         : { serviceTier: compactionOptions.serviceTier }),
+                    ...(compactionOptions.startDate === undefined
+                        ? {}
+                        : { startDate: compactionOptions.startDate }),
                     ...(compactionOptions.thinking === undefined
                         ? {}
                         : { thinking: compactionOptions.thinking }),
@@ -373,8 +376,6 @@ function toClaudeSdkOptions(options: {
         mcpServers: {
             [RIG_MCP_SERVER_NAME]: createSdkMcpServer({
                 name: RIG_MCP_SERVER_NAME,
-                instructions:
-                    "Use these rig project tools for filesystem, shell, search, and editing work. Claude Code built-in tools are disabled for this session.",
                 tools: mcpTools,
                 alwaysLoad: true,
             }),
@@ -384,9 +385,17 @@ function toClaudeSdkOptions(options: {
         env: {
             ...options.env,
             ...CLAUDE_SDK_PRIVACY_ENVIRONMENT,
+            // Rig owns conversation context and dynamic runtime guidance. Keep
+            // Claude Code from adding a second, unpersisted attachment layer.
+            CLAUDE_AGENT_SDK_DISABLE_BUILTIN_AGENTS: "1",
+            CLAUDE_CODE_DISABLE_ATTACHMENTS: "1",
             CLAUDE_CODE_DISABLE_BUNDLED_SKILLS: "1",
+            CLAUDE_CODE_DISABLE_CLAUDE_MDS: "1",
             CLAUDE_AGENT_SDK_MCP_NO_PREFIX: "1",
             CLAUDE_CODE_MAX_OUTPUT_TOKENS: String(profile?.parameters.maxOutputTokens ?? 128_000),
+            ...(options.streamOptions?.startDate === undefined
+                ? {}
+                : { CLAUDE_CODE_OVERRIDE_DATE: options.streamOptions.startDate }),
             ...(options.streamOptions?.thinking === "ultra"
                 ? { CLAUDE_CODE_EFFORT_LEVEL: "ultracode" }
                 : {}),

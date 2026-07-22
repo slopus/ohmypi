@@ -11,6 +11,7 @@ import type {
     ServiceTier,
     StreamOptions,
 } from "../../providers/types.js";
+import { toLocalDate } from "../../providers/toLocalDate.js";
 
 export async function requestCompactionSummary(options: {
     provider: Provider;
@@ -18,11 +19,16 @@ export async function requestCompactionSummary(options: {
     context: Context;
     signal?: AbortSignal;
     serviceTier?: ServiceTier;
+    startDate?: string;
     thinking?: string;
     now: () => number;
 }): Promise<string> {
+    const startDate =
+        options.startDate ??
+        toLocalDate(options.context.messages.at(0)?.timestamp ?? options.now());
     const streamOptions: StreamOptions = {
         intent: "compaction",
+        startDate,
         ...(options.serviceTier !== undefined ? { serviceTier: options.serviceTier } : {}),
         ...(options.thinking !== undefined ? { thinking: options.thinking } : {}),
     };

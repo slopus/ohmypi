@@ -10,6 +10,7 @@ import {
     type SubagentSummary,
 } from "../protocol/index.js";
 import { createInferenceStream } from "../providers/createInferenceStream.js";
+import { toLocalDate } from "../providers/toLocalDate.js";
 import {
     defineModel,
     defineProvider,
@@ -32,6 +33,11 @@ describe("InMemorySession metadata settlement", () => {
 
         const first = harness.session.submit({ text: "Implement delayed session metadata." });
         await harness.session.waitForRun(first.runId);
+        const firstMessageEvent = harness.session.events
+            .since(undefined)
+            ?.find((event) => event.type === "message_submitted");
+        if (firstMessageEvent === undefined) throw new Error("First message event was not stored.");
+        expect(harness.runtimeStartDates).toEqual([toLocalDate(firstMessageEvent.createdAt)]);
         await vi.advanceTimersByTimeAsync(59_999);
         expect(harness.metadataContexts).toHaveLength(0);
 
@@ -379,6 +385,7 @@ function createHarness(
         providers: [{ providerId: provider.id, models: [model] }],
     };
     let activeSubagent = options.activeSubagent === true;
+    const runtimeStartDates: (string | undefined)[] = [];
     let root: InMemorySession | undefined;
     const child = {
         agentMetadata: () => ({ depth: 1, rootSessionId: "root", type: "subagent" }),
@@ -400,6 +407,7 @@ function createHarness(
         agentManager: manager,
         createEventId: createEventIdFactory(),
         createRuntime: (runtimeOptions) => {
+            runtimeStartDates.push(runtimeOptions.startDate);
             const runtime = createRuntime(runtimeOptions, provider);
             if (options.compaction !== undefined) {
                 runtime.agent.compact = async () => {
@@ -430,6 +438,7 @@ function createHarness(
         recordDescendantActivity() {
             manager.recordDescendantSettlementActivity("root");
         },
+        runtimeStartDates,
         session: root,
         setBackgroundCount(count: number) {
             backgroundCount = count;
@@ -454,6 +463,7 @@ function createRuntime(
             modelId: options.modelId ?? provider.models[0]?.id ?? "",
             printToConsole: false,
             provider,
+            ...(options.startDate === undefined ? {} : { startDate: options.startDate }),
             tools: [],
         }),
         context,
