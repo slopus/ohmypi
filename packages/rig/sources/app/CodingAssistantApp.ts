@@ -1555,11 +1555,18 @@ export class CodingAssistantApp implements Component, Focusable {
                 : [];
         const queuedPrompts =
             selectionPanel === undefined ? this.#renderQueuedPrompts(safeWidth) : [];
+        const activityLabel = this.#activityLabel();
+        const activity =
+            activityLabel !== undefined && this.#shouldRenderActivityAsLastMessage()
+                ? this.#renderActivityLine(activityLabel, safeWidth)
+                : [];
 
         return [
             "",
             ...activeWork,
             ...(activeWork.length > 0 ? [""] : []),
+            ...activity,
+            ...(activity.length > 0 ? [""] : []),
             ...pendingSteering,
             ...(pendingSteering.length > 0 ? [""] : []),
             ...queuedPrompts,
@@ -3713,17 +3720,7 @@ export class CodingAssistantApp implements Component, Focusable {
 
     #renderTranscript(width: number): string[] {
         const entries = this.#visibleTranscriptEntries();
-        const lines = this.#renderTranscriptEntries(entries, width);
-
-        const activityLabel = this.#activityLabel();
-        if (activityLabel !== undefined && this.#shouldRenderActivityAsLastMessage()) {
-            if (lines.length > 0) {
-                lines.push("");
-            }
-            lines.push(...this.#renderActivityLine(activityLabel, width));
-        }
-
-        return lines;
+        return this.#renderTranscriptEntries(entries, width);
     }
 
     #visibleTranscriptEntries(): AppTranscriptEntry[] {
