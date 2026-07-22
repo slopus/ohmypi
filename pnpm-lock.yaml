@@ -148,6 +148,9 @@ importers:
       '@vscode/ripgrep':
         specifier: 1.18.0
         version: 1.18.0
+      deunicode:
+        specifier: 1.0.7
+        version: 1.0.7
       dockerode:
         specifier: ^5.0.1
         version: 5.0.1
@@ -190,6 +193,9 @@ importers:
       tweetnacl:
         specifier: ^1.0.3
         version: 1.0.3
+      wink-porter2-stemmer:
+        specifier: 2.0.1
+        version: 2.0.1
       ws:
         specifier: ^8.21.1
         version: 8.21.1
@@ -2029,6 +2035,9 @@ packages:
     resolution: {integrity: sha512-Btj2BOOO83o3WyH59e8MgXsxEQVcarkUOpEYrubB0urwnN10yQ364rsiByU11nZlqWYZm05i/of7io4mzihBtQ==}
     engines: {node: '>=8'}
 
+  deunicode@1.0.7:
+    resolution: {integrity: sha512-9lPe908VkPaSspNJDdXRgzlH6vdA5OJ/xmNnCjavpmy+ZRBea8eNYviskwBpi7t0RROQ1NFpKBiVzuproOr2gQ==}
+
   diff@8.0.4:
     resolution: {integrity: sha512-DPi0FmjiSU5EvQV0++GFDOJ9ASQUVFh5kD+OzOnYdi7n3Wpm9hWWGfB/O2blfHcMVTL5WkQXSnRiK9makhrcnw==}
     engines: {node: '>=0.3.1'}
@@ -3099,6 +3108,9 @@ packages:
     resolution: {integrity: sha512-hUrmaWBdVDcxvYqnyh09zunKzROWjbZTiNy8dBEjkS7ehEDQibXJ7XvlmtbwuTclUiIyN+CyXQD4Vmko8fNm8w==}
     engines: {node: '>=8'}
     hasBin: true
+
+  wink-porter2-stemmer@2.0.1:
+    resolution: {integrity: sha512-0g+RkkqhRXFmSpJQStVXW5N/WsshWpJXsoDRW7DwVkGI2uDT6IBCoq3xdH5p6IHLaC6ygk7RWUsUx4alKxoagQ==}
 
   wrap-ansi@6.2.0:
     resolution: {integrity: sha512-r6lPcBGxZXlIcymEu7InxDMhdW0KDxpLgoFLcguasxCaJ/SOIZwINatK9KY/tf+ZrlywOKU0UDj3ATXUBfxJXA==}
@@ -4691,6 +4703,8 @@ snapshots:
 
   detect-libc@2.1.2: {}
 
+  deunicode@1.0.7: {}
+
   diff@8.0.4: {}
 
   dijkstrajs@1.0.3: {}
@@ -5913,6 +5927,8 @@ snapshots:
     dependencies:
       siginfo: 2.0.0
       stackback: 0.0.2
+
+  wink-porter2-stemmer@2.0.1: {}
 
   wrap-ansi@6.2.0:
     dependencies:

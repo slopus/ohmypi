@@ -53,6 +53,65 @@ describe("CodexBedrockToolSearchAdapter", () => {
         });
     });
 
+    it("uses the query and limit to rank deferred tools like Codex", async () => {
+        const adaptation = new CodexBedrockToolSearchAdapter().adapt([
+            ...codexTools,
+            ...codexCollaborationTools,
+        ]);
+        const toolSearch = adaptation.exposedTools.at(-1)!;
+
+        expect(
+            await toolSearch.execute(
+                { query: "weather forecasts", limit: 8 } as never,
+                {} as never,
+                {},
+            ),
+        ).toEqual({ tools: [] });
+
+        expect(
+            await toolSearch.execute(
+                { query: "interrupt and redirect a running agent", limit: 1 } as never,
+                {} as never,
+                {},
+            ),
+        ).toMatchObject({
+            tools: [
+                {
+                    type: "namespace",
+                    name: "multi_agent_v1",
+                    tools: [{ name: "send_input" }],
+                },
+            ],
+        });
+
+        const limited = (await toolSearch.execute(
+            { query: "agent subagent", limit: 2 } as never,
+            {} as never,
+            {},
+        )) as { tools: { tools: unknown[] }[] };
+        expect(limited.tools).toHaveLength(1);
+        expect(limited.tools[0]?.tools).toHaveLength(2);
+    });
+
+    it("matches Codex query and limit validation", async () => {
+        const adaptation = new CodexBedrockToolSearchAdapter().adapt([
+            ...codexTools,
+            ...codexCollaborationTools,
+        ]);
+        const toolSearch = adaptation.exposedTools.at(-1)!;
+
+        await expect(
+            Promise.resolve().then(() =>
+                toolSearch.execute({ query: "   " } as never, {} as never, {}),
+            ),
+        ).rejects.toThrow("query must not be empty");
+        await expect(
+            Promise.resolve().then(() =>
+                toolSearch.execute({ query: "agent", limit: 0 } as never, {} as never, {}),
+            ),
+        ).rejects.toThrow("limit must be greater than zero");
+    });
+
     it("interrupts a running agent before delivering immediate input", async () => {
         const adaptation = new CodexBedrockToolSearchAdapter().adapt([
             ...codexTools,

@@ -4,6 +4,7 @@ import type { AgentToolAdaptation, AgentToolAdapter } from "../agent/AgentToolAd
 import { defineTool, type AnyDefinedTool } from "../agent/types.js";
 import { readCodexBedrockDeferredTools } from "./readCodexBedrockDeferredTools.js";
 import { readCodexBedrockTools } from "./readCodexBedrockTools.js";
+import { searchCodexBedrockDeferredTools } from "./searchCodexBedrockDeferredTools.js";
 import { toOpenAIResponseTools } from "../providers/toOpenAIResponseTools.js";
 
 const collaborationNames = new Set([
@@ -79,7 +80,9 @@ function createToolSearchTool(): AnyDefinedTool {
         ),
         returnType: Type.Any(),
         shouldReviewInAutoMode: () => false,
-        execute: () => ({ tools: toOpenAIResponseTools([deferred.namespace]) }),
+        execute: (args) => ({
+            tools: toOpenAIResponseTools(searchCodexBedrockDeferredTools(args)),
+        }),
         toLLM: (result) => [{ type: "text", text: JSON.stringify(result) }],
         toUI: () => "Loaded subagent tools.",
         locks: [],
