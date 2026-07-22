@@ -1,5 +1,6 @@
 {
     "$schema": "./node_modules/oxfmt/configuration_schema.json",
     "tabWidth": 4,
-    "useTabs": false
+    "useTabs": false,
+    "ignorePatterns": ["packages/rig-codemode-codex/native/**"]
 }

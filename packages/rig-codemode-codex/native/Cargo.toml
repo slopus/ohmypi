@@ -1,0 +1,40 @@
+[workspace]
+members = ["code-mode", "code-mode-host", "code-mode-protocol", "protocol", "utils/cargo-bin"]
+resolver = "2"
+
+[workspace.package]
+version = "0.0.0"
+edition = "2024"
+license = "Apache-2.0"
+
+[workspace.dependencies]
+anyhow = "1"
+assert_cmd = "2"
+codex-code-mode = { path = "code-mode" }
+codex-code-mode-protocol = { path = "code-mode-protocol" }
+codex-protocol = { path = "protocol" }
+codex-utils-cargo-bin = { path = "utils/cargo-bin" }
+deno_core_icudata = "0.77.0"
+futures = { version = "0.3", default-features = false }
+pretty_assertions = "1.4.1"
+runfiles = { git = "https://github.com/dzbarsky/rules_rust", rev = "b56cbaa8465e74127f1ea216f813cd377295ad81" }
+serde = { version = "1", features = ["rc"] }
+serde_json = "1"
+tempfile = "3.23.0"
+thiserror = "2.0.17"
+tokio = "1"
+tokio-util = "0.7.18"
+tracing = "0.1.44"
+v8 = "=149.2.0"
+
+[workspace.lints]
+rust = {}
+
+[workspace.lints.clippy]
+expect_used = "deny"
+unwrap_used = "deny"
+
+[profile.release]
+lto = "thin"
+codegen-units = 4
+strip = "symbols"

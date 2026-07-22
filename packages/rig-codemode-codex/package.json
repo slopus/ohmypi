@@ -1,0 +1,58 @@
+{
+    "name": "@slopus/rig-codemode-codex",
+    "version": "0.1.0",
+    "description": "Standalone Node.js API for OpenAI Codex Code Mode.",
+    "keywords": [
+        "codex",
+        "javascript",
+        "sandbox",
+        "tool-calling"
+    ],
+    "license": "Apache-2.0",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/slopus/rig.git",
+        "directory": "packages/rig-codemode-codex"
+    },
+    "files": [
+        "dist",
+        "LICENSE",
+        "LICENSE-CODEX",
+        "NOTICE-CODEX",
+        "README.md",
+        "THIRD-PARTY-LICENSES.json",
+        "THIRD-PARTY-NOTICES.md",
+        "UPSTREAM.md"
+    ],
+    "type": "module",
+    "exports": {
+        ".": {
+            "types": "./dist/index.d.ts",
+            "import": "./dist/index.js",
+            "default": "./dist/index.js"
+        }
+    },
+    "publishConfig": {
+        "access": "public"
+    },
+    "scripts": {
+        "build": "node scripts/clean-dist.mjs && tsc -p tsconfig.build.json",
+        "build:native": "cargo +1.95.0 build --manifest-path native/Cargo.toml --locked --release --bin codex-code-mode-host",
+        "check": "tsc --noEmit",
+        "licenses": "node scripts/generate-license-inventory.mjs",
+        "package:platform": "node scripts/package.mjs platform",
+        "package:root": "node scripts/package.mjs root",
+        "prepack": "pnpm build",
+        "release": "bash release/release.sh",
+        "test": "vitest run",
+        "test:native": "cargo +1.95.0 test --manifest-path native/Cargo.toml --locked"
+    },
+    "devDependencies": {
+        "@types/node": "^24.0.10",
+        "typescript": "^5.8.3",
+        "vitest": "^3.2.4"
+    },
+    "engines": {
+        "node": ">=20"
+    }
+}

@@ -1,0 +1,237 @@
+name: Build and publish Rig Code Mode Codex
+
+on:
+    push:
+        tags:
+            - "rig-codemode-codex-v*"
+    workflow_dispatch:
+
+permissions:
+    contents: read
+
+concurrency:
+    group: rig-codemode-codex-${{ github.ref }}
+    cancel-in-progress: false
+
+jobs:
+    build:
+        name: Build ${{ matrix.target }}
+        runs-on: ${{ matrix.runner }}
+        timeout-minutes: 45
+        strategy:
+            fail-fast: false
+            matrix:
+                include:
+                    - runner: macos-15
+                      target: aarch64-apple-darwin
+                      executable: codex-code-mode-host
+                    - runner: macos-15-intel
+                      target: x86_64-apple-darwin
+                      executable: codex-code-mode-host
+                    - runner: ubuntu-24.04-arm
+                      target: aarch64-unknown-linux-musl
+                      executable: codex-code-mode-host
+                    - runner: ubuntu-24.04
+                      target: x86_64-unknown-linux-musl
+                      executable: codex-code-mode-host
+                    - runner: windows-11-arm
+                      target: aarch64-pc-windows-msvc
+                      executable: codex-code-mode-host.exe
+                    - runner: windows-2025
+                      target: x86_64-pc-windows-msvc
+                      executable: codex-code-mode-host.exe
+
+        steps:
+            - name: Check out the release
+              uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+            - name: Install the pinned Rust toolchain
+              uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
+              with:
+                  toolchain: "1.95.0"
+                  targets: ${{ matrix.target }}
+
+            - name: Install Linux musl linker
+              if: runner.os == 'Linux'
+              shell: bash
+              run: |
+                  sudo apt-get update
+                  sudo apt-get install --yes bubblewrap musl-tools
+                  linker="$(command -v "$(uname -m)-linux-musl-gcc" || command -v musl-gcc)"
+                  variable="CARGO_TARGET_${TARGET^^}_LINKER"
+                  variable="${variable//-/_}"
+                  echo "${variable}=${linker}" >> "$GITHUB_ENV"
+              env:
+                  TARGET: ${{ matrix.target }}
+
+            - name: Download verified OpenAI V8 build
+              if: runner.os != 'Windows'
+              shell: bash
+              run: bash packages/rig-codemode-codex/release/setup-rusty-v8.sh
+              env:
+                  TARGET: ${{ matrix.target }}
+
+            - name: Build native host
+              shell: bash
+              run: >-
+                  cargo +1.95.0 build
+                  --manifest-path packages/rig-codemode-codex/native/Cargo.toml
+                  --locked
+                  --release
+                  --target "${TARGET}"
+                  --bin codex-code-mode-host
+              env:
+                  TARGET: ${{ matrix.target }}
+
+            - name: Set up pnpm
+              uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6
+
+            - name: Set up Node.js
+              uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+              with:
+                  node-version: "24"
+                  package-manager-cache: false
+
+            - name: Install JavaScript dependencies
+              run: pnpm install --frozen-lockfile
+
+            - name: Build Node API
+              run: pnpm --filter @slopus/rig-codemode-codex build
+
+            - name: Run native smoke test through public API
+              shell: bash
+              run: |
+                  node --input-type=module -e '
+                  import { runCode } from "./packages/rig-codemode-codex/dist/index.js";
+                  const sandbox = process.platform === "win32" ? "auto" : "required";
+                  const result = await runCode("text(6 * 7);", {
+                      binaryPath: process.env.CODEMODE_HOST,
+                      sandbox,
+                  });
+                  if (result.text !== "42") throw new Error(`unexpected result: ${JSON.stringify(result)}`);
+                  '
+              env:
+                  CODEMODE_HOST: packages/rig-codemode-codex/native/target/${{ matrix.target }}/release/${{ matrix.executable }}
+
+            - name: Upload native binary
+              uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+              with:
+                  name: rig-codemode-codex-${{ matrix.target }}
+                  path: packages/rig-codemode-codex/native/target/${{ matrix.target }}/release/${{ matrix.executable }}
+                  if-no-files-found: error
+
+    publish:
+        name: Publish @slopus/rig-codemode-codex
+        if: startsWith(github.ref, 'refs/tags/rig-codemode-codex-v')
+        needs: build
+        runs-on: ubuntu-24.04
+        timeout-minutes: 20
+        environment: npm
+        permissions:
+            contents: read
+            id-token: write
+
+        steps:
+            - name: Check out the release tag
+              uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+            - name: Download native binaries
+              uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+              with:
+                  pattern: rig-codemode-codex-*
+                  path: artifacts/rig-codemode-codex/native
+
+            - name: Set up pnpm
+              uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6
+
+            - name: Set up Node.js
+              uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+              with:
+                  node-version: "24"
+                  package-manager-cache: false
+
+            - name: Install dependencies
+              run: pnpm install --frozen-lockfile
+
+            - name: Verify release version
+              shell: bash
+              run: |
+                  version="${GITHUB_REF_NAME#rig-codemode-codex-v}"
+                  manifest_version="$(node -p 'require("./packages/rig-codemode-codex/package.json").version')"
+                  test "${version}" = "${manifest_version}"
+                  echo "CODEMODE_VERSION=${version}" >> "$GITHUB_ENV"
+
+            - name: Generate package tarballs
+              shell: bash
+              run: |
+                  pnpm --filter @slopus/rig-codemode-codex run licenses
+                  mkdir -p artifacts/rig-codemode-codex/npm
+                  for target in \
+                      aarch64-apple-darwin \
+                      x86_64-apple-darwin \
+                      aarch64-unknown-linux-musl \
+                      x86_64-unknown-linux-musl \
+                      aarch64-pc-windows-msvc \
+                      x86_64-pc-windows-msvc
+                  do
+                      binary="$(find "artifacts/rig-codemode-codex/native/rig-codemode-codex-${target}" -type f -name 'codex-code-mode-host*' -print -quit)"
+                      test -n "${binary}"
+                      binary="$(realpath "${binary}")"
+                      pnpm --filter @slopus/rig-codemode-codex package:platform -- \
+                          --version "${CODEMODE_VERSION}" \
+                          --target "${target}" \
+                          --binary "${binary}" \
+                          --output "${GITHUB_WORKSPACE}/artifacts/rig-codemode-codex/npm"
+                  done
+                  pnpm --filter @slopus/rig-codemode-codex package:root -- \
+                      --version "${CODEMODE_VERSION}" \
+                      --output "${GITHUB_WORKSPACE}/artifacts/rig-codemode-codex/npm"
+
+            - name: Verify Linux package compatibility metadata
+              shell: bash
+              run: |
+                  for tarball in artifacts/rig-codemode-codex/npm/*-${CODEMODE_VERSION}-linux-*.tgz; do
+                      tar -xOf "${tarball}" package/package.json | node -e '
+                      let value = "";
+                      process.stdin.on("data", chunk => value += chunk);
+                      process.stdin.on("end", () => {
+                          const manifest = JSON.parse(value);
+                          if ("libc" in manifest) {
+                              throw new Error(`${manifest.version} unexpectedly restricts Linux libc`);
+                          }
+                      });
+                      '
+                  done
+
+            - name: Publish platform variants first
+              shell: bash
+              run: |
+                  for tarball in artifacts/rig-codemode-codex/npm/*-${CODEMODE_VERSION}-*.tgz; do
+                      version="$(tar -xOf "${tarball}" package/package.json | node -e 'let value=""; process.stdin.on("data", chunk => value += chunk); process.stdin.on("end", () => console.log(JSON.parse(value).version));')"
+                      if bash packages/rig-codemode-codex/release/npm-version-exists.sh "@slopus/rig-codemode-codex@${version}"; then
+                          echo "@slopus/rig-codemode-codex@${version} already exists; skipping."
+                      else
+                          result=$?
+                          test "${result}" -eq 1 || exit "${result}"
+                          pnpm dlx npm@11.18.0 publish "${tarball}" --access public --tag platform --provenance --registry https://registry.npmjs.org/
+                      fi
+                  done
+
+            - name: Publish root package last
+              shell: bash
+              run: |
+                  root="artifacts/rig-codemode-codex/npm/slopus-rig-codemode-codex-${CODEMODE_VERSION}.tgz"
+                  if bash packages/rig-codemode-codex/release/npm-version-exists.sh "@slopus/rig-codemode-codex@${CODEMODE_VERSION}"; then
+                      echo "@slopus/rig-codemode-codex@${CODEMODE_VERSION} already exists; skipping."
+                  else
+                      result=$?
+                      test "${result}" -eq 1 || exit "${result}"
+                      pnpm dlx npm@11.18.0 publish "${root}" --access public --tag latest --provenance --registry https://registry.npmjs.org/
+                  fi
+
+            - name: Upload npm tarballs
+              uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+              with:
+                  name: rig-codemode-codex-npm-${{ env.CODEMODE_VERSION }}
+                  path: artifacts/rig-codemode-codex/npm/*.tgz
+                  if-no-files-found: error
