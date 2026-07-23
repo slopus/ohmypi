@@ -1,0 +1,4 @@
+export const BEDROCK_DEFAULT_REGION = "us-east-1";
+export function bedrockMantleEndpoint(region: string): string {
+    return `https://bedrock-mantle.${region}.api.aws/openai/v1`;
+}

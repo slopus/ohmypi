@@ -44,16 +44,22 @@ export async function tryLoadCredentials(
         }),
         ClaudeAuthTokenCredential.tryLoad({
             ...(env === undefined ? {} : { env }),
-            ...(options.claudeAuthToken === undefined ? {} : { authToken: options.claudeAuthToken }),
+            ...(options.claudeAuthToken === undefined
+                ? {}
+                : { authToken: options.claudeAuthToken }),
         }),
         ClaudeOAuthCredential.tryLoad({
             ...(env === undefined ? {} : { env }),
-            ...(options.claudeConfigDir === undefined ? {} : { configDir: options.claudeConfigDir }),
-            ...(options.claudeOAuthToken === undefined ? {} : { oauthToken: options.claudeOAuthToken }),
+            ...(options.claudeConfigDir === undefined
+                ? {}
+                : { configDir: options.claudeConfigDir }),
+            ...(options.claudeOAuthToken === undefined
+                ? {}
+                : { oauthToken: options.claudeOAuthToken }),
         }),
-        CodexApiKeyCredential.tryLoad({
-            ...(options.codexApiKey === undefined ? {} : { apiKey: options.codexApiKey }),
-        }),
+        CodexApiKeyCredential.tryLoad(
+            options.codexApiKey === undefined ? {} : { apiKey: options.codexApiKey },
+        ),
         CodexSessionCredential.tryLoad({
             ...(env === undefined ? {} : { env }),
             ...(options.codexAuthFile === undefined ? {} : { authFile: options.codexAuthFile }),

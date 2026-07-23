@@ -1,0 +1,42 @@
+import type OpenAI from "openai";
+import type { ResponseStreamEvent } from "openai/resources/responses/responses.js";
+import type { ResponsesWS } from "openai/resources/responses/ws";
+
+export async function* createCodexWebSocketStream(options: {
+    client: OpenAI;
+    request: Record<string, unknown>;
+    socket: ResponsesWS;
+    signal?: AbortSignal;
+}): AsyncGenerator<ResponseStreamEvent> {
+    if (options.signal?.aborted) throw new DOMException("Request was aborted", "AbortError");
+    const iterator = options.socket[Symbol.asyncIterator]();
+    const abort = (): void => options.socket.close({ code: 1000, reason: "aborted" });
+    options.signal?.addEventListener("abort", abort, { once: true });
+    try {
+        options.socket.send({ type: "response.create", ...options.request } as never);
+        for (;;) {
+            const item = await iterator.next();
+            if (item.done) return;
+            if (item.value.type === "error") throw item.value.error;
+            if (item.value.type === "close") {
+                if (options.signal?.aborted)
+                    throw new DOMException("Request was aborted", "AbortError");
+                throw new Error(
+                    `Codex WebSocket closed before completion with code ${item.value.code}.`,
+                );
+            }
+            if (item.value.type !== "message") continue;
+            const event = item.value.message as ResponseStreamEvent;
+            yield event;
+            if (
+                ["response.completed", "response.incomplete", "response.failed", "error"].includes(
+                    event.type,
+                )
+            )
+                return;
+        }
+    } finally {
+        options.signal?.removeEventListener("abort", abort);
+        await iterator.return?.();
+    }
+}

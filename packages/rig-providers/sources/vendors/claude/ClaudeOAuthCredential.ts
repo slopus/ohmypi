@@ -11,7 +11,10 @@ export interface ClaudeOAuthCredentialLoadOptions {
     oauthToken?: string;
 }
 
-export class ClaudeOAuthCredential extends BaseCredential<"claude-oauth", ClaudeOAuthCredentialValue> {
+export class ClaudeOAuthCredential extends BaseCredential<
+    "claude-oauth",
+    ClaudeOAuthCredentialValue
+> {
     static async tryLoad(
         options: ClaudeOAuthCredentialLoadOptions = {},
     ): Promise<ClaudeOAuthCredential | null> {

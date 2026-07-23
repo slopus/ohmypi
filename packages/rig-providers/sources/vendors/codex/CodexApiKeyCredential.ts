@@ -8,7 +8,10 @@ export interface CodexApiKeyCredentialLoadOptions {
     apiKey?: string;
 }
 
-export class CodexApiKeyCredential extends BaseCredential<"codex-api-key", CodexApiKeyCredentialValue> {
+export class CodexApiKeyCredential extends BaseCredential<
+    "codex-api-key",
+    CodexApiKeyCredentialValue
+> {
     static async tryLoad(
         options: CodexApiKeyCredentialLoadOptions = {},
     ): Promise<CodexApiKeyCredential | null> {

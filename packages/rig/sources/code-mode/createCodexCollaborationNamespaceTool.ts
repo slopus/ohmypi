@@ -57,9 +57,7 @@ function toRigArguments(name: string, args: never): unknown {
                       ? `openai/${official.model}`
                       : official.model,
               }),
-        ...(official.reasoning_effort === undefined
-            ? {}
-            : { effort: official.reasoning_effort }),
+        ...(official.reasoning_effort === undefined ? {} : { effort: official.reasoning_effort }),
         task_name: official.task_name,
     };
 }

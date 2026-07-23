@@ -16,7 +16,9 @@ export interface GrokAuthRecord {
 
 export type GrokAuthStore = Record<string, GrokAuthRecord>;
 
-export function getGrokAuthPath(options: { authFile?: string; env?: NodeJS.ProcessEnv } = {}): string {
+export function getGrokAuthPath(
+    options: { authFile?: string; env?: NodeJS.ProcessEnv } = {},
+): string {
     if (options.authFile?.trim()) return options.authFile;
 
     const grokHome = options.env?.GROK_HOME?.trim();

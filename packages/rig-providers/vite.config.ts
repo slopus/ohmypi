@@ -13,6 +13,7 @@ export default defineConfig({
     },
     test: {
         environment: "node",
-        include: ["sources/**/*.test.ts"],
+        include: ["tests/**/*.test.ts", "tests/vendors/captureGrok.ts"],
+        exclude: ["tests/**/*.live.test.ts"],
     },
 });

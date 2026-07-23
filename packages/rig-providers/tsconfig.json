@@ -6,5 +6,5 @@
         },
         "types": ["node", "vitest/importMeta"]
     },
-    "include": ["sources/**/*.ts"]
+    "include": ["sources/**/*.ts", "tests/**/*.ts"]
 }

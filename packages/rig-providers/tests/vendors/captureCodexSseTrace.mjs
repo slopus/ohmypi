@@ -1,0 +1,212 @@
+#!/usr/bin/env node
+
+import { spawn } from "node:child_process";
+import { copyFile, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { createServer } from "node:http";
+import { homedir, tmpdir } from "node:os";
+import { join, resolve } from "node:path";
+
+const SUPPORTED_MODELS = new Set(["gpt-5.5", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"]);
+const REASONING_EFFORT = "low";
+const PROMPT = "Reply with OK.";
+const CAPTURE_TIMEOUT_MS = 30_000;
+
+const outputArgument = process.argv[2];
+const model = process.argv[3];
+if (outputArgument === undefined || model === undefined) {
+    throw new Error("Usage: node captureCodexSseTrace.mjs <output.json> <model>");
+}
+if (!SUPPORTED_MODELS.has(model)) throw new Error(`Unsupported capture model '${model}'.`);
+
+const outputPath = resolve(outputArgument);
+const captureDirectory = await mkdtemp(`${tmpdir()}/rig-codex-sse-capture-`);
+const isolatedCodexHome = join(captureDirectory, "codex-home");
+await mkdir(isolatedCodexHome);
+await copyFile(
+    join(process.env.CODEX_HOME?.trim() || join(homedir(), ".codex"), "auth.json"),
+    join(isolatedCodexHome, "auth.json"),
+);
+
+let resolveCapture;
+let rejectCapture;
+const capture = new Promise((resolvePromise, rejectPromise) => {
+    resolveCapture = resolvePromise;
+    rejectCapture = rejectPromise;
+});
+const server = createServer(async (request, response) => {
+    try {
+        if (request.method !== "POST") {
+            response.writeHead(404).end();
+            return;
+        }
+        const body = JSON.parse(await readBody(request));
+        const trace = normalizeTrace(
+            {
+                formatVersion: 1,
+                source: { client: "codex-cli", version: await codexVersion(), transport: "sse" },
+                invocation: { model, reasoningEffort: REASONING_EFFORT, prompt: PROMPT },
+                http: {
+                    method: request.method,
+                    path: request.url,
+                    headers: sanitizeHeaders(request.headers),
+                },
+                request: body,
+            },
+            captureDirectory,
+        );
+        await writeFile(outputPath, `${JSON.stringify(trace, null, 2)}\n`, "utf8");
+        const tools = extractToolDefinitions(trace.request);
+        await writeFile(toolsOutputPath(outputPath), `${JSON.stringify(tools, null, 2)}\n`, "utf8");
+        response.writeHead(200, {
+            "content-type": "text/event-stream",
+            "cache-control": "no-cache",
+        });
+        response.end(
+            `data: ${JSON.stringify({
+                type: "response.completed",
+                response: {
+                    id: "resp-capture",
+                    output: [],
+                    usage: { input_tokens: 0, output_tokens: 0, total_tokens: 0 },
+                },
+            })}\n\n`,
+        );
+        resolveCapture();
+    } catch (error) {
+        rejectCapture(error);
+        response.writeHead(500).end();
+    }
+});
+server.on("error", rejectCapture);
+server.listen(0, "127.0.0.1");
+const port = await listeningPort(server);
+
+const codex = spawn(
+    "codex",
+    [
+        "exec",
+        "--ignore-user-config",
+        "--ignore-rules",
+        "--ephemeral",
+        "--skip-git-repo-check",
+        "--json",
+        "--cd",
+        captureDirectory,
+        "--model",
+        model,
+        "--config",
+        'model_provider="capture"',
+        "--config",
+        `model_reasoning_effort="${REASONING_EFFORT}"`,
+        "--config",
+        `model_providers.capture={name="Rig SSE capture",base_url="http://127.0.0.1:${port}/v1",wire_api="responses",requires_openai_auth=true,supports_websockets=false}`,
+        PROMPT,
+    ],
+    {
+        env: {
+            CODEX_HOME: isolatedCodexHome,
+            HOME: homedir(),
+            LANG: process.env.LANG ?? "en_US.UTF-8",
+            PATH: process.env.PATH,
+            TMPDIR: tmpdir(),
+        },
+        stdio: ["ignore", "ignore", "pipe"],
+    },
+);
+let stderr = "";
+codex.stderr.setEncoding("utf8");
+codex.stderr.on("data", (chunk) => { stderr += chunk; });
+codex.on("error", rejectCapture);
+const timeout = setTimeout(
+    () => rejectCapture(new Error(`Codex did not send an SSE request within ${CAPTURE_TIMEOUT_MS}ms.`)),
+    CAPTURE_TIMEOUT_MS,
+);
+
+try {
+    await capture;
+    process.stdout.write(`Captured ${model} ${REASONING_EFFORT} SSE request to ${outputPath}\n`);
+} catch (error) {
+    throw new Error(`${error instanceof Error ? error.message : String(error)}${stderr ? `\n${stderr}` : ""}`);
+} finally {
+    clearTimeout(timeout);
+    if (codex.exitCode === null) codex.kill("SIGTERM");
+    server.close();
+    await rm(captureDirectory, { force: true, recursive: true });
+}
+
+function readBody(request) {
+    return new Promise((resolvePromise, rejectPromise) => {
+        let body = "";
+        request.setEncoding("utf8");
+        request.on("data", (chunk) => { body += chunk; });
+        request.once("end", () => resolvePromise(body));
+        request.once("error", rejectPromise);
+    });
+}
+
+function listeningPort(httpServer) {
+    return new Promise((resolvePromise, rejectPromise) => {
+        httpServer.once("listening", () => {
+            const address = httpServer.address();
+            if (typeof address !== "object" || address === null) {
+                rejectPromise(new Error("SSE capture server did not bind a TCP port."));
+            } else resolvePromise(address.port);
+        });
+        httpServer.once("error", rejectPromise);
+    });
+}
+
+async function codexVersion() {
+    return new Promise((resolvePromise, rejectPromise) => {
+        const child = spawn("codex", ["--version"], { stdio: ["ignore", "pipe", "pipe"] });
+        let stdout = "";
+        child.stdout.setEncoding("utf8");
+        child.stdout.on("data", (chunk) => { stdout += chunk; });
+        child.once("error", rejectPromise);
+        child.once("close", (code) => code === 0
+            ? resolvePromise(stdout.trim())
+            : rejectPromise(new Error(`codex --version exited with ${code}.`)));
+    });
+}
+
+function sanitizeHeaders(headers) {
+    const stableHeaders = new Set(["accept", "content-type", "originator", "user-agent", "x-codex-beta-features"]);
+    return Object.fromEntries(
+        Object.entries(headers).filter(([name, value]) => value !== undefined && stableHeaders.has(name.toLowerCase())),
+    );
+}
+
+function normalizeTrace(trace, temporaryDirectory) {
+    const normalized = structuredClone(trace);
+    const request = normalized.request;
+    if ("prompt_cache_key" in request) request.prompt_cache_key = "<SESSION_ID>";
+    if (request.client_metadata !== undefined) {
+        request.client_metadata = Object.fromEntries(
+            Object.keys(request.client_metadata).map((key) => [key, `<DYNAMIC:${key}>`]),
+        );
+    }
+    for (const item of request.input ?? []) {
+        if (item?.type !== "message" || !Array.isArray(item.content)) continue;
+        for (const content of item.content) {
+            if (content?.type !== "input_text" || content.text === PROMPT) continue;
+            content.text = content.text
+                .replaceAll(temporaryDirectory, "<CAPTURE_DIRECTORY>")
+                .replaceAll(homedir(), "<HOME>")
+                .replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/giu, "<UUID>");
+        }
+    }
+    return normalized;
+}
+
+function extractToolDefinitions(request) {
+    if (Array.isArray(request.tools)) return request.tools;
+    const additionalTools = request.input?.find((item) => item?.type === "additional_tools");
+    if (Array.isArray(additionalTools?.tools)) return additionalTools.tools;
+    throw new Error("Codex SSE request did not contain tool definitions.");
+}
+
+function toolsOutputPath(traceOutputPath) {
+    return traceOutputPath.endsWith(".sse.json")
+        ? traceOutputPath.replace(/\.sse\.json$/u, ".sse.tools.json")
+        : `${traceOutputPath}.tools.json`;
+}

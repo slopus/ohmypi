@@ -8,5 +8,5 @@
         "rootDir": "sources",
         "sourceMap": true
     },
-    "exclude": ["sources/**/*.test.ts"]
+    "exclude": ["sources/**/*.test.ts", "tests"]
 }
