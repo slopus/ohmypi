@@ -24,9 +24,13 @@ describe("renderExecCommand", () => {
         expect(rendered.join("\n")).toContain("\x1b[38;5;75mgit\x1b[39m");
         expect(rendered.join("\n")).toContain("\x1b[38;5;168m--stat\x1b[39m");
         expect(plain[0]).toContain("• Ran git show --stat HEAD; printf");
-        expect(plain).toContain("    … +4 lines");
+        expect(plain).toContain("    … +11 lines");
         expect(plain.find((line) => line.includes("output 1"))).toBe("  └ output 1");
+        expect(plain.find((line) => line.includes("output 2"))).toBe("    output 2");
         expect(plain.at(-1)).toBe("    output 14");
+        expect(
+            plain.filter((line) => line.includes("output ") || line.includes("… +")),
+        ).toHaveLength(4);
         expect(plain.join("\n")).not.toContain("│");
     });
 
@@ -66,7 +70,7 @@ describe("renderExecCommand", () => {
             },
         ).map((line) => stripAnsi(line).trimEnd());
 
-        expect(rendered.length).toBeLessThanOrEqual(12);
+        expect(rendered.length).toBeLessThanOrEqual(5);
         expect(rendered.join("\n")).toContain("OUTPUT_HEAD_");
         expect(rendered.join("\n")).toContain("OUTPUT_TAIL");
         expect(rendered.join("\n")).toContain("output truncated");

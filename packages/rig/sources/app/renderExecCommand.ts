@@ -9,8 +9,11 @@ const RESET = "\x1b[0m";
 const BOLD = "\x1b[1m";
 const NOT_BOLD = "\x1b[22m";
 const DIM = "\x1b[2m";
-const MAX_OUTPUT_EDGE_LINES = 5;
-const MAX_OUTPUT_EDGE_ROWS = 5;
+const MAX_OUTPUT_ROWS = 4;
+const MAX_OUTPUT_HEAD_LINES = 2;
+const MAX_OUTPUT_HEAD_ROWS = 2;
+const MAX_OUTPUT_TAIL_LINES = 1;
+const MAX_OUTPUT_TAIL_ROWS = 1;
 const MIN_OUTPUT_EDGE_CHARACTERS = 256;
 
 interface OutputLineRange {
@@ -79,28 +82,28 @@ function selectOutputLines(output: string, width: number): string[] {
     const { first, last, lineCount } = outputLineRanges(output, end);
     const edgeCharacterLimit = Math.max(
         MIN_OUTPUT_EDGE_CHARACTERS,
-        width * MAX_OUTPUT_EDGE_ROWS * 2,
+        width * (MAX_OUTPUT_HEAD_ROWS + MAX_OUTPUT_TAIL_ROWS),
     );
 
-    if (lineCount <= MAX_OUTPUT_EDGE_LINES * 2) {
+    if (lineCount <= MAX_OUTPUT_ROWS) {
         if (end <= edgeCharacterLimit * 2) {
             const rows = wrapOutputText(output.slice(0, end), width);
-            if (rows.length <= MAX_OUTPUT_EDGE_ROWS * 2) return rows;
+            if (rows.length <= MAX_OUTPUT_ROWS) return rows;
             return [
-                ...rows.slice(0, MAX_OUTPUT_EDGE_ROWS),
+                ...rows.slice(0, MAX_OUTPUT_HEAD_ROWS),
                 "… output truncated",
-                ...rows.slice(-MAX_OUTPUT_EDGE_ROWS),
+                ...rows.slice(-MAX_OUTPUT_TAIL_ROWS),
             ];
         }
 
         return [
             ...wrapOutputText(output.slice(0, edgeCharacterLimit), width).slice(
                 0,
-                MAX_OUTPUT_EDGE_ROWS,
+                MAX_OUTPUT_HEAD_ROWS,
             ),
             "… output truncated",
             ...wrapOutputText(output.slice(end - edgeCharacterLimit, end), width).slice(
-                -MAX_OUTPUT_EDGE_ROWS,
+                -MAX_OUTPUT_TAIL_ROWS,
             ),
         ];
     }
@@ -115,13 +118,13 @@ function selectOutputLines(output: string, width: number): string[] {
     const previewTruncated =
         firstEnd > edgeCharacterLimit ||
         end - lastStart > edgeCharacterLimit ||
-        headRows.length > MAX_OUTPUT_EDGE_ROWS ||
-        tailRows.length > MAX_OUTPUT_EDGE_ROWS;
-    const omitted = lineCount - MAX_OUTPUT_EDGE_LINES * 2;
+        headRows.length > MAX_OUTPUT_HEAD_ROWS ||
+        tailRows.length > MAX_OUTPUT_TAIL_ROWS;
+    const omitted = lineCount - MAX_OUTPUT_HEAD_LINES - MAX_OUTPUT_TAIL_LINES;
     return [
-        ...headRows.slice(0, MAX_OUTPUT_EDGE_ROWS),
+        ...headRows.slice(0, MAX_OUTPUT_HEAD_ROWS),
         `… +${omitted} lines${previewTruncated ? "; output truncated" : ""}`,
-        ...tailRows.slice(-MAX_OUTPUT_EDGE_ROWS),
+        ...tailRows.slice(-MAX_OUTPUT_TAIL_ROWS),
     ];
 }
 
@@ -141,9 +144,9 @@ function outputLineRanges(
     for (let index = 0; index <= end; index += 1) {
         if (index !== end && output[index] !== "\n") continue;
         const range = { end: index, start: lineStart };
-        if (first.length < MAX_OUTPUT_EDGE_LINES) first.push(range);
+        if (first.length < MAX_OUTPUT_HEAD_LINES) first.push(range);
         last.push(range);
-        if (last.length > MAX_OUTPUT_EDGE_LINES) last.shift();
+        if (last.length > MAX_OUTPUT_TAIL_LINES) last.shift();
         lineCount += 1;
         lineStart = index + 1;
     }

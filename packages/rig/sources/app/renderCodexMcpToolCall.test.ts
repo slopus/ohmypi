@@ -47,7 +47,7 @@ describe("renderCodexMcpToolCall", () => {
         expect(rendered.filter((line) => line.includes("└"))).toHaveLength(1);
     });
 
-    it("moves a long invocation below the header and preserves multiline structured output", () => {
+    it("moves a long invocation below the header and bounds multiline structured output", () => {
         const call: CodexMcpToolCall = {
             invocation: {
                 server: "node_repl",
@@ -72,8 +72,7 @@ describe("renderCodexMcpToolCall", () => {
             "    {",
             "      dialogs: [ 0, 0 ],",
             "      topic: 'workspace',",
-            "      agent: 1",
-            "    }",
+            "      agent: 1...",
         ]);
         expect(rendered.every((line) => visibleWidth(line) <= 48)).toBe(true);
         expect(plain.filter((line) => line.includes("└"))).toHaveLength(1);
@@ -188,6 +187,24 @@ describe("renderCodexMcpToolCall", () => {
             "    third...",
         ]);
         expect(rendered.join("\n")).not.toContain("]8;;");
+    });
+
+    it("shows at most four result rows by default", () => {
+        const rendered = renderCodexMcpToolCall(
+            {
+                invocation: { server: "search", tool: "find_docs", arguments: {} },
+                result: "first\nsecond\nthird\nfourth\nfifth",
+                status: "success",
+            },
+            { width: 40 },
+        ).map(stripAnsi);
+
+        expect(rendered.slice(1)).toEqual([
+            "  └ first",
+            "    second",
+            "    third",
+            "    fourth...",
+        ]);
     });
 
     it("bounds large invocation and result payloads before serialization and wrapping", async () => {
