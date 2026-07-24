@@ -114,8 +114,6 @@ export {
     CODEX_CHATGPT_ENDPOINT,
     type CodexTransport,
 } from "@/vendors/codex/impl/codexConstants.js";
-export { BedrockProvider, type BedrockProviderOptions } from "@/vendors/bedrock/BedrockProvider.js";
-export { BedrockSession, type BedrockSessionOptions } from "@/vendors/bedrock/BedrockSession.js";
 export {
     AnthropicBedrockProvider,
     type AnthropicBedrockProviderOptions,

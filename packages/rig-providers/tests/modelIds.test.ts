@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { resolveBedrockModelId } from "@/vendors/bedrock/impl/resolveBedrockModelId.js";
 import { resolveClaudeModelId } from "@/vendors/claude/impl/resolveClaudeModelId.js";
 import { resolveCodexModelId } from "@/vendors/codex/impl/resolveCodexModelId.js";
+import { resolveCodexSessionModelId } from "@/vendors/codex/impl/resolveCodexSessionModelId.js";
 import { resolveGrokModelId } from "@/vendors/grok/impl/resolveGrokModelId.js";
 
 describe("Rig model IDs", () => {
@@ -21,5 +22,12 @@ describe("Rig model IDs", () => {
 
     it("leaves native model IDs unchanged", () => {
         expect(resolveCodexModelId("custom-model")).toBe("custom-model");
+    });
+
+    it("maps Codex session model IDs to the credential's wire form", () => {
+        // Bedrock keeps the dotted v1 id so tools ship over the v1 contract; native
+        // Codex uses the bare v2 name.
+        expect(resolveCodexSessionModelId("openai/gpt-5.6-sol", true)).toBe("openai.gpt-5.6-sol");
+        expect(resolveCodexSessionModelId("openai/gpt-5.6-sol", false)).toBe("gpt-5.6-sol");
     });
 });

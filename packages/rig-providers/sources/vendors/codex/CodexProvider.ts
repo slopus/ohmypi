@@ -9,7 +9,7 @@ import {
 import { CodexSession } from "@/vendors/codex/CodexSession.js";
 import { assertCodexCredential } from "@/vendors/codex/impl/assertCodexCredential.js";
 import { resolveCodexInstallationId } from "@/vendors/codex/impl/resolveCodexInstallationId.js";
-import { resolveCodexModelId } from "@/vendors/codex/impl/resolveCodexModelId.js";
+import { resolveCodexSessionModelId } from "@/vendors/codex/impl/resolveCodexSessionModelId.js";
 import { resolveCodexUserAgent } from "@/vendors/codex/impl/codexUserAgent.js";
 import { resolveCodexStreamIdleTimeout } from "@/vendors/codex/impl/resolveCodexStreamIdleTimeout.js";
 import { resolveCodexStreamMaxRetries } from "@/vendors/codex/impl/resolveCodexStreamMaxRetries.js";
@@ -66,7 +66,10 @@ export class CodexProvider extends ResponsesProvider {
                 : options.credential.name === "codex-session"
                   ? CODEX_CHATGPT_ENDPOINT
                   : CODEX_API_ENDPOINT);
-        this.model = options.model === undefined ? undefined : resolveCodexModelId(options.model);
+        this.model =
+            options.model === undefined
+                ? undefined
+                : resolveCodexSessionModelId(options.model, isBedrock);
         this.parallelToolCalls = options.parallelToolCalls;
         this.streamMaxRetries = resolveCodexStreamMaxRetries(options.streamMaxRetries);
         this.streamIdleTimeoutMs = resolveCodexStreamIdleTimeout(options.streamIdleTimeoutMs);

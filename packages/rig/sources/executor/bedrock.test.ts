@@ -1,4 +1,5 @@
 import { createServer } from "node:http";
+import { Type } from "@sinclair/typebox";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -54,12 +55,16 @@ describe("Amazon Bedrock provider", () => {
         );
     });
 
-    it("routes OpenAI models through the rig-providers Bedrock session", async () => {
+    it("routes OpenAI models through the Codex Bedrock session with tools", async () => {
         let requestBody: Record<string, unknown> | undefined;
+        let requestPath: string | undefined;
+        let authorization: string | undefined;
         const server = createServer(async (request, response) => {
             const chunks: Buffer[] = [];
             for await (const chunk of request) chunks.push(Buffer.from(chunk));
             requestBody = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+            requestPath = request.url;
+            authorization = request.headers.authorization;
             response.writeHead(200, { "content-type": "text/event-stream" });
             response.end(
                 [
@@ -91,13 +96,29 @@ describe("Amazon Bedrock provider", () => {
             const message = await provider
                 .stream(modelOpenaiGpt56Sol, {
                     messages: [{ role: "user", content: "Reply with ok.", timestamp: 1 }],
+                    tools: [
+                        {
+                            name: "list_files",
+                            description: "List files in a directory.",
+                            parameters: Type.Object({ path: Type.String() }),
+                        },
+                    ],
                 })
                 .result();
 
+            expect(requestPath).toBe("/openai/v1/responses");
+            expect(authorization).toBe("Bearer bedrock-token");
+            // The Codex Bedrock path uses the dotted v1 model id and forwards the
+            // caller's tools; the old tool-less Bedrock session never sent tools.
             expect(requestBody).toMatchObject({
                 model: "openai.gpt-5.6-sol",
+                parallel_tool_calls: true,
                 stream: true,
+                tool_choice: "auto",
             });
+            expect(
+                (requestBody?.tools as { name?: string }[] | undefined)?.map((tool) => tool.name),
+            ).toContain("list_files");
             expect(message).toMatchObject({
                 content: [{ type: "text", text: "ok" }],
                 provider: "bedrock",

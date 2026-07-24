@@ -1,7 +1,7 @@
 import {
     AnthropicBedrockProvider as NativeAnthropicBedrockProvider,
     BedrockBearerTokenCredential,
-    BedrockProvider as NativeOpenAIBedrockProvider,
+    CodexProvider,
 } from "@slopus/rig-providers";
 import { createExecutorModelProfiles, type ExecutorProvider } from "@slopus/rig-execution";
 
@@ -127,7 +127,7 @@ export function bedrockExecution(options: BedrockProviderOptions = {}): Executor
                       region,
                       transport,
                   })
-                : new NativeOpenAIBedrockProvider({
+                : new CodexProvider({
                       credential,
                       endpoint,
                       model: route.model.id,

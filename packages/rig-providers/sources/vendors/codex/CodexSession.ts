@@ -52,7 +52,7 @@ import { recoverCodexUnauthorizedCredential } from "@/vendors/codex/impl/recover
 import { readCodexTurnState } from "@/vendors/codex/impl/readCodexTurnState.js";
 import { readCodexTurnStateHeader } from "@/vendors/codex/impl/readCodexTurnStateHeader.js";
 import { resolveCodexReasoningEffort } from "@/vendors/codex/impl/resolveCodexReasoningEffort.js";
-import { resolveCodexModelId } from "@/vendors/codex/impl/resolveCodexModelId.js";
+import { resolveCodexSessionModelId } from "@/vendors/codex/impl/resolveCodexSessionModelId.js";
 import { resolveCodexStreamIdleTimeout } from "@/vendors/codex/impl/resolveCodexStreamIdleTimeout.js";
 import { resolveCodexStreamMaxRetries } from "@/vendors/codex/impl/resolveCodexStreamMaxRetries.js";
 import { setCodexRequestKind } from "@/vendors/codex/impl/setCodexRequestKind.js";
@@ -413,7 +413,12 @@ export class CodexSession extends BaseSession {
     private async *streamRun(request: SessionRunRequest): AsyncGenerator<SessionEvent> {
         const requestedModel = request.model ?? this.activeModel;
         const model =
-            requestedModel === undefined ? undefined : resolveCodexModelId(requestedModel);
+            requestedModel === undefined
+                ? undefined
+                : resolveCodexSessionModelId(
+                      requestedModel,
+                      this.credential.name === "bedrock-bearer-token",
+                  );
         if (model === undefined) throw new Error("A model is required for Codex inference.");
         const configuration = this.resolveConfiguration(model);
         const effort = resolveCodexReasoningEffort(model, request.effort);
