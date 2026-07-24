@@ -5,6 +5,15 @@ import type { Context } from "@/types.js";
 export function toSessionMessages(messages: Context["messages"]): SessionMessage[] {
     return messages.map((message): SessionMessage => {
         if (message.role === "user") {
+            if (message.encryptedAgentMessage !== undefined) {
+                return {
+                    role: "agent",
+                    ...message.encryptedAgentMessage,
+                    ...(message.agentMessageTriggerTurn === undefined
+                        ? {}
+                        : { agentMessageTriggerTurn: message.agentMessageTriggerTurn }),
+                };
+            }
             const input =
                 typeof message.content === "string"
                     ? undefined

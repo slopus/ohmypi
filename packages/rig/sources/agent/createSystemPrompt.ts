@@ -10,6 +10,7 @@ import type { Model, Provider } from "@slopus/rig-execution";
 import { createSecretInstructions } from "../secrets/index.js";
 import type { DurableSkillDefinition } from "../external-skills/types.js";
 import { RIG_AGENT_TOOL_INSTRUCTIONS } from "./rigAgentToolInstructions.js";
+import { createCodexCollaborationInstructions } from "./createCodexCollaborationInstructions.js";
 
 export interface CreateSystemPromptOptions {
     appendSystemPrompt?: string;
@@ -61,6 +62,23 @@ export async function createSystemPrompt(
         if (availableModelsInstructions !== undefined) {
             parts.push(availableModelsInstructions);
         }
+    }
+
+    if (
+        options.provider.type === "codex" &&
+        (options.model.id === "openai/gpt-5.6-sol" ||
+            options.model.id === "openai/gpt-5.6-terra") &&
+        options.context.subagents !== undefined &&
+        options.tools?.some((tool) => tool.namespace?.name === "collaboration") === true
+    ) {
+        parts.push(
+            createCodexCollaborationInstructions({
+                canSpawn: options.context.subagents.canSpawn,
+                depth: options.context.subagents.depth,
+                maxActive: options.context.subagents.maxActive ?? 4,
+                ...(options.effort === undefined ? {} : { effort: options.effort }),
+            }),
+        );
     }
 
     if (options.tools?.some((tool) => tool.namespace?.name === "rig") === true) {

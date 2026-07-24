@@ -22,6 +22,7 @@ import { codexSpawnAgentTool } from "./v2/spawn_agent.js";
 import { codexExtendedFollowupTaskTool } from "./v2/collaboration_ext/followup_task.js";
 import { codexExtendedSpawnAgentTool } from "./v2/collaboration_ext/spawn_agent.js";
 import { codexWaitAgentTool } from "./v2/wait_agent.js";
+import { isCodexV2CollaborationModel } from "./isCodexV2CollaborationModel.js";
 
 export const codexTools = [
     codexExecCommandTool,
@@ -68,8 +69,8 @@ export function assembleCodexTools(
     modelName: string,
     providerName: string,
 ): readonly AnyDefinedTool[] {
-    void modelName;
-    const collaborationTools =
-        providerName === "bedrock" ? codexV1CollaborationTools : codexV2CollaborationTools;
+    const collaborationTools = isCodexV2CollaborationModel(modelName, providerName)
+        ? codexV2CollaborationTools
+        : codexV1CollaborationTools;
     return [...codexTools, ...codexWorkflowTools, ...collaborationTools];
 }

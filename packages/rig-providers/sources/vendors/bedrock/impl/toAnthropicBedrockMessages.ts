@@ -34,6 +34,7 @@ export function toAnthropicBedrockMessages(
         if (message.role === "tool") {
             return [{ role: "user", content: [toToolResult(message)] }];
         }
+        if (message.role === "agent") return [];
         return [{ role: "assistant", content: toAssistantContent(message) }];
     });
     const last = converted.at(-1);

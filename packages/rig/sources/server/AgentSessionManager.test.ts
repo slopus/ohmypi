@@ -48,6 +48,7 @@ describe("AgentSessionManager", () => {
             sessionId: child.id,
         });
         expect(submit).toHaveBeenCalledWith({
+            agentMessageTriggerTurn: true,
             displayText: "Follow-up task for audit",
             encryptedAgentMessage: {
                 author: "/root",
@@ -88,23 +89,96 @@ describe("AgentSessionManager", () => {
             sessionId: child.id,
         });
         expect(submit).toHaveBeenLastCalledWith({
+            agentMessageTriggerTurn: true,
             provenance: "agent",
             text: "Plain cross-provider task",
         });
     });
 
-    it("allows eight active subagents by default", () => {
+    it("enforces the shared child limit before starting an idle follow-up", () => {
+        const idle = {
+            agentMetadata: () => ({
+                depth: 1,
+                parentSessionId: "root-1",
+                rootSessionId: "root-1",
+                taskName: "idle",
+                type: "subagent" as const,
+            }),
+            id: "idle",
+            isSubagent: () => true,
+            subagentSummary: () => ({
+                description: "Idle",
+                status: "completed" as const,
+                taskName: "idle",
+            }),
+        } as unknown as InMemorySession;
+        const running = Array.from({ length: 3 }, (_, index) => ({
+            agentMetadata: () => ({
+                depth: 1,
+                parentSessionId: "root-1",
+                rootSessionId: "root-1",
+                taskName: `running_${index}`,
+                type: "subagent" as const,
+            }),
+            id: `running-${index}`,
+            isSubagent: () => true,
+            subagentSummary: () => ({
+                description: "Running",
+                status: "running" as const,
+                taskName: `running_${index}`,
+            }),
+        })) as unknown as InMemorySession[];
+        const root = {
+            agentMetadata: () => ({ depth: 0, rootSessionId: "root-1", type: "primary" }),
+            encryptedAgentTransportScope: () => '["codex",null]',
+            id: "root-1",
+            isCodexV2Collaboration: () => true,
+            isSubagent: () => false,
+        } as unknown as InMemorySession;
+        const sessions = [idle, ...running];
+        const manager = new AgentSessionManager({
+            repository: {
+                createSubagent: vi.fn(),
+                get: (id) =>
+                    id === root.id ? root : sessions.find((session) => session.id === id),
+                listByRoot: () => sessions,
+            },
+        });
+
+        expect(() => manager.followUp(root.id, "idle", "Continue.")).toThrow(
+            "No more than 3 subagents can run at once.",
+        );
+    });
+
+    it("keeps the existing generic limit and narrows Codex V2 trees", () => {
+        const codexRoot = {
+            encryptedAgentTransportScope: () => '["codex",null]',
+            id: "codex-root",
+            isCodexV2Collaboration: () => true,
+        } as unknown as InMemorySession;
+        const bedrockRoot = {
+            id: "bedrock-root",
+            isCodexV2Collaboration: () => false,
+        } as unknown as InMemorySession;
         const manager = new AgentSessionManager({
             repository: {
                 createSubagent: () => {
                     throw new Error("Not used by this test.");
                 },
-                get: () => undefined,
+                get: (sessionId) =>
+                    sessionId === codexRoot.id
+                        ? codexRoot
+                        : sessionId === bedrockRoot.id
+                          ? bedrockRoot
+                          : undefined,
                 listByRoot: () => [],
             },
         });
 
         expect(manager.maxActive).toBe(8);
+        expect(manager.maxActiveFor("generic-root")).toBe(8);
+        expect(manager.maxActiveFor(codexRoot.id)).toBe(3);
+        expect(manager.maxActiveFor(bedrockRoot.id)).toBe(8);
     });
 
     it("reads paginated history from the root and nested subagents by task path", () => {
@@ -332,6 +406,7 @@ describe("AgentSessionManager", () => {
             expect.objectContaining({ taskName: "model_check" }),
         );
         expect(child.submit).toHaveBeenCalledWith({
+            agentMessageTriggerTurn: true,
             provenance: "agent",
             text: "Inspect with the requested model.",
         });
@@ -401,6 +476,17 @@ describe("AgentSessionManager", () => {
         );
         expect(createSubagent).not.toHaveBeenCalled();
         expect(child.submit).not.toHaveBeenCalled();
+
+        await expect(
+            manager.spawn(parent.id, {
+                encryptedPrompt: "opaque-luna-ciphertext",
+                description: "Unsupported V1 model",
+                modelId: "openai/gpt-5.6-luna",
+                prompt: "",
+                taskName: "unsupported_luna",
+            }),
+        ).rejects.toThrow("Native encrypted collaboration only works within the current");
+        expect(createSubagent).not.toHaveBeenCalled();
 
         parentTransportScope.mockReturnValue(undefined);
         await expect(
@@ -713,6 +799,7 @@ describe("AgentSessionManager", () => {
             manager.followUp("root-1", "inspect_code", "Check one more file.", "high"),
         ).toMatchObject({ sessionId: "child-1" });
         expect(childSubmit).toHaveBeenLastCalledWith({
+            agentMessageTriggerTurn: true,
             effort: "high",
             provenance: "agent",
             text: "Check one more file.",
@@ -996,6 +1083,7 @@ describe("AgentSessionManager", () => {
             expect.objectContaining({ sessionId: child.session.id, status: "running" }),
         );
         expect(child.submit).toHaveBeenCalledWith({
+            agentMessageTriggerTurn: true,
             provenance: "agent",
             text: "Inspect one more file.",
         });
@@ -1100,6 +1188,7 @@ describe("AgentSessionManager", () => {
         );
 
         expect(child.submit).toHaveBeenCalledWith({
+            agentMessageTriggerTurn: true,
             provenance: "agent",
             text: "Continue the audit.",
         });
@@ -1242,9 +1331,11 @@ describe("AgentSessionManager", () => {
     it("rejects a spawn when the active-agent limit is full", async () => {
         const parent = {
             agentMetadata: () => ({ depth: 0, rootSessionId: "root-1", type: "primary" }),
+            encryptedAgentTransportScope: () => '["codex",null]',
             id: "root-1",
+            isCodexV2Collaboration: () => true,
         } as unknown as InMemorySession;
-        const active = Array.from({ length: 8 }, (_, index) => {
+        const active = Array.from({ length: 3 }, (_, index) => {
             const id = `child-${index + 1}`;
             return {
                 subagentSummary: () => ({
@@ -1274,7 +1365,7 @@ describe("AgentSessionManager", () => {
                 description: "One task too many",
                 prompt: "Do more work.",
             }),
-        ).rejects.toThrow("No more than 8 subagents can run at once");
+        ).rejects.toThrow("No more than 3 subagents can run at once");
         expect(createSubagent).not.toHaveBeenCalled();
     });
 

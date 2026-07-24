@@ -45,6 +45,27 @@ describe("Codex collaboration tools", () => {
             "spawn_agent",
             "wait_agent",
         ]);
+
+        const luna = assembleCodexTools("openai/gpt-5.6-luna", "codex").filter(
+            (tool) => tool.namespace?.name === "multi_agent_v1",
+        );
+        expect(luna.map((tool) => tool.name)).toEqual([
+            "close_agent",
+            "resume_agent",
+            "send_input",
+            "spawn_agent",
+            "wait_agent",
+        ]);
+        expect(
+            assembleCodexTools("openai/gpt-5.6-luna", "codex").some(
+                (tool) => tool.namespace?.name === "collaboration",
+            ),
+        ).toBe(false);
+        expect(
+            assembleCodexTools("openai/gpt-5.6-sol", "bedrock").some(
+                (tool) => tool.namespace?.name === "collaboration",
+            ),
+        ).toBe(false);
     });
 
     it("exposes background spawn and lifecycle controls", async () => {

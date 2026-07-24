@@ -4,7 +4,7 @@ import { defineTool } from "../../../../types.js";
 import { humanizeTaskName } from "../../impl/humanizeTaskName.js";
 import { requireSubagentContext } from "../../impl/requireSubagentContext.js";
 import { parseCodexForkTurns } from "../impl/parseCodexForkTurns.js";
-import { selectLastUserTurns } from "../impl/selectLastUserTurns.js";
+import { selectCodexForkMessages } from "../impl/selectCodexForkMessages.js";
 
 export const codexExtendedSpawnAgentTool = defineTool({
     name: "spawn_agent",
@@ -58,15 +58,8 @@ Spawn a background subagent with an explicit provider and model.`,
     }),
     shouldReviewInAutoMode: () => false,
     execute: async (args, context, execution) => {
-        const {
-            fork_turns,
-            message,
-            model,
-            provider,
-            reasoning_effort,
-            service_tier,
-            task_name,
-        } = args;
+        const { fork_turns, message, model, provider, reasoning_effort, service_tier, task_name } =
+            args;
         const subagents = requireSubagentContext(context);
         const availableModels = subagents.availableModels;
         if (
@@ -84,7 +77,7 @@ Spawn a background subagent with an explicit provider and model.`,
                 background: true,
                 contextMode: fork.contextMode,
                 ...(fork.contextMode === "parent" && parentMessages !== undefined
-                    ? { contextMessages: selectLastUserTurns(parentMessages, fork.lastNTurns) }
+                    ? { contextMessages: selectCodexForkMessages(parentMessages, fork.lastNTurns) }
                     : {}),
                 description: humanizeTaskName(task_name),
                 ...(reasoning_effort === undefined ? {} : { effort: reasoning_effort }),

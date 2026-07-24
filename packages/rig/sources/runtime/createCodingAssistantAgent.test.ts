@@ -3,10 +3,12 @@ import { describe, expect, it } from "vitest";
 import { NativeProcessManager } from "../processes/index.js";
 import {
     modelAnthropicFable5,
+    modelOpenaiGpt56Luna,
     modelOpenaiGpt56Sol,
     modelXaiGrok45,
     modelXaiGrokBuild,
 } from "@slopus/rig-execution";
+import { createSystemPrompt } from "../agent/createSystemPrompt.js";
 import { createCodingAssistantAgent } from "./createCodingAssistantAgent.js";
 
 describe("createCodingAssistantAgent", () => {
@@ -429,6 +431,61 @@ describe("createCodingAssistantAgent", () => {
         });
         expect(grokDeepest.agent.tools.map((tool) => tool.name)).toContain("followup_subagent");
         expect(grokDeepest.agent.tools.map((tool) => tool.name)).not.toContain("spawn_subagent");
+    });
+
+    it("keeps V2 child guidance at maximum depth and excludes Luna", async () => {
+        const managed = {
+            description: "Test",
+            path: "/root/test",
+            sessionId: "test",
+            status: "completed" as const,
+            taskName: "test",
+        };
+        const controls = {
+            depth: 3,
+            followUp: () => managed,
+            interrupt: () => managed,
+            list: () => [managed],
+            maxActive: 4,
+            maxDepth: 3,
+            sendMessage: () => managed,
+            spawn: async () => ({ ...managed, output: "done" }),
+            wait: async () => ({ agents: [managed], timedOut: false }),
+        };
+        const deepest = createCodingAssistantAgent({
+            cwd: "/tmp/rig-app-test",
+            modelId: modelOpenaiGpt56Sol.id,
+            subagents: { ...controls, canSpawn: false },
+        });
+        const luna = createCodingAssistantAgent({
+            cwd: "/tmp/rig-app-test",
+            modelId: modelOpenaiGpt56Luna.id,
+            subagents: { ...controls, canSpawn: true, depth: 0 },
+        });
+
+        const deepestPrompt = await createSystemPrompt({
+            context: deepest.context,
+            messages: [],
+            model: deepest.agent.model,
+            provider: deepest.executor,
+            tools: deepest.agent.tools,
+        });
+        const lunaPrompt = await createSystemPrompt({
+            context: luna.context,
+            messages: [],
+            model: luna.agent.model,
+            provider: luna.executor,
+            tools: luna.agent.tools,
+        });
+
+        expect(deepestPrompt).toContain("immediately delivered back to your parent agent");
+        expect(deepestPrompt).toContain("cannot spawn additional sub-agents at this depth");
+        expect(deepestPrompt).not.toContain("`spawn_agent`");
+        expect(lunaPrompt).not.toContain("immediately delivered back to your parent agent");
+        expect(luna.agent.tools.map((tool) => tool.name)).toEqual(
+            expect.arrayContaining(["close_agent", "resume_agent", "send_input"]),
+        );
+        expect(luna.agent.tools.map((tool) => tool.name)).not.toContain("followup_task");
     });
 
     it("omits workflow tools when workflow support is disabled", () => {

@@ -33,6 +33,6 @@ describe("createSubagentInstructions", () => {
         expect(codexInstructions).toContain("Base project instructions.");
         expect(codexInstructions).toContain("You are a subagent working on one delegated step.");
         expect(codexInstructions.match(/You are a subagent working/gu)).toHaveLength(1);
-        expect(codexInstructions.match(/current depth/gu)).toHaveLength(1);
+        expect(codexInstructions.match(/at depth/gu)).toHaveLength(1);
     });
 });

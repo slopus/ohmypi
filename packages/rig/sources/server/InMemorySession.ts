@@ -141,6 +141,7 @@ import { createErrorToolResultBlock } from "../agent/createErrorToolResultBlock.
 import { createToolResultBlock } from "../agent/createToolResultBlock.js";
 import { executePreapprovedToolCall } from "../agent/executePreapprovedToolCall.js";
 import { createModelSwitchHistoryMessage } from "../agent/createModelSwitchHistoryMessage.js";
+import { isCodexV2CollaborationModel } from "../agent/tools/codex/isCodexV2CollaborationModel.js";
 import { createDurableSkillTool, type DurableSkillDefinition } from "../external-skills/index.js";
 
 const MAX_RETAINED_EXTERNAL_TOOL_CALLS = 1_000;
@@ -169,6 +170,7 @@ export interface PersistedQueuedRun {
 }
 
 interface SessionSubmitMessageRequest extends SubmitMessageRequest {
+    agentMessageTriggerTurn?: boolean;
     encryptedAgentMessage?: {
         author: string;
         recipient: string;
@@ -1003,6 +1005,13 @@ export class InMemorySession {
     encryptedAgentTransportScope(): string | undefined {
         const runtime = this.#ensureRuntime();
         return createEncryptedAgentTransportScope(runtime.executor, runtime.agent.model);
+    }
+
+    isCodexV2Collaboration(): boolean {
+        const providerType = this.#modelCatalog.providers.find(
+            (provider) => provider.providerId === this.#providerId,
+        )?.providerType;
+        return isCodexV2CollaborationModel(this.#modelId, providerType);
     }
 
     hasModel(modelId: string, providerId?: string): boolean {
@@ -2287,6 +2296,9 @@ export class InMemorySession {
             ...(request.encryptedAgentMessage === undefined
                 ? {}
                 : { encryptedAgentMessage: request.encryptedAgentMessage }),
+            ...(request.agentMessageTriggerTurn === undefined
+                ? {}
+                : { agentMessageTriggerTurn: request.agentMessageTriggerTurn }),
         };
         const visibleMessage: UserMessage = {
             role: "user",
@@ -3627,6 +3639,9 @@ export class InMemorySession {
                 inspect: (target) => agentManager.inspect(this.id, target),
                 interrupt: (target) => agentManager.interrupt(this.id, target),
                 list: (pathPrefix) => agentManager.list(this.id, pathPrefix),
+                maxActive:
+                    (agentManager.maxActiveFor?.(this.#agentMetadata.rootSessionId) ??
+                        agentManager.maxActive) + 1,
                 maxDepth: agentManager.maxDepth,
                 sendMessage: (target, message, encryptedMessage) =>
                     agentManager.sendMessage(this.id, target, message, encryptedMessage),

@@ -20,7 +20,7 @@ export function createSubagentInstructions(
         baseInstructions,
         roleInstructions,
         depth < maxDepth
-            ? `You may delegate focused work to another subagent. The current depth is ${depth} of ${maxDepth}.`
+            ? `Collaboration tools remain available at depth ${depth} of ${maxDepth}; their availability does not authorize additional delegation.`
             : "You are at the maximum subagent depth and must complete the task directly.",
     ]
         .filter((part): part is string => part !== undefined && part.length > 0)

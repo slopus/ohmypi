@@ -18,6 +18,17 @@ export interface SessionUserMessage {
     readonly input?: SessionInputContent;
 }
 
+/** Opaque provider-native message exchanged between collaborating Codex agents. */
+export interface SessionAgentMessage {
+    readonly role: "agent";
+    readonly author: string;
+    readonly recipient: string;
+    readonly header: string;
+    readonly encryptedContent: string;
+    /** Whether this message establishes the boundary for a new inference turn. */
+    readonly agentMessageTriggerTurn?: boolean;
+}
+
 export interface SessionSystemMessage {
     readonly role: "system";
     readonly content: string | readonly string[];
@@ -69,6 +80,7 @@ export interface SessionCompactionMessage {
 export type SessionMessage =
     | SessionSystemMessage
     | SessionUserMessage
+    | SessionAgentMessage
     | SessionAssistantMessage
     | SessionToolResultMessage
     | SessionCompactionMessage;

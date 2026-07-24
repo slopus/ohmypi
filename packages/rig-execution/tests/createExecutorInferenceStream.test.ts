@@ -5,6 +5,62 @@ import { createExecutorInferenceStream } from "@/createExecutorInferenceStream.j
 import { defineModel } from "@/types.js";
 
 describe("createExecutorInferenceStream", () => {
+    it("preserves encrypted collaboration input as a provider agent message", async () => {
+        let received: unknown;
+        const executor = {
+            type: "codex",
+            run: async function* (request: unknown) {
+                received = request;
+                yield { type: "done", state: "normal" } as const;
+            },
+        } as unknown as Executor;
+        const stream = createExecutorInferenceStream({
+            context: {
+                messages: [
+                    {
+                        role: "user",
+                        content: "",
+                        encryptedAgentMessage: {
+                            author: "/root",
+                            recipient: "/root/child",
+                            header: "Message Type: NEW_TASK\nPayload:\n",
+                            encryptedContent: "opaque-task",
+                        },
+                        agentMessageTriggerTurn: true,
+                        timestamp: 1,
+                    },
+                ],
+            },
+            executor,
+            model: defineModel({
+                id: "openai/test",
+                name: "Test",
+                thinkingLevels: ["low"],
+                defaultThinkingLevel: "low",
+            }),
+            providerId: "codex",
+        });
+
+        for await (const _event of stream) {
+            // Consume the stream so the executor request is created.
+        }
+
+        expect(received).toMatchObject({
+            context: {
+                messages: [
+                    {
+                        role: "agent",
+                        author: "/root",
+                        recipient: "/root/child",
+                        header: "Message Type: NEW_TASK\nPayload:\n",
+                        encryptedContent: "opaque-task",
+                        agentMessageTriggerTurn: true,
+                    },
+                ],
+            },
+        });
+    });
+
     it("forwards provider retry progress without restarting inference", async () => {
         const executor = {
             run: async function* () {

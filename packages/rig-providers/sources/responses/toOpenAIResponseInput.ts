@@ -29,6 +29,21 @@ export function toOpenAIResponseInput(context: SessionContext): ResponseInput {
             });
             continue;
         }
+        if (message.role === "agent") {
+            input.push({
+                type: "agent_message",
+                author: message.author,
+                recipient: message.recipient,
+                content: [
+                    { type: "input_text", text: message.header },
+                    {
+                        type: "encrypted_content",
+                        encrypted_content: message.encryptedContent,
+                    },
+                ],
+            } as unknown as ResponseInputItem);
+            continue;
+        }
         if (message.role === "compaction") {
             input.push({
                 type: "compaction",

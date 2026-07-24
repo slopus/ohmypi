@@ -959,6 +959,9 @@ function toProviderUserMessage(message: UserMessage, now: () => number): Provide
         ...(message.encryptedAgentMessage === undefined
             ? {}
             : { encryptedAgentMessage: message.encryptedAgentMessage }),
+        ...(message.agentMessageTriggerTurn === undefined
+            ? {}
+            : { agentMessageTriggerTurn: message.agentMessageTriggerTurn }),
         timestamp: now(),
     };
 }

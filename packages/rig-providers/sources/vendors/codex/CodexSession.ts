@@ -493,7 +493,8 @@ export class CodexSession extends BaseSession {
                     if (
                         result.assistantText.length > 0 ||
                         result.encryptedReasoning !== undefined ||
-                        result.toolCalls.length > 0
+                        result.toolCalls.length > 0 ||
+                        result.responseItems.length > 0
                     ) {
                         this.context = {
                             instructions: this.context.instructions,
@@ -514,6 +515,9 @@ export class CodexSession extends BaseSession {
                                 },
                             ],
                         };
+                    }
+                    if (result.responseItems.length > 0) {
+                        yield { type: "response_items", items: result.responseItems };
                     }
                 }
                 yield { type: "block_stop" };

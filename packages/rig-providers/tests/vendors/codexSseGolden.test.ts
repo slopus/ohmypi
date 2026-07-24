@@ -27,7 +27,7 @@ describe("Codex SSE goldens", () => {
         const server = createServer(async (request, response) => {
             captured = JSON.parse(await readBody(request));
             capturedHeaders = request.headers;
-            completeSse(response);
+            completeSse(response, undefined, "OK.");
         });
         server.listen(0, "127.0.0.1");
         await new Promise<void>((resolve, reject) => {
@@ -56,16 +56,37 @@ describe("Codex SSE goldens", () => {
                 skills: codexSkills,
                 tools: codexCliTools(model),
             });
+            const events = [];
             for await (const event of session.run({
                 context: {
                     messages: [{ role: "user", content: "Reply with OK." }],
                 },
                 effort: "low",
             })) {
+                events.push(event);
                 if (event.type === "done") expect(event.state).toBe("normal");
             }
             session.destroy();
 
+            expect(events).toContainEqual({
+                type: "response_items",
+                items: [
+                    JSON.stringify({
+                        id: "final-message",
+                        type: "message",
+                        role: "assistant",
+                        phase: "final_answer",
+                        status: "completed",
+                        content: [
+                            {
+                                type: "output_text",
+                                text: "OK.",
+                                annotations: [],
+                            },
+                        ],
+                    }),
+                ],
+            });
             expect(captured).toBeDefined();
             expect(protocolProjection(captured!)).toEqual(protocolProjection(golden.request));
             expect(normalizeRequest(captured!)).toEqual(normalizeRequest(golden.request));
@@ -436,20 +457,44 @@ function readBody(request: IncomingMessage): Promise<string> {
     });
 }
 
-function completeSse(response: ServerResponse, turnState?: string): void {
+function completeSse(response: ServerResponse, turnState?: string, finalText?: string): void {
+    const finalItem =
+        finalText === undefined
+            ? undefined
+            : {
+                  id: "final-message",
+                  type: "message",
+                  role: "assistant",
+                  phase: "final_answer",
+                  status: "completed",
+                  content: [{ type: "output_text", text: finalText, annotations: [] }],
+              };
     response.writeHead(200, {
         "content-type": "text/event-stream",
         ...(turnState === undefined ? {} : { "x-codex-turn-state": turnState }),
     });
     response.end(
-        `data: ${JSON.stringify({
-            type: "response.completed",
-            response: {
-                id: "response",
-                output: [],
-                usage: { input_tokens: 0, output_tokens: 0, total_tokens: 0 },
+        [
+            ...(finalItem === undefined
+                ? []
+                : [
+                      {
+                          type: "response.output_item.done",
+                          output_index: 0,
+                          item: finalItem,
+                      },
+                  ]),
+            {
+                type: "response.completed",
+                response: {
+                    id: "response",
+                    output: finalItem === undefined ? [] : [finalItem],
+                    usage: { input_tokens: 0, output_tokens: 0, total_tokens: 0 },
+                },
             },
-        })}\n\ndata: [DONE]\n\n`,
+        ]
+            .map((event) => `data: ${JSON.stringify(event)}\n\n`)
+            .join("") + "data: [DONE]\n\n",
     );
 }
 

@@ -1,10 +1,12 @@
-import type { ProviderModelCompatibilityType } from "@slopus/rig-providers";
+import {
+    codex_agent_instructions,
+    type ProviderModelCompatibilityType,
+} from "@slopus/rig-providers";
 
 import type { ExecutorModelProfile } from "@/ExecutorModelProfile.js";
 import { claude_fable_5_system_prompt } from "@/prompts/claude/claude_fable_5_system_prompt.js";
 import { claude_opus_4_8_system_prompt } from "@/prompts/claude/claude_opus_4_8_system_prompt.js";
 import { claude_sonnet_5_system_prompt } from "@/prompts/claude/claude_sonnet_5_system_prompt.js";
-import { codex_coding_agent_instructions } from "@/prompts/codex/codex_coding_agent_instructions.js";
 import { grok_4_5_system_prompt } from "@/prompts/grok/grok_4_5_system_prompt.js";
 import {
     modelAnthropicFable5,
@@ -41,7 +43,7 @@ export function builtinModelProfiles(
         return [modelOpenaiGpt56Sol, modelOpenaiGpt56Terra, modelOpenaiGpt56Luna].map(
             (candidate) => ({
                 ...profile(providerId, providerType, candidate, {
-                    prompt: codex_coding_agent_instructions,
+                    prompt: codex_agent_instructions,
                 }),
                 collaborationMode: "namespaced",
                 toolMode: "code_mode",

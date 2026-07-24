@@ -10,6 +10,7 @@ import {
     type WaitForSubagentResult,
 } from "../agent/index.js";
 import { DEFAULT_SUBAGENT_WAIT_TIMEOUT_MS } from "../agent/context/subagentWaitTimeouts.js";
+import { isCodexV2CollaborationModel } from "../agent/tools/codex/isCodexV2CollaborationModel.js";
 import type { CreateSessionRequest, SessionAgentMetadata } from "../protocol/index.js";
 import type { Message } from "../agent/types.js";
 import type { PermissionMode } from "../permissions/index.js";
@@ -18,6 +19,7 @@ import type { TaskDrain } from "./TrackedTaskDrain.js";
 
 export const DEFAULT_MAX_SUBAGENT_DEPTH = 3;
 export const DEFAULT_MAX_ACTIVE_SUBAGENTS = 8;
+export const DEFAULT_MAX_ACTIVE_CODEX_V2_SUBAGENTS = 3;
 
 export interface AgentSessionRepository {
     createSubagent(
@@ -58,6 +60,13 @@ export class AgentSessionManager {
         const session = this.#repository.get(sessionId);
         if (session === undefined) return undefined;
         return this.#repository.get(session.agentMetadata().rootSessionId) ?? session;
+    }
+
+    maxActiveFor(rootSessionId: string): number {
+        const root = this.#repository.get(rootSessionId);
+        return root?.isCodexV2Collaboration?.() === true
+            ? Math.min(this.maxActive, DEFAULT_MAX_ACTIVE_CODEX_V2_SUBAGENTS)
+            : this.maxActive;
     }
 
     recordChanged(child: InMemorySession): void {
@@ -102,11 +111,16 @@ export class AgentSessionManager {
                 );
             }
         }
-        if (child.subagentSummary().status === "suspended") child.clearSuspension();
+        const childStatus = child.subagentSummary().status;
+        if (childStatus !== "running" && childStatus !== "queued") {
+            this.#assertTurnSlotAvailable(child.agentMetadata().rootSessionId);
+        }
+        if (childStatus === "suspended") child.clearSuspension();
         this.#stoppedExplicitly.delete(child.id);
         const childPath = this.#pathFor(child);
         const parentPath = parent === undefined ? "/root" : this.#pathFor(parent);
         const submitted = child.submit({
+            agentMessageTriggerTurn: true,
             ...(this.#repository.get(parentSessionId)?.activeRunDebug?.() === true
                 ? { debug: true }
                 : {}),
@@ -331,7 +345,7 @@ export class AgentSessionManager {
             request.encryptedPrompt !== undefined &&
             (parent.encryptedAgentTransportScope() === undefined ||
                 request.providerId !== undefined ||
-                (request.modelId !== undefined && !request.modelId.startsWith("openai/gpt-5.6-")))
+                (request.modelId !== undefined && !isCodexV2CollaborationModel(request.modelId)))
         ) {
             throw new Error(
                 "Native encrypted collaboration only works within the current compatible provider and region. Use `rig.spawn_agent` and provide the task normally when selecting or crossing a model, provider, or region.",
@@ -444,6 +458,7 @@ export class AgentSessionManager {
             const childPath = this.#pathFor(child);
             const parentPath = this.#pathFor(parent);
             submitted = child.submit({
+                agentMessageTriggerTurn: true,
                 ...(parent.activeRunDebug?.() === true ? { debug: true } : {}),
                 ...(request.encryptedPrompt === undefined
                     ? {}
@@ -505,6 +520,7 @@ export class AgentSessionManager {
         waitForSlot: boolean,
         signal?: AbortSignal,
     ): Promise<() => void> {
+        const maxActive = this.maxActiveFor(rootSessionId);
         for (;;) {
             if (signal?.aborted) throw new Error("Waiting for a subagent slot was cancelled.");
             const active = this.#repository.listByRoot(rootSessionId).filter((session) => {
@@ -512,7 +528,7 @@ export class AgentSessionManager {
                 return status === "queued" || status === "running";
             }).length;
             const reserved = this.#slotReservations.get(rootSessionId) ?? 0;
-            if (active + reserved < this.maxActive) {
+            if (active + reserved < maxActive) {
                 this.#slotReservations.set(rootSessionId, reserved + 1);
                 let released = false;
                 return () => {
@@ -524,9 +540,21 @@ export class AgentSessionManager {
                 };
             }
             if (!waitForSlot) {
-                throw new Error(`No more than ${this.maxActive} subagents can run at once.`);
+                throw new Error(`No more than ${maxActive} subagents can run at once.`);
             }
             await new Promise((resolve) => setTimeout(resolve, 25));
+        }
+    }
+
+    #assertTurnSlotAvailable(rootSessionId: string): void {
+        const maxActive = this.maxActiveFor(rootSessionId);
+        const active = this.#repository.listByRoot(rootSessionId).filter((session) => {
+            const status = session.subagentSummary().status;
+            return status === "queued" || status === "running";
+        }).length;
+        const reserved = this.#slotReservations.get(rootSessionId) ?? 0;
+        if (active + reserved >= maxActive) {
+            throw new Error(`No more than ${maxActive} subagents can run at once.`);
         }
     }
 

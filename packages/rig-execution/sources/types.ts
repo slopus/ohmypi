@@ -89,6 +89,8 @@ export interface UserMessage {
         header: string;
         encryptedContent: string;
     };
+    /** Whether an agent-authored native message starts a new inference turn. */
+    agentMessageTriggerTurn?: boolean;
     timestamp: number;
 }
 

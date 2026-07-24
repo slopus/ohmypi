@@ -38,6 +38,9 @@ export function toGrokResponseInput(context: SessionContext): ResponseInput {
             });
             continue;
         }
+        if (message.role === "agent") {
+            throw new Error("Encrypted Codex agent messages cannot be replayed by Grok.");
+        }
         if (message.role === "compaction") continue;
         if (message.role === "tool") {
             if (toolSearchCallIds.has(message.callId)) {

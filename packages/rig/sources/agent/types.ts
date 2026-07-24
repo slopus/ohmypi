@@ -99,6 +99,8 @@ export interface UserMessage {
         header: string;
         encryptedContent: string;
     };
+    /** Whether this agent-authored message starts a new inference turn. */
+    agentMessageTriggerTurn?: boolean;
     /** Durable model context that must never be presented as user-authored content. */
     internal?: true;
 }

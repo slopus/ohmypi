@@ -4,7 +4,7 @@ import { defineTool } from "../../../types.js";
 import { humanizeTaskName } from "../impl/humanizeTaskName.js";
 import { parseCodexForkTurns } from "./impl/parseCodexForkTurns.js";
 import { requireSubagentContext } from "../impl/requireSubagentContext.js";
-import { selectLastUserTurns } from "./impl/selectLastUserTurns.js";
+import { selectCodexForkMessages } from "./impl/selectCodexForkMessages.js";
 
 export const codexSpawnAgentTool = defineTool({
     name: "spawn_agent",
@@ -64,7 +64,7 @@ Spawn a background subagent for a concrete, bounded task. The new agent shares t
                 background: true,
                 contextMode: fork.contextMode,
                 ...(fork.contextMode === "parent" && parentMessages !== undefined
-                    ? { contextMessages: selectLastUserTurns(parentMessages, fork.lastNTurns) }
+                    ? { contextMessages: selectCodexForkMessages(parentMessages, fork.lastNTurns) }
                     : {}),
                 description: humanizeTaskName(task_name),
                 ...(subagents.encryptedMessages === true ? { encryptedPrompt: message } : {}),

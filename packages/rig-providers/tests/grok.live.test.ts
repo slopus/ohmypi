@@ -189,8 +189,10 @@ describeLive("GrokProvider live", () => {
         ]);
         expect(compacted.usage?.totalTokens).toBeGreaterThan(0);
         expect(compacted.context.messages).toHaveLength(2);
-        expect(compacted.context.messages[1]?.role).toBe("user");
-        expect(compacted.context.messages[1]?.content).toContain("This session is being continued");
-        expect(compacted.context.messages[1]?.content).toContain("pnpm test");
+        const continuation = compacted.context.messages[1];
+        expect(continuation?.role).toBe("user");
+        if (continuation?.role !== "user") throw new Error("Expected a user continuation.");
+        expect(continuation.content).toContain("This session is being continued");
+        expect(continuation.content).toContain("pnpm test");
     }, 120_000);
 });

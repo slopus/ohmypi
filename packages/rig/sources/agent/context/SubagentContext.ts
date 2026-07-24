@@ -70,6 +70,7 @@ export interface SubagentContext {
     inspect?(target: string): ManagedSubagent;
     interrupt(target: string): ManagedSubagent;
     list(pathPrefix?: string): readonly ManagedSubagent[];
+    maxActive?: number;
     maxDepth: number;
     sendMessage?(target: string, message: string, encryptedMessage?: string): ManagedSubagent;
     spawn(request: SpawnSubagentRequest, signal?: AbortSignal): Promise<SpawnSubagentResult>;

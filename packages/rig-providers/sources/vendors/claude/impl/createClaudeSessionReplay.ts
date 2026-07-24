@@ -106,6 +106,9 @@ function toSessionStoreEntries(
     for (let index = 0; index < messages.length; index += 1) {
         const message = messages[index];
         if (message === undefined || message.role === "system") continue;
+        if (message.role === "agent") {
+            throw new Error("Encrypted Codex agent messages cannot be replayed by Claude.");
+        }
         const uuid = stableMessageUuid(options.sessionId, message, index);
         const base = {
             cwd: options.cwd,

@@ -184,11 +184,16 @@ describe("Grok CLI compaction golden trace", () => {
                 "user",
             ]);
             expect(result.preservedMessages).toHaveLength(2);
-            expect(result.preservedMessages[1]?.content).toContain("Checkpoint DELTA:");
-            expect(result.context.messages[2]?.content).toContain(
-                "This session is being continued",
-            );
-            expect(result.context.messages[3]?.content).toContain("<system-reminder>");
+            const checkpoint = result.preservedMessages[1];
+            if (checkpoint?.role !== "user") throw new Error("Expected a user checkpoint.");
+            expect(checkpoint.content).toContain("Checkpoint DELTA:");
+            const continuation = result.context.messages[2];
+            const reminder = result.context.messages[3];
+            if (continuation?.role !== "user" || reminder?.role !== "user") {
+                throw new Error("Expected user compaction messages.");
+            }
+            expect(continuation.content).toContain("This session is being continued");
+            expect(reminder.content).toContain("<system-reminder>");
 
             for await (const _event of session.run({
                 context: {
