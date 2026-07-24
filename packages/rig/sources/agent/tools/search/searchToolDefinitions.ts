@@ -1,10 +1,9 @@
-import { createRequire } from "node:module";
 import { deunicode } from "deunicode";
+import stem from "wink-porter2-stemmer";
 
 import type { AnyDefinedTool } from "../../types.js";
 import { toolSearchStopWords } from "./impl/toolSearchStopWords.js";
 
-const stem = createRequire(import.meta.url)("wink-porter2-stemmer") as (word: string) => string;
 const segmenter = new Intl.Segmenter("en", { granularity: "word" });
 
 /**
@@ -111,9 +110,7 @@ export function searchToolDefinitions<T extends AnyDefinedTool>(
                             0.75 +
                             0.75 *
                                 (tokens.length /
-                                    (averageDocumentLength === 0
-                                        ? 256
-                                        : averageDocumentLength))));
+                                    (averageDocumentLength === 0 ? 256 : averageDocumentLength))));
             score += inverseDocumentFrequency * normalizedFrequency;
         }
         return score === 0 ? [] : [{ index, score }];

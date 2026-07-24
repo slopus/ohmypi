@@ -22,6 +22,16 @@ describe("assertHappyRuntimeDependencies", () => {
         );
     });
 
+    it("accepts Happy dependencies compiled into the published bundle", () => {
+        assert.doesNotThrow(() =>
+            assertHappyRuntimeDependencies({
+                devDependencies: dependencies,
+                name: "@slopus/rig",
+                version: "1.2.3",
+            }),
+        );
+    });
+
     it("rejects a release that would omit Happy encryption or transport dependencies", () => {
         assert.throws(
             () =>

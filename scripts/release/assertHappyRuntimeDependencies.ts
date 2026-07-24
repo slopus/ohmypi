@@ -10,7 +10,9 @@ const HAPPY_RUNTIME_DEPENDENCIES = [
 
 export function assertHappyRuntimeDependencies(manifest: PackageManifest): void {
     const missing = HAPPY_RUNTIME_DEPENDENCIES.filter(
-        (dependency) => manifest.dependencies?.[dependency] === undefined,
+        (dependency) =>
+            manifest.dependencies?.[dependency] === undefined &&
+            manifest.devDependencies?.[dependency] === undefined,
     );
     if (missing.length > 0) {
         throw new Error(
