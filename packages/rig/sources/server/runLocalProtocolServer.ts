@@ -2,6 +2,7 @@ import { chmod, open } from "node:fs/promises";
 import { createServer } from "node:http";
 
 import { createProtocolHttpServer } from "./createProtocolHttpServer.js";
+import { DaemonLog } from "./DaemonLog.js";
 import { configureSessionRequest } from "./configureSessionRequest.js";
 import {
     createDaemonStartupRequestListener,
@@ -9,6 +10,7 @@ import {
 } from "./createDaemonStartupRequestListener.js";
 import { createModelCatalog } from "./createModelCatalog.js";
 import { getEnvironmentLocalServerPaths } from "./getEnvironmentLocalServerPaths.js";
+import { installDaemonProcessFailureLogging } from "./installDaemonProcessFailureLogging.js";
 import { loadHappyIntegration, type HappyIntegrationMode } from "./loadHappyIntegration.js";
 import { prepareLocalServerDirectory } from "./prepareLocalServerDirectory.js";
 import { PersistentSessionStore } from "./PersistentSessionStore.js";
@@ -41,8 +43,27 @@ export async function runLocalProtocolServer(
     const tokenPath = options.tokenPath ?? paths.tokenPath;
     const startedAt = new Date().toISOString();
     await prepareLocalServerDirectory(paths.directory);
-    const token = await readLocalServerToken(tokenPath);
-    await removeStaleSocket(socketPath);
+    const identity = getDaemonIdentity();
+    const daemonLog = new DaemonLog({ path: paths.logPath, version: identity.version });
+    daemonLog.record("info", "daemon_starting", "Rig daemon is starting.", {
+        databasePath: paths.databasePath,
+        ...(identity.developmentBuildId === undefined
+            ? {}
+            : { developmentBuildId: identity.developmentBuildId }),
+        socketPath,
+    });
+    const uninstallProcessFailureLogging = installDaemonProcessFailureLogging(daemonLog);
+    let token: string;
+    try {
+        token = await readLocalServerToken(tokenPath);
+        await removeStaleSocket(socketPath);
+    } catch (error) {
+        daemonLog.record("error", "daemon_startup_failed", "Rig daemon could not start.", {
+            error: errorToMessage(error),
+        });
+        uninstallProcessFailureLogging();
+        throw error;
+    }
 
     let startupState: DaemonStartupState = { status: "starting" };
     let mcpToolProvider: McpClientManager | undefined;
@@ -63,19 +84,21 @@ export async function runLocalProtocolServer(
         );
         return next;
     };
-    const stopServer = () => {
+    const stopServer = (reason = "Shutdown requested.") => {
         if (stopping) return;
         stopping = true;
+        daemonLog.record("info", "daemon_stopping", "Rig daemon is stopping.", { reason });
         taskDrain?.beginClose();
         void (async () => {
             if (store !== undefined) {
                 try {
                     await store.prepareForShutdown("shutdown");
                 } catch (error) {
-                    console.error(
-                        error instanceof Error
-                            ? error.message
-                            : `Failed to drain interrupted sessions: ${String(error)}`,
+                    daemonLog.record(
+                        "error",
+                        "daemon_shutdown_drain_failed",
+                        "Rig daemon could not finish draining interrupted sessions.",
+                        { error: errorToMessage(error) },
                     );
                 }
             }
@@ -89,8 +112,8 @@ export async function runLocalProtocolServer(
     };
     const startupRequestListener = createDaemonStartupRequestListener({
         getState: () => startupState,
-        identity: getDaemonIdentity(),
-        onShutdown: stopServer,
+        identity,
+        onShutdown: () => stopServer("Shutdown requested through the daemon protocol."),
         token,
     });
     const server = createServer(startupRequestListener);
@@ -108,8 +131,12 @@ export async function runLocalProtocolServer(
         if (stopping) return;
         const message = errorToMessage(error);
         startupState = { error: message, status: "error" };
-        console.error(`Daemon startup failed: ${message}`);
+        daemonLog.record("error", "daemon_startup_failed", "Rig daemon could not start.", {
+            error: message,
+        });
     };
+    const stopForSigint = () => stopServer("Received SIGINT.");
+    const stopForSigterm = () => stopServer("Received SIGTERM.");
     try {
         const previousUmask = process.umask(0o077);
         try {
@@ -123,8 +150,8 @@ export async function runLocalProtocolServer(
         } finally {
             process.umask(previousUmask);
         }
-        process.once("SIGINT", stopServer);
-        process.once("SIGTERM", stopServer);
+        process.once("SIGINT", stopForSigint);
+        process.once("SIGTERM", stopForSigterm);
         try {
             await chmod(socketPath, 0o600);
             if (stopping) {
@@ -147,17 +174,18 @@ export async function runLocalProtocolServer(
         await stopped;
         await initialization;
     } finally {
-        process.off("SIGINT", stopServer);
-        process.off("SIGTERM", stopServer);
+        process.off("SIGINT", stopForSigint);
+        process.off("SIGTERM", stopForSigterm);
         await initialization;
         if (mcpToolProvider !== undefined) {
             try {
                 await mcpToolProvider.close();
             } catch (error) {
-                console.error(
-                    error instanceof Error
-                        ? `Failed to close MCP connections: ${error.message}`
-                        : `Failed to close MCP connections: ${String(error)}`,
+                daemonLog.record(
+                    "error",
+                    "daemon_mcp_shutdown_failed",
+                    "Rig daemon could not close every MCP connection.",
+                    { error: errorToMessage(error) },
                 );
             }
         }
@@ -168,9 +196,19 @@ export async function runLocalProtocolServer(
                 await service?.close();
             });
         } catch (error) {
-            console.error(`Failed to close Happy sync: ${errorToMessage(error)}`);
+            daemonLog.record(
+                "error",
+                "daemon_happy_shutdown_failed",
+                "Rig daemon could not close Happy sync.",
+                { error: errorToMessage(error) },
+            );
         }
-        store?.close();
+        try {
+            store?.close();
+        } finally {
+            daemonLog.record("info", "daemon_stopped", "Rig daemon stopped.");
+            uninstallProcessFailureLogging();
+        }
     }
 
     async function initializeDaemon(): Promise<void> {
@@ -240,7 +278,12 @@ export async function runLocalProtocolServer(
                 service.start();
                 happySyncService = service;
             } catch (error) {
-                console.error(`Happy sync is unavailable: ${errorToMessage(error)}`);
+                daemonLog.record(
+                    "warning",
+                    "daemon_happy_unavailable",
+                    "Happy sync is unavailable.",
+                    { error: errorToMessage(error) },
+                );
             }
         }
         registerRigDebugRoot({
@@ -298,8 +341,11 @@ export async function runLocalProtocolServer(
                                           modelCatalog,
                                       });
                                   } catch (error) {
-                                      console.error(
-                                          `Happy sync could not reload: ${errorToMessage(error)}`,
+                                      daemonLog.record(
+                                          "error",
+                                          "daemon_happy_reload_failed",
+                                          "Happy sync could not reload.",
+                                          { error: errorToMessage(error) },
                                       );
                                       return false;
                                   }
@@ -308,8 +354,11 @@ export async function runLocalProtocolServer(
                                   try {
                                       await previous?.close();
                                   } catch (error) {
-                                      console.error(
-                                          `The previous Happy sync connection could not close cleanly: ${errorToMessage(error)}`,
+                                      daemonLog.record(
+                                          "warning",
+                                          "daemon_happy_previous_close_failed",
+                                          "The previous Happy sync connection could not close cleanly.",
+                                          { error: errorToMessage(error) },
                                       );
                                   }
                                   next.start();
@@ -326,7 +375,7 @@ export async function runLocalProtocolServer(
                     await writeServerRegistry();
                     return { inspectorUrl };
                 },
-                onShutdown: stopServer,
+                onShutdown: () => stopServer("Shutdown requested through the daemon protocol."),
                 store,
                 taskDrain,
                 token,
@@ -334,6 +383,10 @@ export async function runLocalProtocolServer(
             server,
         );
         server.off("request", startupRequestListener);
+        daemonLog.record("info", "daemon_ready", "Rig daemon is ready.", {
+            databasePath: paths.databasePath,
+            socketPath,
+        });
     }
 }
 

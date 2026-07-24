@@ -342,6 +342,7 @@ describe("CodingAssistantApp", () => {
             }),
             cwd: harness.context.fs.cwd,
             debugInfo: {
+                daemonLogPath: "/state/rig/server.log",
                 sessionId: "session-debug-1",
                 startInspectors,
                 stateDirectory: "/state/rig",
@@ -367,6 +368,8 @@ describe("CodingAssistantApp", () => {
         expect(rendered).toContain("globalThis.__rigDebug");
         expect(rendered).toContain("session-debug-1");
         expect(rendered).toContain("/state/rig");
+        expect(rendered).toContain("Daemon log");
+        expect(rendered).toContain("/state/rig/server.log");
         expect(rendered).toContain("ws://127.0.0.1:42001/tui");
         expect(rendered).toContain("ws://127.0.0.1:42002/daemon");
         expect(rendered).not.toContain("Daemon socket");

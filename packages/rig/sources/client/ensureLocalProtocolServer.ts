@@ -6,6 +6,7 @@ import {
     prepareLocalServerDirectory,
     readLocalServerToken,
     removeStaleSocket,
+    rotateDaemonLog,
     runLocalProtocolServer,
     writeLocalServerToken,
     type LocalServerPaths,
@@ -116,8 +117,10 @@ async function spawnLocalServer(paths: LocalServerPaths): Promise<void> {
         throw new Error("Cannot locate the current CLI entrypoint.");
     }
 
+    await rotateDaemonLog(paths.logPath).catch(() => undefined);
     const log = await open(paths.logPath, "a", 0o600);
     try {
+        await log.chmod(0o600);
         const child = spawn(process.execPath, [...process.execArgv, entrypoint, "--server"], {
             detached: true,
             env: {

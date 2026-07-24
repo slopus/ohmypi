@@ -267,6 +267,15 @@ The debug directory contains its own Git ignore rule. Its files use private
 permissions, but can still contain complete prompts, source excerpts, command
 output, and model reasoning; treat them as sensitive when sharing.
 
+Daemon process logs are separate from request debug traces. Run `/debug` to see
+the exact daemon log path. By default, the current log is `server.log` inside
+the temporary `rig-<user id>` daemon directory. It contains timestamped JSONL
+lifecycle and failure records plus raw stderr from dependencies and fatal Node
+errors. When it reaches 10 MiB, the next daemon start moves it to
+`server.previous.log`; Rig keeps only that one previous log. Setting
+`RIG_SERVER_DIRECTORY` moves the daemon log, control files, and session database
+into that directory.
+
 Headless runs are normal persisted sessions. Continue or branch from them later:
 
 ```sh

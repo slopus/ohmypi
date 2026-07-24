@@ -329,6 +329,7 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
             completionChime,
             durableGlobalEventQueue,
             debugInfo: {
+                daemonLogPath: localServer.paths.logPath,
                 sessionId: session.session.id,
                 startInspectors: async () => {
                     const server = await localServer.client.startInspector();

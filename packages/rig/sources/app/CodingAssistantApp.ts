@@ -214,6 +214,7 @@ export interface CodingAssistantAppOptions {
 }
 
 export interface AppDebugInfo {
+    daemonLogPath: string;
     serverInspectorUrl?: string;
     sessionId: string;
     startInspectors: () => Promise<AppDebugInspectorUrls>;
@@ -2067,6 +2068,7 @@ export class CodingAssistantApp implements Component, Focusable {
                 : [
                       { label: "Session", reason: debug.sessionId },
                       { label: "State directory", reason: debug.stateDirectory },
+                      { label: "Daemon log", reason: debug.daemonLogPath },
                       { label: "TUI inspector", reason: debug.tuiInspectorUrl ?? "Off" },
                       { label: "Daemon inspector", reason: debug.serverInspectorUrl ?? "Off" },
                       {

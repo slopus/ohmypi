@@ -33,6 +33,7 @@ export { prepareLocalServerDirectory } from "./prepareLocalServerDirectory.js";
 export { readLocalServerToken } from "./readLocalServerToken.js";
 export { readLocalServerProcessId } from "./readLocalServerProcessId.js";
 export { removeStaleSocket } from "./removeStaleSocket.js";
+export { rotateDaemonLog } from "./rotateDaemonLog.js";
 export { resolveHappyIntegrationMode } from "./resolveHappyIntegrationMode.js";
 export { isHappySyncDisabled } from "./isHappySyncDisabled.js";
 export {
