@@ -21,6 +21,7 @@ import type { ExecutorProvider } from "@/ExecutorProvider.js";
 import { DEFAULT_IDENTITY, type Identity } from "@/Identity.js";
 import { createExecutorInferenceStream } from "@/createExecutorInferenceStream.js";
 import { runProviderAuxiliaryText } from "@/runProviderAuxiliaryText.js";
+import { toSessionMessages } from "@/toSessionMessages.js";
 import type { ExecutorEnvironment } from "@/prompts/ExecutorEnvironment.js";
 import { assembleSystemPrompt } from "@/prompts/assembleSystemPrompt.js";
 import type {
@@ -253,11 +254,22 @@ export class Executor {
         }
     }
 
-    async compact(options: { instructions?: string; signal?: AbortSignal } = {}) {
+    async compact(
+        options: {
+            context?: Context;
+            inputTokens?: number;
+            instructions?: string;
+            signal?: AbortSignal;
+        } = {},
+    ) {
         const releaseInference = await this.acquireInference();
         try {
             if (this.active === undefined) throw new Error("Executor has no active session.");
             return this.active.session.compact({
+                ...(options.context === undefined
+                    ? {}
+                    : { context: { messages: toSessionMessages(options.context.messages) } }),
+                ...(options.inputTokens === undefined ? {} : { inputTokens: options.inputTokens }),
                 ...(options.instructions === undefined
                     ? {}
                     : { instructions: options.instructions }),

@@ -102,11 +102,28 @@ describe("Executor", () => {
                 "Dynamic instructions",
             ].join("\n"),
         );
-        await expect(executor.compact({ instructions: "Keep decisions." })).resolves.toMatchObject({
+        const compactContext = {
+            messages: [{ role: "user" as const, content: "Selected prefix.", timestamp: 1 }],
+        };
+        await expect(
+            executor.compact({
+                context: compactContext,
+                inputTokens: 60_000,
+                instructions: "Keep decisions.",
+            }),
+        ).resolves.toMatchObject({
             status: "completed",
             summary: "summary",
         });
-        expect(native.sessions[0]?.compactions).toEqual([{ instructions: "Keep decisions." }]);
+        expect(native.sessions[0]?.compactions).toEqual([
+            {
+                context: {
+                    messages: [{ role: "user", content: "Selected prefix." }],
+                },
+                inputTokens: 60_000,
+                instructions: "Keep decisions.",
+            },
+        ]);
     });
 
     it("starts a fresh native session when context instructions change", async () => {

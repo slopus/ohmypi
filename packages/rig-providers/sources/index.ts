@@ -116,8 +116,20 @@ export {
 export { BedrockProvider, type BedrockProviderOptions } from "@/vendors/bedrock/BedrockProvider.js";
 export { BedrockSession, type BedrockSessionOptions } from "@/vendors/bedrock/BedrockSession.js";
 export {
+    AnthropicBedrockProvider,
+    type AnthropicBedrockProviderOptions,
+} from "@/vendors/bedrock/AnthropicBedrockProvider.js";
+export {
+    AnthropicBedrockSession,
+    type AnthropicBedrockClient,
+    type AnthropicBedrockSessionOptions,
+} from "@/vendors/bedrock/AnthropicBedrockSession.js";
+export type { AnthropicBedrockTransport } from "@/vendors/bedrock/AnthropicBedrockTransport.js";
+export {
+    anthropicBedrockMantleEndpoint,
     BEDROCK_DEFAULT_REGION,
     bedrockMantleEndpoint,
+    bedrockRuntimeEndpoint,
 } from "@/vendors/bedrock/impl/bedrockConstants.js";
 export { ResponsesProvider } from "@/responses/ResponsesProvider.js";
 export { ResponsesSession } from "@/responses/ResponsesSession.js";

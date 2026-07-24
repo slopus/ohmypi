@@ -467,8 +467,8 @@ region = "us-west-2"
 bearer_token_env_var = "WEST_BEDROCK_TOKEN"
 
 [providers.west_bedrock.model_overrides]
-"openai/gpt-5.6-sol" = { region = "us-east-1", endpoint = "https://bedrock-mantle.example/openai/v1" }
-"anthropic/opus-4-8" = { endpoint = "https://bedrock-runtime.example" }
+"openai/gpt-5.6-sol" = { region = "us-east-1", endpoint = "https://bedrock-mantle.example/openai/v1", transport = "mantle" }
+"anthropic/opus-4-8" = { endpoint = "https://bedrock-runtime.example", transport = "runtime" }
 ```
 
 Every provider accepts `enabled`, `include_models`, and `exclude_models`.
@@ -483,9 +483,11 @@ local proxy testing. Kimi instances accept `auth_file` and `base_url`;
 `RIG_KIMI_BASE_URL` is available for local proxy testing. Bedrock instances
 accept `region`, `model_overrides`, and `bearer_token_env_var`. `region` is the
 provider default. Each exact Rig model ID under `model_overrides` may set
-`region`, `endpoint`, or both. A full `endpoint` URL overrides the Mantle or
-Bedrock Runtime endpoint selected for that model and bypasses Rig's regional
-availability list. The resolved region is still used for regional
+`region`, `endpoint`, `transport`, or any combination. Anthropic models prefer
+Mantle in regions where both the endpoint and model are available in-region,
+then fall back to Bedrock Runtime regional or global inference profiles. A full
+`endpoint` URL overrides the endpoint selected for that model and bypasses
+Rig's regional availability list for the selected transport. The resolved region is still used for regional
 inference-profile IDs and request metadata. Restart the local daemon after
 changing providers. Repository `rig.toml` files cannot change these
 machine-level choices or credential paths.
@@ -675,6 +677,9 @@ Sol is available in `us-east-1` and `us-east-2`; Terra and Luna are also
 available in `us-west-2`. See the current
 [OpenAI Bedrock guide](https://developers.openai.com/api/docs/guides/amazon-bedrock)
 and [AWS launch announcement](https://aws.amazon.com/about-aws/whats-new/2026/07/openai-gpt-sol-terra/).
+Anthropic models use the native Messages API, prefer the Anthropic-compatible
+Mantle endpoint where available, fall back to Bedrock Runtime, and support
+Bedrock's native server-side compaction.
 
 </details>
 

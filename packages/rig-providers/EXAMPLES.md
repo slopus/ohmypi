@@ -248,3 +248,47 @@ session.destroy();
 Persist Grok's assistant messages, tool calls, tool results, encrypted reasoning, and their
 `vendor` metadata before the next call. Compaction returns a structural result containing the
 summary, encrypted reasoning, preserved messages, usage, and complete replacement context.
+
+# Anthropic Bedrock provider example
+
+Anthropic Bedrock uses the bearer token managed by AWS and sends Messages API inference directly
+to Bedrock Mantle by default. Set `transport: "runtime"` when a caller explicitly needs the
+Bedrock Runtime surface.
+
+```ts
+import { AnthropicBedrockProvider, BedrockBearerTokenCredential } from "@slopus/rig-providers";
+
+const credential = await BedrockBearerTokenCredential.tryLoad();
+if (credential === null) throw new Error("Set AWS_BEARER_TOKEN_BEDROCK.");
+
+const provider = new AnthropicBedrockProvider({
+    credential,
+    model: "anthropic/opus-4-8",
+    region: "us-east-1",
+    transport: "mantle",
+});
+
+const session = await provider.session("thread-123", {
+    context: {
+        instructions: "You are a concise coding agent.",
+        messages: [],
+    },
+});
+
+for await (const event of session.run({
+    effort: "high",
+    context: {
+        messages: [{ role: "user", content: "Explain this repository." }],
+    },
+})) {
+    if (event.type === "text_delta") process.stdout.write(event.delta);
+}
+
+session.destroy();
+```
+
+Persist signed reasoning, ordered response items, assistant tool calls, and tool results before
+the next run. Ordered response items preserve interleaved thinking, text, and tool-use blocks.
+Logical Anthropic model IDs become direct model IDs on Mantle and regional inference-profile IDs
+on Runtime. `session.compact()` uses Bedrock's native server-side compaction and preserves its
+opaque replay metadata.

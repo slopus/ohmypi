@@ -14,6 +14,7 @@ export async function requestCompactionSummary(options: {
     provider: Provider;
     model: Model;
     context: Context;
+    inputTokens: number;
     signal?: AbortSignal;
     serviceTier?: ServiceTier;
     startDate?: string;
@@ -34,6 +35,8 @@ export async function requestCompactionSummary(options: {
     const prompt = selectCompactionSystemPromptForModel(options.model);
     if (options.provider instanceof Executor && options.provider.hasActiveSession) {
         const result = await options.provider.compact({
+            context: options.context,
+            inputTokens: options.inputTokens,
             instructions: prompt,
             ...(options.signal === undefined ? {} : { signal: options.signal }),
         });

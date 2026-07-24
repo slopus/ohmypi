@@ -357,6 +357,7 @@ function readBedrockModelOverrides(
         assertKnownKeys(rawOverride, `providers.${providerId}.model_overrides.${modelId}`, [
             "endpoint",
             "region",
+            "transport",
         ]);
         const endpoint = readBedrockModelOverrideString(
             providerId,
@@ -365,9 +366,21 @@ function readBedrockModelOverrides(
             "endpoint",
         );
         const region = readBedrockModelOverrideString(providerId, modelId, rawOverride, "region");
+        const transport = readBedrockModelOverrideString(
+            providerId,
+            modelId,
+            rawOverride,
+            "transport",
+        );
+        if (transport !== undefined && transport !== "mantle" && transport !== "runtime") {
+            throw new Error(
+                `providers.${providerId}.model_overrides.${modelId}.transport must be "mantle" or "runtime".`,
+            );
+        }
         overrides[modelId] = {
             ...(endpoint === undefined ? {} : { endpoint }),
             ...(region === undefined ? {} : { region }),
+            ...(transport === undefined ? {} : { transport }),
         };
     }
     return overrides;
@@ -377,7 +390,7 @@ function readBedrockModelOverrideString(
     providerId: string,
     modelId: string,
     table: TomlTable,
-    key: "endpoint" | "region",
+    key: "endpoint" | "region" | "transport",
 ): string | undefined {
     const value = table[key];
     if (value !== undefined && typeof value !== "string") {

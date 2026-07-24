@@ -1,5 +1,6 @@
 import { estimateMessagesTokens } from "./estimateMessagesTokens.js";
 import { requestCompactionSummary } from "./requestCompactionSummary.js";
+import { resolveCompactionInputTokens } from "./resolveCompactionInputTokens.js";
 import { resolveAutoCompactThreshold } from "./resolveAutoCompactThreshold.js";
 import { resolveAutoCompactWindow } from "./resolveAutoCompactWindow.js";
 import type { Message, UserMessage } from "../types.js";
@@ -55,6 +56,10 @@ export async function compactConversation(options: {
 
     const summary = await requestCompactionSummary({
         context: await options.createProviderContext([...systemMessages, ...messagesToCompact]),
+        inputTokens: resolveCompactionInputTokens(
+            estimateMessagesTokens(messagesToCompact),
+            options.reportedTokens,
+        ),
         provider: options.provider,
         model: options.model,
         now: options.now,

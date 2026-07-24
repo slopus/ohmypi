@@ -8,6 +8,12 @@ import type {
 export interface SessionCompactionOptions {
     /** Provider-native instructions describing what the compaction should retain. */
     readonly instructions?: string;
+    /** Rebuilt conversation prefix selected by the caller for this compaction. */
+    readonly context?: {
+        readonly messages: readonly SessionMessage[];
+    };
+    /** Best available count of input tokens in the selected context. */
+    readonly inputTokens?: number;
     readonly signal?: AbortSignal;
 }
 

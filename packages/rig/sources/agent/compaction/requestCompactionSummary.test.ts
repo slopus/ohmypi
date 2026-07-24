@@ -37,6 +37,7 @@ describe("requestCompactionSummary", () => {
         await expect(
             requestCompactionSummary({
                 context,
+                inputTokens: 1_000,
                 model,
                 now: () => 4,
                 provider,
@@ -76,6 +77,7 @@ describe("requestCompactionSummary", () => {
         await expect(
             requestCompactionSummary({
                 context: compactionContext(),
+                inputTokens: 1_000,
                 model,
                 now: () => 1,
                 provider,
@@ -98,6 +100,7 @@ describe("requestCompactionSummary", () => {
         await expect(
             requestCompactionSummary({
                 context: compactionContext(),
+                inputTokens: 1_000,
                 model,
                 now: () => 1,
                 provider,
@@ -124,6 +127,7 @@ describe("requestCompactionSummary", () => {
             await expect(
                 requestCompactionSummary({
                     context: compactionContext(),
+                    inputTokens: 1_000,
                     model,
                     now: () => 1,
                     provider,

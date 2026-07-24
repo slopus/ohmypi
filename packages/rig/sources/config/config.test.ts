@@ -217,7 +217,7 @@ region = "eu-west-1"
 bearer_token_env_var = "WORK_BEDROCK_TOKEN"
 
 [providers.eu_bedrock.model_overrides]
-"openai/gpt-5.6-sol" = { endpoint = "https://mantle.example/openai/v1", region = "us-east-1" }
+"openai/gpt-5.6-sol" = { endpoint = "https://mantle.example/openai/v1", region = "us-east-1", transport = "mantle" }
 `),
         ).toEqual({
             providers: {
@@ -228,6 +228,7 @@ bearer_token_env_var = "WORK_BEDROCK_TOKEN"
                         "openai/gpt-5.6-sol": {
                             endpoint: "https://mantle.example/openai/v1",
                             region: "us-east-1",
+                            transport: "mantle",
                         },
                     },
                     region: "eu-west-1",

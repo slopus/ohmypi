@@ -11,10 +11,17 @@ import type { Model } from "@slopus/rig-execution";
 export interface BedrockModelRoute {
     model: Model;
     provider: "anthropic" | "openai";
-    supportedRegions?: readonly string[];
+    transports: readonly BedrockModelTransportRoute[];
 }
 
-const BEDROCK_COMMERCIAL_MODEL_REGIONS = [
+export interface BedrockModelTransportRoute {
+    regions: readonly string[];
+    transport: BedrockModelTransport;
+}
+
+export type BedrockModelTransport = "mantle" | "runtime";
+
+const BEDROCK_RUNTIME_COMMERCIAL_REGIONS = [
     "af-south-1",
     "ap-east-2",
     "ap-northeast-1",
@@ -50,36 +57,57 @@ const BEDROCK_COMMERCIAL_MODEL_REGIONS = [
     "us-west-2",
 ] as const;
 
+const ANTHROPIC_SONNET_5_MANTLE_REGIONS = ["eu-north-1", "eu-west-1", "us-east-1"] as const;
+
+const ANTHROPIC_FABLE_5_MANTLE_REGIONS = ["us-east-1"] as const;
+
+const ANTHROPIC_OPUS_4_8_MANTLE_REGIONS = [
+    "ap-northeast-1",
+    "eu-north-1",
+    "eu-west-1",
+    "us-east-1",
+    "us-gov-west-1",
+] as const;
+
 export const BEDROCK_MODEL_ROUTES: readonly BedrockModelRoute[] = [
     {
         model: modelAnthropicSonnet5,
         provider: "anthropic",
-        supportedRegions: BEDROCK_COMMERCIAL_MODEL_REGIONS,
+        transports: [
+            { transport: "mantle", regions: ANTHROPIC_SONNET_5_MANTLE_REGIONS },
+            { transport: "runtime", regions: BEDROCK_RUNTIME_COMMERCIAL_REGIONS },
+        ],
     },
     {
         model: modelAnthropicFable5,
         provider: "anthropic",
-        supportedRegions: BEDROCK_COMMERCIAL_MODEL_REGIONS,
+        transports: [
+            { transport: "mantle", regions: ANTHROPIC_FABLE_5_MANTLE_REGIONS },
+            { transport: "runtime", regions: BEDROCK_RUNTIME_COMMERCIAL_REGIONS },
+        ],
     },
     {
         model: modelAnthropicOpus48,
         provider: "anthropic",
-        supportedRegions: BEDROCK_COMMERCIAL_MODEL_REGIONS,
+        transports: [
+            { transport: "mantle", regions: ANTHROPIC_OPUS_4_8_MANTLE_REGIONS },
+            { transport: "runtime", regions: BEDROCK_RUNTIME_COMMERCIAL_REGIONS },
+        ],
     },
     {
         model: bedrockModel(modelOpenaiGpt56Sol, true),
         provider: "openai",
-        supportedRegions: ["us-east-1", "us-east-2"],
+        transports: [{ transport: "mantle", regions: ["us-east-1", "us-east-2"] }],
     },
     {
         model: bedrockModel(modelOpenaiGpt56Terra, true),
         provider: "openai",
-        supportedRegions: ["us-east-1", "us-east-2", "us-west-2"],
+        transports: [{ transport: "mantle", regions: ["us-east-1", "us-east-2", "us-west-2"] }],
     },
     {
         model: bedrockModel(modelOpenaiGpt56Luna, false),
         provider: "openai",
-        supportedRegions: ["us-east-1", "us-east-2", "us-west-2"],
+        transports: [{ transport: "mantle", regions: ["us-east-1", "us-east-2", "us-west-2"] }],
     },
 ];
 

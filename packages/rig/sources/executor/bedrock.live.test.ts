@@ -61,7 +61,7 @@ async function expectOkFromModel(model: Model, thinking = "off"): Promise<void> 
 }
 
 describeLive("Amazon Bedrock provider live", () => {
-    it("streams an Anthropic model through Bedrock Mantle using the developer environment", async () => {
+    it("streams an Anthropic model through its preferred Bedrock endpoint", async () => {
         await expectOkFromModel(modelAnthropicSonnet5);
     }, 120_000);
 

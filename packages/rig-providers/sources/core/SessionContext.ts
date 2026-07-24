@@ -62,6 +62,8 @@ export interface SessionToolResultMessage {
 export interface SessionCompactionMessage {
     readonly role: "compaction";
     readonly content: string;
+    /** Opaque provider metadata required to replay the checkpoint natively. */
+    readonly vendor?: any;
 }
 
 export type SessionMessage =

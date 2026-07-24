@@ -1,17 +1,18 @@
 import {
+    AnthropicBedrockProvider as NativeAnthropicBedrockProvider,
     BedrockBearerTokenCredential,
-    BedrockProvider as NativeBedrockProvider,
+    BedrockProvider as NativeOpenAIBedrockProvider,
 } from "@slopus/rig-providers";
 import { createExecutorModelProfiles, type ExecutorProvider } from "@slopus/rig-execution";
 
 import { BEDROCK_MODEL_ROUTES } from "./bedrock-model-routes.js";
 import type { BedrockModelOverrides } from "./bedrock-model-overrides.js";
 import { getBedrockModelRoute } from "./getBedrockModelRoute.js";
-import { isBedrockModelAvailableInRegion } from "./isBedrockModelAvailableInRegion.js";
 import { readBedrockBearerToken } from "./readBedrockBearerToken.js";
 import { resolveBedrockModelEndpoint } from "./resolveBedrockModelEndpoint.js";
-import { resolveBedrockRegion } from "./resolveBedrockRegion.js";
 import { resolveBedrockModelRegion } from "./resolveBedrockModelRegion.js";
+import { resolveBedrockModelTransport } from "./resolveBedrockModelTransport.js";
+import { resolveBedrockRegion } from "./resolveBedrockRegion.js";
 
 export const BEDROCK_PROVIDER_ID = "bedrock";
 
@@ -35,13 +36,17 @@ export function bedrockExecution(options: BedrockProviderOptions = {}): Executor
 
     const defaultRegion = options.region?.trim() || resolveBedrockRegion(env);
     const routes = BEDROCK_MODEL_ROUTES.filter((route) => {
-        const endpoint = resolveBedrockModelEndpoint(route.model.id, options.modelOverrides);
+        const region = resolveBedrockModelRegion(
+            route.model.id,
+            defaultRegion,
+            options.modelOverrides,
+        );
         return (
-            endpoint !== undefined ||
-            isBedrockModelAvailableInRegion(
+            resolveBedrockModelTransport(
                 route,
-                resolveBedrockModelRegion(route.model.id, defaultRegion, options.modelOverrides),
-            )
+                region,
+                options.modelOverrides?.[route.model.id],
+            ) !== undefined
         );
     });
 
@@ -55,16 +60,32 @@ export function bedrockExecution(options: BedrockProviderOptions = {}): Executor
         }),
         sessionId: options.agentId ?? id,
         nativeKey: (profile) => {
-            const endpoint = resolveBedrockModelEndpoint(profile.id, options.modelOverrides);
             const region = resolveBedrockModelRegion(
                 profile.id,
                 defaultRegion,
                 options.modelOverrides,
             );
-            return JSON.stringify([profile.id, endpoint, region]);
+            const route = getBedrockModelRoute(profile.id);
+            const transport =
+                route === undefined
+                    ? undefined
+                    : resolveBedrockModelTransport(
+                          route,
+                          region,
+                          options.modelOverrides?.[profile.id],
+                      );
+            const endpoint =
+                route === undefined || transport === undefined
+                    ? undefined
+                    : resolveBedrockModelEndpoint(
+                          route,
+                          region,
+                          transport,
+                          options.modelOverrides?.[profile.id],
+                      );
+            return JSON.stringify([profile.id, endpoint, region, transport]);
         },
         native: async (profile) => {
-            const endpoint = resolveBedrockModelEndpoint(profile.id, options.modelOverrides);
             const region = resolveBedrockModelRegion(
                 profile.id,
                 defaultRegion,
@@ -76,18 +97,42 @@ export function bedrockExecution(options: BedrockProviderOptions = {}): Executor
                     `Amazon Bedrock model '${profile.name}' is not available in ${region}.`,
                 );
             }
+            const transport = resolveBedrockModelTransport(
+                route,
+                region,
+                options.modelOverrides?.[profile.id],
+            );
+            if (transport === undefined) {
+                throw new Error(
+                    `Amazon Bedrock model '${profile.name}' is not available in ${region}.`,
+                );
+            }
+            const endpoint = resolveBedrockModelEndpoint(
+                route,
+                region,
+                transport,
+                options.modelOverrides?.[profile.id],
+            );
             const credential = await BedrockBearerTokenCredential.tryLoad({
                 bearerToken,
             });
             if (credential === null) {
                 throw new Error("Amazon Bedrock authentication is unavailable.");
             }
-            return new NativeBedrockProvider({
-                credential,
-                ...(endpoint === undefined ? {} : { endpoint }),
-                model: route.model.id,
-                region,
-            });
+            return route.provider === "anthropic"
+                ? new NativeAnthropicBedrockProvider({
+                      credential,
+                      endpoint,
+                      model: route.model.id,
+                      region,
+                      transport,
+                  })
+                : new NativeOpenAIBedrockProvider({
+                      credential,
+                      endpoint,
+                      model: route.model.id,
+                      region,
+                  });
         },
     };
 }
