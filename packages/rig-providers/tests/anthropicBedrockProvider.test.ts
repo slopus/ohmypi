@@ -1240,9 +1240,9 @@ describe("AnthropicBedrockProvider", () => {
                         usage: {
                             input: 2,
                             output: 112,
-                            cacheRead: 10_115,
+                            cacheRead: 10_128,
                             cacheWrite: 1_465,
-                            totalTokens: 11_694,
+                            totalTokens: 11_707,
                         },
                     },
                     { type: "done", state: "tool_call" },
