@@ -79,6 +79,7 @@ import { FileMentionAutocomplete } from "./FileMentionAutocomplete.js";
 import type { FileMentionContext } from "./findFileMentionContext.js";
 import { formatFileMention } from "./formatFileMention.js";
 import { formatProviderError } from "./formatProviderError.js";
+import { formatSessionTokenStatus } from "./formatSessionTokenStatus.js";
 import { formatSessionUsageSummary } from "./formatSessionUsageSummary.js";
 import { formatSubagentToolCall } from "./formatSubagentToolCall.js";
 import { formatToolResultForDisplay } from "./formatToolResultForDisplay.js";
@@ -167,6 +168,7 @@ export interface CodingAssistantAppOptions {
     attachSecret?: (id: string, scope: SecretAttachmentScope) => void | Promise<void>;
     cwd: string;
     initialBackgroundProcesses?: readonly BashSessionActivity[];
+    initialUsage?: Usage;
     initialMcpServers?: readonly McpServerSummary[];
     initialNotices?: readonly { text: string; title: string }[];
     initialSessionEvents?: readonly SessionEvent[];
@@ -174,6 +176,7 @@ export interface CodingAssistantAppOptions {
     initialProjectSecretIds?: readonly string[];
     initialSessionSecretIds?: readonly string[];
     initialTasks?: readonly SessionTask[];
+    initialUsageEventId?: EventId;
     initialWorkflowEventId?: EventId;
     initialWorkflows?: readonly WorkflowRun[];
     workflowsEnabled?: boolean;
@@ -468,6 +471,7 @@ export class CodingAssistantApp implements Component, Focusable {
     #toolStatusByCallId = new Map<string, string>();
     #usage: Usage = zeroUsage();
     #usageRequestVersion = 0;
+    #skipInitialUsageReplay = false;
     #latestContextTokens = 0;
     #activeCompactionId: string | undefined;
     #compactionStartedAtMs: number | undefined;
@@ -577,8 +581,12 @@ export class CodingAssistantApp implements Component, Focusable {
         }
 
         this.#replayingInitialSessionEvents = true;
+        if (options.initialUsage !== undefined) {
+            this.#usage = structuredClone(options.initialUsage);
+        }
         try {
             let reachedInitialSnapshot = options.initialWorkflowEventId === undefined;
+            let reachedInitialUsage = options.initialUsageEventId === undefined;
             for (const event of options.initialSessionEvents ?? []) {
                 // The snapshot is authoritative through its last event. Apply only state events
                 // that raced in after it so persisted history cannot overwrite current state.
@@ -590,9 +598,13 @@ export class CodingAssistantApp implements Component, Focusable {
                     continue;
                 }
                 if (event.id === options.initialWorkflowEventId) reachedInitialSnapshot = true;
+                this.#skipInitialUsageReplay =
+                    options.initialUsage !== undefined && !reachedInitialUsage;
                 this.applySessionEvent(event);
+                if (event.id === options.initialUsageEventId) reachedInitialUsage = true;
             }
         } finally {
+            this.#skipInitialUsageReplay = false;
             this.#replayingInitialSessionEvents = false;
         }
         // The session snapshot is authoritative for pending questions. Restore it only
@@ -1031,6 +1043,7 @@ export class CodingAssistantApp implements Component, Focusable {
             this.#toolStatusByCallId.clear();
             this.#usage = zeroUsage();
             this.#latestContextTokens = 0;
+            this.#subagents = [];
             this.#lastUserInputAtMs = undefined;
             this.#workflows = [];
             this.#backgroundProcesses = [];
@@ -3445,7 +3458,9 @@ export class CodingAssistantApp implements Component, Focusable {
             return;
         }
         if (message.usage !== undefined) {
-            this.#usage = addUsage(this.#usage, message.usage);
+            if (!this.#skipInitialUsageReplay) {
+                this.#usage = addUsage(this.#usage, message.usage);
+            }
             this.#latestContextTokens = message.usage.totalTokens;
         }
 
@@ -4154,10 +4169,18 @@ export class CodingAssistantApp implements Component, Focusable {
     }
 
     #usageFooter(): string {
-        const window = this.#agent.model.contextWindow;
-        if (window === undefined) return `${formatTokens(this.#latestContextTokens)} tokens`;
-        const percentLeft = Math.max(0, Math.round((1 - this.#latestContextTokens / window) * 100));
-        return `${formatTokens(this.#latestContextTokens)} tokens · ${percentLeft}% left`;
+        const usage = this.#subagents.reduce(
+            (total, subagent) =>
+                subagent.usage === undefined ? total : addUsage(total, subagent.usage),
+            this.#usage,
+        );
+        return formatSessionTokenStatus({
+            contextTokens: this.#latestContextTokens,
+            ...(this.#agent.model.contextWindow === undefined
+                ? {}
+                : { contextWindow: this.#agent.model.contextWindow }),
+            usage,
+        });
     }
 
     #subagentMetrics(subagent: SubagentSummary): string {
@@ -4410,7 +4433,7 @@ export class CodingAssistantApp implements Component, Focusable {
                 {
                     value: "usage",
                     label: this.#showUsage ? "Hide token status" : "Show token status",
-                    description: "Toggle context usage below the input.",
+                    description: "Toggle session tokens, cache hit, and context left below input.",
                 },
                 {
                     value: "completion-chime",

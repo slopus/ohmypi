@@ -64,7 +64,7 @@ import type {
     UpdateSessionRequest,
 } from "../protocol/index.js";
 import { sessionUnreadStateAfterEvent } from "./sessionUnreadStateAfterEvent.js";
-import type { Model, Provider, ServiceTier, StopReason } from "@slopus/rig-execution";
+import type { Model, Provider, ServiceTier, StopReason, Usage } from "@slopus/rig-execution";
 import type { ProviderQuota } from "@slopus/rig-providers";
 import { createEncryptedAgentTransportScope } from "../executor/createEncryptedAgentTransportScope.js";
 import type {
@@ -118,7 +118,12 @@ import type { AgentSessionManager } from "./AgentSessionManager.js";
 import type { DockerExecutionConfig } from "../execution/index.js";
 import { summarizeDockerExecution } from "../execution/index.js";
 import type { TaskDrain } from "./TrackedTaskDrain.js";
-import { aggregateSessionUsage, type SessionUsageSummary } from "./sessionUsage/index.js";
+import {
+    addUsage,
+    aggregateSessionUsage,
+    type SessionUsageSummary,
+    zeroUsage,
+} from "./sessionUsage/index.js";
 import { createRequestDebugDirectory, DebugLog } from "../debug/index.js";
 import { SecretRegistry, SessionSecretContext } from "../secrets/index.js";
 import type { SecretAttachmentScope } from "../secrets/index.js";
@@ -220,6 +225,7 @@ export interface PersistedSessionState {
     titleError?: string;
     titleStatus: SessionTitleStatus;
     totalTokens?: number;
+    usage?: Usage;
     tools: readonly string[];
     externalToolCalls?: readonly ExternalToolCall[];
     durableUserInputs?: readonly DurableUserInputCall[];
@@ -430,6 +436,7 @@ export class InMemorySession {
     #titleError: string | undefined;
     #titleStatus: SessionTitleStatus = "idle";
     #totalTokens = 0;
+    #usage: Usage = zeroUsage();
     #tools: readonly string[] = [];
     #workflowRuns = new Map<string, InternalWorkflowRun>();
     #workflowsEnabled: boolean;
@@ -559,6 +566,10 @@ export class InMemorySession {
         this.#messages = [...(options.restore?.messages ?? [])].sort(
             (left, right) => left.position - right.position,
         );
+        this.#usage =
+            options.restore?.usage === undefined
+                ? this.#sumCommittedUsage()
+                : structuredClone(options.restore.usage);
         for (const persisted of options.restore?.workflows ?? []) {
             const state = cloneWorkflowRun(persisted.state);
             if (state.status === "running") {
@@ -1944,6 +1955,7 @@ export class InMemorySession {
         this.#restoredActiveRunId = undefined;
         this.#lastSessionRunId = undefined;
         this.#messages = [];
+        this.#usage = zeroUsage();
         this.#submittedUserMessages.clear();
         this.#contextMessages = undefined;
         this.#partialPositions.clear();
@@ -2151,6 +2163,9 @@ export class InMemorySession {
             workflowsEnabled: this.#workflowsEnabled,
             workflows: this.listWorkflows(),
             backgroundProcesses: this.#runtime?.context.bash.activeSessions?.() ?? [],
+            ...(this.#usage.totalTokens === 0
+                ? {}
+                : { cumulativeUsage: structuredClone(this.#usage) }),
             externalTools: this.#externalToolDefinitions.map((definition) => ({ ...definition })),
             skills: this.#durableSkillDefinitions.map((definition) => ({ ...definition })),
             pendingExternalToolCalls: this.externalToolCalls({ status: "pending" }),
@@ -2244,6 +2259,7 @@ export class InMemorySession {
             ...(this.#titleError !== undefined ? { titleError: this.#titleError } : {}),
             titleStatus: this.#titleStatus,
             totalTokens: this.#totalTokens,
+            usage: structuredClone(this.#usage),
             tools: this.#tools,
             externalToolCalls: this.externalToolCalls(),
             durableUserInputs: [...this.#durableUserInputs.values()].map((call) =>
@@ -2616,6 +2632,7 @@ export class InMemorySession {
                 : {}),
             totalTokens: this.#totalTokens,
             updatedAt: this.events.lastCreatedAt() ?? this.#now(),
+            ...(this.#usage.totalTokens === 0 ? {} : { usage: structuredClone(this.#usage) }),
         };
     }
 
@@ -3424,6 +3441,8 @@ export class InMemorySession {
         const existingMessage = this.#messages.find(
             (candidate) => !candidate.isPartial && candidate.message.id === message.id,
         );
+        const previousUsage =
+            existingMessage?.message.role === "agent" ? existingMessage.message.usage : undefined;
         const existingPosition = existingMessage?.position;
         const partialPosition =
             message.role === "agent" && this.#activePartial?.runId === runId
@@ -3467,8 +3486,27 @@ export class InMemorySession {
         if (message.role === "agent" && message.usage !== undefined) {
             this.#totalTokens = message.usage.totalTokens;
         }
+        const nextUsage = message.role === "agent" ? message.usage : undefined;
+        if (!isDeepStrictEqual(previousUsage, nextUsage)) {
+            this.#usage =
+                previousUsage === undefined && nextUsage !== undefined
+                    ? addUsage(this.#usage, nextUsage)
+                    : this.#sumCommittedUsage();
+        }
         this.#append("agent_message", { message, runId });
         if (this.isSubagent()) this.#agentManager?.recordChanged(this);
+    }
+
+    #sumCommittedUsage(): Usage {
+        return this.#messages.reduce(
+            (total, persisted) =>
+                !persisted.isPartial &&
+                persisted.message.role === "agent" &&
+                persisted.message.usage !== undefined
+                    ? addUsage(total, persisted.message.usage)
+                    : total,
+            zeroUsage(),
+        );
     }
 
     #appendRunFinished(runId: string, result: AgentRunResult): SessionRunCompletion["status"] {

@@ -178,6 +178,7 @@ export interface ProtocolSession {
     workflows?: readonly WorkflowRun[];
     goal?: SessionGoal;
     backgroundProcesses?: readonly BashSessionActivity[];
+    cumulativeUsage?: Usage;
     externalTools?: readonly ExternalToolDefinition[];
     skills?: readonly DurableSkillDefinition[];
     pendingExternalToolCalls?: readonly ExternalToolCall[];
@@ -201,6 +202,7 @@ export interface SubagentSummary {
     taskName?: string;
     totalTokens?: number;
     updatedAt: number;
+    usage?: Usage;
 }
 
 export interface SessionSummary {

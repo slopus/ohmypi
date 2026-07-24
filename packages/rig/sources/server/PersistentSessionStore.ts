@@ -20,7 +20,7 @@ import type {
     SessionTitleStatus,
 } from "../protocol/index.js";
 import type { Message } from "../agent/types.js";
-import type { Model } from "@slopus/rig-execution";
+import type { Model, Usage } from "@slopus/rig-execution";
 import type { SessionGoal } from "../goals/index.js";
 import { parsePermissionMode } from "../permissions/index.js";
 import {
@@ -516,6 +516,7 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
                     active_since_ms,
                     elapsed_ms,
                     total_tokens,
+                    usage_json,
                     parent_session_id,
                     parent_tool_call_id,
                     task_name,
@@ -533,6 +534,7 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
                 const parentToolCallId = readOptionalString(row, "parent_tool_call_id");
                 const taskName = readOptionalString(row, "task_name");
                 const activeSince = readOptionalNumber(row, "active_since_ms");
+                const usageJson = readOptionalString(row, "usage_json");
                 return {
                     ...(activeSince === undefined ? {} : { activeSince }),
                     agentId: readString(row, "agent_id"),
@@ -548,6 +550,7 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
                     ...(taskName !== undefined ? { taskName } : {}),
                     totalTokens: readNumber(row, "total_tokens"),
                     updatedAt: readNumber(row, "updated_at_ms"),
+                    ...(usageJson === undefined ? {} : { usage: JSON.parse(usageJson) as Usage }),
                 };
             });
     }
@@ -804,6 +807,7 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
                     active_since_ms,
                     elapsed_ms,
                     total_tokens,
+                    usage_json,
                     permission_mode,
                     context_messages_json,
                     models_json,
@@ -825,7 +829,7 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
                     created_at_ms,
                     updated_at_ms
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                     agent_id = excluded.agent_id,
                     session_kind = excluded.session_kind,
@@ -856,6 +860,7 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
                     active_since_ms = excluded.active_since_ms,
                     elapsed_ms = excluded.elapsed_ms,
                     total_tokens = excluded.total_tokens,
+                    usage_json = excluded.usage_json,
                     permission_mode = excluded.permission_mode,
                     context_messages_json = excluded.context_messages_json,
                     models_json = excluded.models_json,
@@ -908,6 +913,7 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
                 state.activeSince ?? null,
                 state.elapsedMs ?? 0,
                 state.totalTokens ?? 0,
+                state.usage === undefined ? null : JSON.stringify(state.usage),
                 state.permissionMode,
                 state.contextMessages === undefined ? null : JSON.stringify(state.contextMessages),
                 JSON.stringify(state.models),
@@ -1394,6 +1400,7 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
         const appendSystemPrompt = readOptionalString(row, "append_system_prompt");
         const systemPrompt = readOptionalString(row, "system_prompt");
         const interruptionJson = readOptionalString(row, "interruption_json");
+        const usageJson = readOptionalString(row, "usage_json");
         const lastMessageAt = readOptionalNumber(row, "last_message_at_ms");
         const modelId = readString(row, "model_id");
         const title = readOptionalString(row, "title");
@@ -1479,6 +1486,7 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
             ...(metadataRunId !== undefined ? { metadataRunId } : {}),
             titleStatus: readString(row, "title_status") as SessionTitleStatus,
             totalTokens: readNumber(row, "total_tokens"),
+            ...(usageJson === undefined ? {} : { usage: JSON.parse(usageJson) as Usage }),
             tools: JSON.parse(readString(row, "tools_json")) as string[],
         };
         if (activeRunId !== undefined) {

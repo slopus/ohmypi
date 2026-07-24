@@ -2634,6 +2634,20 @@ describe("PersistentSessionStore", () => {
                     title: "Inspect the persistence layer",
                     titleStatus: "ready",
                     totalTokens: 12_345,
+                    usage: {
+                        cacheRead: 9_000,
+                        cacheWrite: 1_000,
+                        cost: {
+                            cacheRead: 0,
+                            cacheWrite: 0,
+                            input: 0,
+                            output: 0,
+                            total: 0,
+                        },
+                        input: 4_000,
+                        output: 1_000,
+                        totalTokens: 15_000,
+                    },
                 }),
             );
             store.saveSession(
@@ -2669,6 +2683,13 @@ describe("PersistentSessionStore", () => {
                         status: "completed",
                         taskName: "inspect_persistence",
                         totalTokens: 12_345,
+                        usage: expect.objectContaining({
+                            cacheRead: 9_000,
+                            cacheWrite: 1_000,
+                            input: 4_000,
+                            output: 1_000,
+                            totalTokens: 15_000,
+                        }),
                     }),
                     expect.objectContaining({
                         depth: 2,

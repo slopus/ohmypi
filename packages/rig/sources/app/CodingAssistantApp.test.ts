@@ -3336,6 +3336,115 @@ describe("CodingAssistantApp", () => {
         );
     });
 
+    it("includes every descendant's cumulative usage in the opt-in token status", () => {
+        const model = defineModel({
+            defaultThinkingLevel: "off",
+            id: "openai/gpt-test",
+            name: "GPT Test",
+            thinkingLevels: ["off"],
+        });
+        const provider = defineProvider({
+            id: "codex",
+            models: [model],
+            stream: () => streamText("unused"),
+        });
+        const harness = createJustBashToolHarness();
+        const parentUsage: Usage = {
+            cacheRead: 100,
+            cacheWrite: 0,
+            cost: { cacheRead: 0, cacheWrite: 0, input: 0, output: 0, total: 0 },
+            input: 900,
+            output: 100,
+            totalTokens: 1_100,
+        };
+        const parentEvent: SessionEvent = {
+            createdAt: 4,
+            data: {
+                message: {
+                    blocks: [{ text: "Parent complete.", type: "text" }],
+                    id: "parent-response",
+                    providerId: "codex",
+                    requestedModelId: model.id,
+                    role: "agent",
+                    usage: parentUsage,
+                },
+                runId: "parent-run",
+            },
+            id: "parent-message",
+            sessionId: "session-1",
+            type: "agent_message",
+        };
+        const app = new CodingAssistantApp({
+            agent: new Agent({
+                context: harness.context,
+                modelId: model.id,
+                printToConsole: false,
+                provider,
+            }),
+            cwd: harness.context.fs.cwd,
+            initialSessionEvents: [parentEvent],
+            initialSubagents: [
+                {
+                    agentId: "agent-child",
+                    createdAt: 1,
+                    depth: 1,
+                    description: "Cross-provider child",
+                    id: "subagent-child",
+                    modelId: "anthropic/sonnet-5",
+                    parentSessionId: "session-1",
+                    status: "completed",
+                    updatedAt: 2,
+                    usage: {
+                        cacheRead: 900,
+                        cacheWrite: 0,
+                        cost: {
+                            cacheRead: 0,
+                            cacheWrite: 0,
+                            input: 0,
+                            output: 0,
+                            total: 0,
+                        },
+                        input: 100,
+                        output: 0,
+                        totalTokens: 1_000,
+                    },
+                },
+                {
+                    agentId: "agent-nested",
+                    createdAt: 2,
+                    depth: 2,
+                    description: "Nested child",
+                    id: "subagent-nested",
+                    modelId: "xai/grok-build",
+                    parentSessionId: "subagent-child",
+                    status: "completed",
+                    updatedAt: 3,
+                    usage: {
+                        cacheRead: 0,
+                        cacheWrite: 100,
+                        cost: {
+                            cacheRead: 0,
+                            cacheWrite: 0,
+                            input: 0,
+                            output: 0,
+                            total: 0,
+                        },
+                        input: 1_000,
+                        output: 100,
+                        totalTokens: 1_200,
+                    },
+                },
+            ],
+            initialUsage: parentUsage,
+            initialUsageEventId: parentEvent.id,
+            processManager: new NativeProcessManager(),
+            showUsage: true,
+            tui: fakeTui(),
+        });
+
+        expect(stripAnsi(app.render(100).join("\n"))).toContain("3.3k tokens · 32% cache hit");
+    });
+
     it("shows context tokens from active subagents only in the live summary", () => {
         const model = defineModel({
             id: "openai/gpt-test",
@@ -5127,7 +5236,9 @@ describe("CodingAssistantApp", () => {
 
         submit(app, "Measure this turn.");
         await app.waitForIdle();
-        expect(stripAnsi(app.render(100).join("\n"))).toContain("1.6k tokens · 99% left");
+        expect(stripAnsi(app.render(100).join("\n"))).toContain(
+            "1.6k tokens · 8% cache hit · 99% ctx left",
+        );
 
         app.applySessionEvent({
             createdAt: 2,
@@ -5136,7 +5247,9 @@ describe("CodingAssistantApp", () => {
             sessionId: "session-1",
             type: "model_changed",
         });
-        expect(stripAnsi(app.render(100).join("\n"))).toContain("0 tokens · 100% left");
+        expect(stripAnsi(app.render(100).join("\n"))).toContain(
+            "1.6k tokens · 8% cache hit · 100% ctx left",
+        );
 
         app.applySessionEvent({
             createdAt: 3,
@@ -5156,7 +5269,9 @@ describe("CodingAssistantApp", () => {
             sessionId: "session-1",
             type: "agent_event",
         });
-        expect(stripAnsi(app.render(100).join("\n"))).toContain("600 tokens · 100% left");
+        expect(stripAnsi(app.render(100).join("\n"))).toContain(
+            "1.6k tokens · 8% cache hit · 100% ctx left",
+        );
 
         submit(app, "/usage");
         const report = stripAnsi(app.render(100).join("\n"));

@@ -270,6 +270,9 @@ export async function runApp(options: RunAppOptions = {}): Promise<RunAppResult>
             detachSecret: (id, scope) => agent.detachSecret(id, scope),
             initialSessionEvents: history.events,
             initialBackgroundProcesses: session.session.backgroundProcesses ?? [],
+            ...(session.session.cumulativeUsage === undefined
+                ? {}
+                : { initialUsage: session.session.cumulativeUsage }),
             initialMcpServers: session.session.mcpServers,
             ...(initialNotices.length === 0 ? {} : { initialNotices }),
             initialSubagents: subagents.subagents,
@@ -279,7 +282,10 @@ export async function runApp(options: RunAppOptions = {}): Promise<RunAppResult>
             initialTasks: session.session.tasks,
             ...(session.session.lastEventId === undefined
                 ? {}
-                : { initialWorkflowEventId: session.session.lastEventId }),
+                : {
+                      initialUsageEventId: session.session.lastEventId,
+                      initialWorkflowEventId: session.session.lastEventId,
+                  }),
             initialWorkflows: session.session.workflows ?? [],
             workflowsEnabled: session.session.workflowsEnabled !== false,
             modelLocked: session.session.modelLocked,
