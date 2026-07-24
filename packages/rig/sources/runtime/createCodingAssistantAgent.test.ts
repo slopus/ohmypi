@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { NativeProcessManager } from "../processes/index.js";
 import {
     modelAnthropicFable5,
+    modelAnthropicOpus5,
     modelOpenaiGpt56Luna,
     modelOpenaiGpt56Sol,
     modelXaiGrok45,
@@ -79,6 +80,17 @@ describe("createCodingAssistantAgent", () => {
             "TaskStop",
             "AskUserQuestion",
         ]);
+    });
+
+    it("creates a Claude SDK agent for Opus 5", () => {
+        const runtime = createCodingAssistantAgent({
+            cwd: "/tmp/rig-app-test",
+            env: {},
+            modelId: modelAnthropicOpus5.id,
+        });
+
+        expect(runtime.executor.id).toBe("claude");
+        expect(runtime.agent.model).toEqual(modelAnthropicOpus5);
     });
 
     it("creates a Grok Build agent with the native Grok tool surface", () => {

@@ -10,6 +10,7 @@ import { claude_sonnet_5_system_prompt } from "@/prompts/claude/claude_sonnet_5_
 import { grok_4_5_system_prompt } from "@/prompts/grok/grok_4_5_system_prompt.js";
 import {
     modelAnthropicFable5,
+    modelAnthropicOpus5,
     modelAnthropicOpus48,
     modelAnthropicSonnet5,
     modelOpenaiGpt56Luna,
@@ -33,6 +34,9 @@ export function builtinModelProfiles(
             }),
             profile(providerId, providerType, modelAnthropicFable5, {
                 prompt: claude_fable_5_system_prompt,
+            }),
+            profile(providerId, providerType, modelAnthropicOpus5, {
+                prompt: claude_opus_4_8_system_prompt,
             }),
             profile(providerId, providerType, modelAnthropicOpus48, {
                 prompt: claude_opus_4_8_system_prompt,

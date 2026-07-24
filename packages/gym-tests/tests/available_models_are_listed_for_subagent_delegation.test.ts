@@ -12,7 +12,6 @@ afterEach(async () => {
 describe("available model guidance", () => {
     it("tells the agent which configured models it can run as subagents", async () => {
         const gym = await createGym({
-            environment: { NODE_OPTIONS: "--experimental-transform-types" },
             homeFiles: {
                 ".claude/.credentials.json": JSON.stringify({
                     claudeAiOauth: { accessToken: "claude-test-token" },
@@ -28,6 +27,9 @@ describe("available model guidance", () => {
                     "- claude: Sonnet 5 (`anthropic/sonnet-5`) — effort levels: off, low, medium (default), high, xhigh, max, ultra",
                 );
                 expect(systemPrompt).toContain(
+                    "- claude: Opus 5 1M (`anthropic/opus-5`) — effort levels: off, low, medium (default), high, xhigh, max, ultra",
+                );
+                expect(systemPrompt).toContain(
                     "- claude: Opus 4.8 1M (`anthropic/opus-4-8`) — effort levels: off, low, medium (default), high, xhigh, max, ultra",
                 );
                 expect(systemPrompt).toContain(
@@ -41,6 +43,13 @@ describe("available model guidance", () => {
         });
         running.add(gym);
 
+        gym.terminal.type("/model");
+        gym.terminal.press("enter");
+        const modelMenu = await gym.terminal.waitForText("Choose Model", 30_000);
+        expect(modelMenu.text).toContain("Opus 5 1M");
+        gym.terminal.press("escape");
+        await gym.terminal.waitForText("Ask Rig to do anything", 30_000);
+
         gym.terminal.type("Confirm the available model guidance.");
         gym.terminal.press("enter");
 
@@ -50,7 +59,6 @@ describe("available model guidance", () => {
 
     it("keeps providers disabled by the provider default out of the picker and prompt", async () => {
         const gym = await createGym({
-            environment: { NODE_OPTIONS: "--experimental-transform-types" },
             homeFiles: {
                 ".codex/auth.json": JSON.stringify({
                     tokens: { access_token: "codex-test-token" },
@@ -102,7 +110,6 @@ describe("available model guidance", () => {
         const gym = await createGym({
             environment: {
                 AWS_BEARER_TOKEN_BEDROCK: "bedrock-test-token",
-                NODE_OPTIONS: "--experimental-transform-types",
                 RIG_GYM_PROVIDER_OVERRIDES: "bedrock",
             },
             homeFiles: {

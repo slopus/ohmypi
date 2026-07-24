@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
     modelAnthropicFable5,
+    modelAnthropicOpus5,
     modelOpenaiGpt56Luna,
     modelOpenaiGpt56Sol,
     modelOpenaiGpt56Terra,
@@ -36,6 +37,9 @@ describe("createModelCatalog", () => {
         expect(
             catalog.providers.find((provider) => provider.providerId === "claude")?.serviceTiers,
         ).toBeUndefined();
+        expect(
+            catalog.providers.find((provider) => provider.providerId === "claude")?.models,
+        ).toContain(modelAnthropicOpus5);
         expect(
             catalog.providers.find((provider) => provider.providerId === "grok")?.models,
         ).toEqual([modelXaiGrokBuild, modelXaiGrok45, modelXaiGrokComposer25Fast]);

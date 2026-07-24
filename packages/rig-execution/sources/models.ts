@@ -15,6 +15,15 @@ export const modelAnthropicFable5 = defineModel({
     autoCompactWindow: 200_000,
 });
 
+export const modelAnthropicOpus5 = defineModel({
+    id: "anthropic/opus-5",
+    name: "Opus 5 1M",
+    thinkingLevels: ["off", "low", "medium", "high", "xhigh", "max", "ultra"],
+    defaultThinkingLevel: "medium",
+    contextWindow: 1_000_000,
+    autoCompactWindow: 200_000,
+});
+
 export const modelAnthropicOpus48 = defineModel({
     id: "anthropic/opus-4-8",
     name: "Opus 4.8 1M",

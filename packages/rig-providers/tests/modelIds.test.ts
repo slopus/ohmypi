@@ -9,6 +9,7 @@ describe("Rig model IDs", () => {
     it.each([
         [resolveClaudeModelId, "anthropic/sonnet-5", "sonnet[1m]"],
         [resolveClaudeModelId, "anthropic/fable-5", "claude-fable-5[1m]"],
+        [resolveClaudeModelId, "anthropic/opus-5", "claude-opus-5[1m]"],
         [resolveClaudeModelId, "anthropic/opus-4-8", "opus[1m]"],
         [resolveCodexModelId, "openai/gpt-5.6-sol", "gpt-5.6-sol"],
         [resolveGrokModelId, "xai/grok-4.5", "grok-4.5"],
