@@ -376,6 +376,38 @@ describe("CodingAssistantApp", () => {
         expect(rendered).not.toContain("Client state");
     });
 
+    it("exits with a reload request when the local reload command is submitted", async () => {
+        const model = defineModel({
+            id: "openai/gpt-test",
+            name: "GPT Test",
+            thinkingLevels: ["off"],
+            defaultThinkingLevel: "off",
+        });
+        const provider = defineProvider({
+            id: "codex",
+            models: [model],
+            stream() {
+                return streamText("unused");
+            },
+        });
+        const harness = createJustBashToolHarness();
+        const app = new CodingAssistantApp({
+            agent: new Agent({
+                provider,
+                modelId: model.id,
+                context: harness.context,
+                printToConsole: false,
+            }),
+            cwd: harness.context.fs.cwd,
+            processManager: new NativeProcessManager(),
+            tui: fakeTui(),
+        });
+
+        submit(app, "/reload");
+
+        await expect(app.waitForExit()).resolves.toBe("reload");
+    });
+
     it("renders the startup frame and Codex-style empty composer", () => {
         const model = defineModel({
             id: "openai/gpt-test",

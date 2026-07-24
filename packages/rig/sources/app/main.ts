@@ -101,7 +101,12 @@ export async function main(argv: readonly string[] = process.argv.slice(2)): Pro
         options.permissionMode = parsePermissionMode(process.env.RIG_PERMISSION_MODE);
     }
 
-    await runApp(options);
+    let runOptions = options;
+    for (;;) {
+        const result = await runApp(runOptions);
+        if (result.action === "exit") return;
+        runOptions = { ...runOptions, resumeSessionId: result.sessionId };
+    }
 }
 
 function isDaemonCommand(value: string | undefined): value is DaemonCommand {

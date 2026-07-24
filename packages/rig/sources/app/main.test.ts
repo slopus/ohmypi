@@ -16,6 +16,7 @@ vi.mock("../happy/index.js", () => ({ runHappyAuthCommand: vi.fn() }));
 describe("main command dispatch", () => {
     beforeEach(() => {
         vi.mocked(runApp).mockReset();
+        vi.mocked(runApp).mockResolvedValue({ action: "exit" });
         vi.mocked(runExec).mockReset();
         vi.mocked(runLocalProtocolServer).mockReset();
         vi.mocked(readPackageVersion).mockClear();
@@ -91,5 +92,23 @@ describe("main command dispatch", () => {
         expect(runApp).not.toHaveBeenCalled();
         expect(runExec).not.toHaveBeenCalled();
         expect(runLocalProtocolServer).not.toHaveBeenCalled();
+    });
+
+    it("reloads the TUI by resuming the same session", async () => {
+        vi.mocked(runApp)
+            .mockResolvedValueOnce({ action: "reload", sessionId: "session-reload-1" })
+            .mockResolvedValueOnce({ action: "exit" });
+
+        await main([]);
+
+        expect(runApp).toHaveBeenCalledTimes(2);
+        expect(runApp).toHaveBeenNthCalledWith(
+            1,
+            expect.not.objectContaining({ resumeSessionId: expect.anything() }),
+        );
+        expect(runApp).toHaveBeenNthCalledWith(
+            2,
+            expect.objectContaining({ resumeSessionId: "session-reload-1" }),
+        );
     });
 });

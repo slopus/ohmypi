@@ -105,6 +105,12 @@ export function createSlashCommands(
             aliases: ["reset"],
         },
         {
+            value: "reload",
+            label: "/reload",
+            description: "Restart the TUI and reconnect this session.",
+            aliases: [],
+        },
+        {
             value: "exit",
             label: "/exit",
             description: "Close Rig.",

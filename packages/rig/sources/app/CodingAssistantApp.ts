@@ -159,6 +159,8 @@ function entryBoundary(entry: AppTranscriptEntry | undefined): boolean {
 const MAX_DIFF_FILES_PER_TOOL = 20;
 const MAX_DIFF_ROWS_PER_TOOL = 120;
 
+export type AppExitReason = "exit" | "reload";
+
 export interface CodingAssistantAppOptions {
     activeAgentLabel?: string;
     agent: CodingAssistantAgentBackend;
@@ -365,7 +367,7 @@ export class CodingAssistantApp implements Component, Focusable {
     readonly #startupStatus: StartupStatusCardModel;
     readonly #secretMenu: SecretMenuController;
     readonly #version: string;
-    readonly #exitPromise: Promise<void>;
+    readonly #exitPromise: Promise<AppExitReason>;
 
     #abortController: AbortController | undefined;
     #abortNotified = false;
@@ -383,7 +385,7 @@ export class CodingAssistantApp implements Component, Focusable {
     readonly #entryRenderCache = new TranscriptEntryRenderCache();
     readonly #headerLinesByWidth = new Map<number, readonly string[]>();
     #exiting = false;
-    #exitResolve: (() => void) | undefined;
+    #exitResolve: ((reason: AppExitReason) => void) | undefined;
     #focused = false;
     #started = false;
     #terminalFocused = true;
@@ -641,7 +643,7 @@ export class CodingAssistantApp implements Component, Focusable {
         this.#requestRender();
     }
 
-    async stop(): Promise<void> {
+    async stop(reason: AppExitReason = "exit"): Promise<void> {
         if (this.#stopped || this.#exiting) {
             return;
         }
@@ -676,12 +678,12 @@ export class CodingAssistantApp implements Component, Focusable {
             await this.#processManager.killAll({ forceAfterMs: 500 });
             await this.#onExit?.();
         } finally {
-            this.#exitResolve?.();
+            this.#exitResolve?.(reason);
             this.#requestRender();
         }
     }
 
-    waitForExit(): Promise<void> {
+    waitForExit(): Promise<AppExitReason> {
         return this.#exitPromise;
     }
 
@@ -1954,6 +1956,11 @@ export class CodingAssistantApp implements Component, Focusable {
 
         if (prompt === "/new") {
             this.#resetSession();
+            return true;
+        }
+
+        if (prompt === "/reload") {
+            void this.stop("reload");
             return true;
         }
 

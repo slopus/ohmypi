@@ -20,7 +20,7 @@ import type { PermissionMode } from "../permissions/index.js";
 import type { CreateSessionRequest, SessionEvent } from "../protocol/index.js";
 import { resolveDockerExecutionConfig } from "../execution/index.js";
 import type { DockerExecutionConfig } from "../execution/index.js";
-import { CodingAssistantApp } from "./CodingAssistantApp.js";
+import { CodingAssistantApp, type AppExitReason } from "./CodingAssistantApp.js";
 import { createSerialTaskQueue } from "./createSerialTaskQueue.js";
 import { createStopOnceHandler } from "./createStopOnceHandler.js";
 import { createStartupStatusCardModel } from "./createStartupStatusCardModel.js";
@@ -58,7 +58,9 @@ export interface RunAppOptions {
     docker?: DockerExecutionConfig | null;
 }
 
-export async function runApp(options: RunAppOptions = {}): Promise<void> {
+export type RunAppResult = { action: "exit" } | { action: "reload"; sessionId: string };
+
+export async function runApp(options: RunAppOptions = {}): Promise<RunAppResult> {
     const cwd = options.cwd ?? process.cwd();
     const [loadedConfig, mcpConfigEntries] = await Promise.all([
         loadConfig({ cwd }),
@@ -125,6 +127,7 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
     });
     const terminalCrashCleanup = installTerminalCrashCleanup({ terminal, tui });
     let terminalBackground: ReturnType<TUI["queryTerminalBackgroundColor"]>;
+    let exitReason: AppExitReason = "exit";
     try {
         startup.start();
         tui.setTerminalColorSchemeNotifications(true);
@@ -448,7 +451,7 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
         let appExitedNormally = false;
         try {
             app.start({ tuiAlreadyStarted: true });
-            await app.waitForExit();
+            exitReason = await app.waitForExit();
             appExitedNormally = true;
         } finally {
             if (!appExitedNormally) terminalCrashCleanup.restore();
@@ -459,9 +462,11 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
             followController.abort();
             terminal.write("\x1b[?1004l");
             await processManager.killAll({ forceAfterMs: 500 });
-            console.error("");
-            console.error(`Session: ${session.session.id}`);
-            console.error(`Resume: ${resumeCommand}`);
+            if (exitReason !== "reload") {
+                console.error("");
+                console.error(`Session: ${session.session.id}`);
+                console.error(`Resume: ${resumeCommand}`);
+            }
         }
     } catch (error) {
         terminalCrashCleanup.restore();
@@ -470,6 +475,9 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
     } finally {
         await sessionTerminal.close().catch(() => undefined);
     }
+    return exitReason === "reload"
+        ? { action: "reload", sessionId: session.session.id }
+        : { action: "exit" };
 }
 
 function sanitizeTerminalTitle(value: string): string {

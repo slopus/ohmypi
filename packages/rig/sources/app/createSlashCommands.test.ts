@@ -10,6 +10,13 @@ describe("createSlashCommands", () => {
         });
     });
 
+    it("offers a TUI reload that reconnects the current session", () => {
+        expect(createSlashCommands().find((command) => command.value === "reload")).toMatchObject({
+            label: "/reload",
+            description: "Restart the TUI and reconnect this session.",
+        });
+    });
+
     it("describes secret attachments without limiting them to the session scope", () => {
         expect(createSlashCommands().find((command) => command.value === "secrets")).toMatchObject({
             label: "/secrets",
