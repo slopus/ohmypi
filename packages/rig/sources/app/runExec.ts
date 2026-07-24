@@ -110,85 +110,90 @@ async function run(
             .session;
     }
 
-    const submitted = await connection.client.submitMessage(session.id, {
-        ...(options.debug === true ? { debug: true } : {}),
-        interactive: false,
-        text: prompt,
-    });
-    if (submitted.debugDirectory !== undefined) onDebugDirectory(submitted.debugDirectory);
-    if (options.outputFormat === "text" && submitted.debugDirectory !== undefined) {
-        process.stderr.write(`Debug log: ${submitted.debugDirectory}\n`);
-    }
-    const controller = new AbortController();
-    let failure: string | undefined;
-    let stopReason: StopReason | undefined;
-    const abort = () => {
-        stopReason = "aborted";
-        void connection.client.abort(session.id);
-        controller.abort();
-    };
-    process.once("SIGINT", abort);
+    const sessionTerminal = await connection.client.connectSessionTerminal(session.id);
     try {
-        await connection.client.watchSessionEvents({
-            after: submitted.eventId,
-            sessionId: session.id,
-            signal: controller.signal,
-            onEvent(event) {
-                if (options.outputFormat === "stream-json") {
-                    process.stdout.write(`${JSON.stringify({ event, type: "event" })}\n`);
-                }
-                if (event.type === "user_input_requested") {
-                    failure = "The agent requested interactive input during a headless run.";
-                    void connection.client.abort(session.id);
-                    controller.abort();
-                    return;
-                }
-                if (!belongsToRun(event, submitted.runId)) return;
-                if (event.type === "run_error") {
-                    failure = event.data.errorMessage;
-                    controller.abort();
-                } else if (event.type === "run_finished") {
-                    stopReason = event.data.stopReason;
-                    controller.abort();
-                }
-            },
+        const submitted = await connection.client.submitMessage(session.id, {
+            ...(options.debug === true ? { debug: true } : {}),
+            interactive: false,
+            text: prompt,
         });
+        if (submitted.debugDirectory !== undefined) onDebugDirectory(submitted.debugDirectory);
+        if (options.outputFormat === "text" && submitted.debugDirectory !== undefined) {
+            process.stderr.write(`Debug log: ${submitted.debugDirectory}\n`);
+        }
+        const controller = new AbortController();
+        let failure: string | undefined;
+        let stopReason: StopReason | undefined;
+        const abort = () => {
+            stopReason = "aborted";
+            void connection.client.abort(session.id);
+            controller.abort();
+        };
+        process.once("SIGINT", abort);
+        try {
+            await connection.client.watchSessionEvents({
+                after: submitted.eventId,
+                sessionId: session.id,
+                signal: controller.signal,
+                onEvent(event) {
+                    if (options.outputFormat === "stream-json") {
+                        process.stdout.write(`${JSON.stringify({ event, type: "event" })}\n`);
+                    }
+                    if (event.type === "user_input_requested") {
+                        failure = "The agent requested interactive input during a headless run.";
+                        void connection.client.abort(session.id);
+                        controller.abort();
+                        return;
+                    }
+                    if (!belongsToRun(event, submitted.runId)) return;
+                    if (event.type === "run_error") {
+                        failure = event.data.errorMessage;
+                        controller.abort();
+                    } else if (event.type === "run_finished") {
+                        stopReason = event.data.stopReason;
+                        controller.abort();
+                    }
+                },
+            });
+        } finally {
+            process.off("SIGINT", abort);
+        }
+
+        const completed = (await connection.client.getSession(session.id)).session;
+        const response = findLastAgentResponseText(completed.snapshot.messages) ?? "";
+        if (failure !== undefined) {
+            emitFailure(
+                options.outputFormat,
+                failure,
+                completed.id,
+                submitted.runId,
+                submitted.debugDirectory,
+            );
+            process.exitCode = 1;
+            return;
+        }
+
+        const result = {
+            ...(submitted.debugDirectory === undefined
+                ? {}
+                : { debugDirectory: submitted.debugDirectory }),
+            response,
+            runId: submitted.runId,
+            sessionId: completed.id,
+            stopReason: stopReason ?? "error",
+            type: "result",
+        };
+        if (options.outputFormat === "text") {
+            process.stdout.write(
+                response.length === 0 || response.endsWith("\n") ? response : `${response}\n`,
+            );
+        } else {
+            process.stdout.write(`${JSON.stringify(result)}\n`);
+        }
+        if (result.stopReason === "error" || result.stopReason === "aborted") process.exitCode = 1;
     } finally {
-        process.off("SIGINT", abort);
+        await sessionTerminal.close().catch(() => undefined);
     }
-
-    const completed = (await connection.client.getSession(session.id)).session;
-    const response = findLastAgentResponseText(completed.snapshot.messages) ?? "";
-    if (failure !== undefined) {
-        emitFailure(
-            options.outputFormat,
-            failure,
-            completed.id,
-            submitted.runId,
-            submitted.debugDirectory,
-        );
-        process.exitCode = 1;
-        return;
-    }
-
-    const result = {
-        ...(submitted.debugDirectory === undefined
-            ? {}
-            : { debugDirectory: submitted.debugDirectory }),
-        response,
-        runId: submitted.runId,
-        sessionId: completed.id,
-        stopReason: stopReason ?? "error",
-        type: "result",
-    };
-    if (options.outputFormat === "text") {
-        process.stdout.write(
-            response.length === 0 || response.endsWith("\n") ? response : `${response}\n`,
-        );
-    } else {
-        process.stdout.write(`${JSON.stringify(result)}\n`);
-    }
-    if (result.stopReason === "error" || result.stopReason === "aborted") process.exitCode = 1;
 }
 
 async function openSession(

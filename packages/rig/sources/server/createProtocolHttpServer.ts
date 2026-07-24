@@ -15,6 +15,7 @@ import type {
     CreateSessionRequest,
     CreateSessionResponse,
     DaemonIdentity,
+    DisconnectSessionTerminalResponse,
     ForkSessionResponse,
     GetCurrentProviderQuotaResponse,
     GetDaemonConfigResponse,
@@ -41,6 +42,8 @@ import type {
     SearchFilesResponse,
     SecretSessionResponse,
     SessionEvent,
+    SessionTerminalHeartbeatRequest,
+    SessionTerminalHeartbeatResponse,
     SetGoalRequest,
     ShutdownServerResponse,
     StartInspectorResponse,
@@ -90,6 +93,8 @@ import type {
 } from "../terminal/index.js";
 import { isAuthorizedProtocolRequest } from "./isAuthorizedProtocolRequest.js";
 import { attachRemoteTerminalWebSocketServer } from "./attachRemoteTerminalWebSocketServer.js";
+import { SessionTerminalTracker } from "./SessionTerminalTracker.js";
+import { sessionSummaryWithTerminalPresence } from "./sessionSummaryWithTerminalPresence.js";
 
 export interface ProtocolHttpServerOptions {
     defaultDocker?: DockerExecutionConfig;
@@ -131,6 +136,7 @@ export function createProtocolHttpServer(
     };
     // The persistent store caches sessions weakly; each open SSE stream needs its own strong lease.
     const sessionEventStreamLeases = new Set<SessionEventStreamLease>();
+    const sessionTerminals = new SessionTerminalTracker();
 
     attachRemoteTerminalWebSocketServer({ server, store, token: options.token });
 
@@ -155,6 +161,7 @@ export function createProtocolHttpServer(
                 options.taskDrain,
                 options.getProviderQuota,
                 sessionEventStreamLeases,
+                sessionTerminals,
             );
         const handling =
             mutating && options.taskDrain !== undefined ? options.taskDrain.run(handle) : handle();
@@ -177,7 +184,10 @@ export function createProtocolHttpServer(
             });
         });
     });
-    server.once("close", () => fileSearchService.close());
+    server.once("close", () => {
+        fileSearchService.close();
+        sessionTerminals.dispose();
+    });
     return server;
 }
 
@@ -206,6 +216,7 @@ async function handleRequest(
     taskDrain: TaskDrain | undefined,
     getProviderQuota: ((providerId: string) => Promise<ProviderQuota | undefined>) | undefined,
     sessionEventStreamLeases: Set<SessionEventStreamLease>,
+    sessionTerminals: SessionTerminalTracker,
 ): Promise<void> {
     if (!isAuthorizedProtocolRequest(request, token)) {
         sendJson(response, 401, { error: "Unauthorized" });
@@ -477,6 +488,18 @@ async function handleRequest(
             });
             return;
         }
+        if (body.archiveOnIdle !== undefined && typeof body.archiveOnIdle !== "boolean") {
+            sendJson(response, 400, {
+                error: "Archive on idle must be true or false.",
+            });
+            return;
+        }
+        if (body.trackUnread !== undefined && typeof body.trackUnread !== "boolean") {
+            sendJson(response, 400, {
+                error: "Unread tracking must be true or false.",
+            });
+            return;
+        }
         if (
             body.secretIds !== undefined &&
             (!Array.isArray(body.secretIds) ||
@@ -501,8 +524,11 @@ async function handleRequest(
 
     if (request.method === "GET" && route.name === "sessions") {
         const limit = parseLimit(url.searchParams.get("limit"));
+        const sessions = limit === undefined ? store.list() : store.list({ limit });
         sendJson<ListSessionsResponse>(response, 200, {
-            sessions: limit === undefined ? store.list() : store.list({ limit }),
+            sessions: sessions.map((summary) =>
+                sessionSummaryWithTerminalPresence(summary, sessionTerminals),
+            ),
         });
         return;
     }
@@ -516,6 +542,47 @@ async function handleRequest(
     const session = store.get(sessionId);
     if (session === undefined) {
         sendJson(response, 404, { error: "Session not found" });
+        return;
+    }
+
+    if (route.name === "terminal-connection") {
+        if (session.isSubagent()) {
+            sendJson(response, 409, {
+                error: "Subagent histories are read-only and cannot accept terminal connections.",
+            });
+            return;
+        }
+        if (request.method === "PUT") {
+            const body = await readJson<SessionTerminalHeartbeatRequest | null>(request);
+            if (
+                body === null ||
+                typeof body !== "object" ||
+                Array.isArray(body) ||
+                body.connectionId !== route.connectionId
+            ) {
+                sendJson(response, 400, { error: "Terminal heartbeat settings are invalid." });
+                return;
+            }
+            try {
+                const hadFocusedTerminal = sessionTerminals.hasFocusedTerminal(sessionId);
+                sessionTerminals.heartbeat(sessionId, body);
+                if (hadFocusedTerminal || sessionTerminals.hasFocusedTerminal(sessionId)) {
+                    session.markRead();
+                }
+                sendJson<SessionTerminalHeartbeatResponse>(response, 200, { connected: true });
+            } catch (error) {
+                sendJson(response, 400, { error: errorToMessage(error) });
+            }
+            return;
+        }
+        if (request.method === "DELETE") {
+            if (sessionTerminals.hasFocusedTerminal(sessionId)) session.markRead();
+            sendJson<DisconnectSessionTerminalResponse>(response, 200, {
+                disconnected: sessionTerminals.disconnect(sessionId, route.connectionId),
+            });
+            return;
+        }
+        sendJson(response, 405, { error: "Method not allowed" });
         return;
     }
 
@@ -1145,6 +1212,11 @@ function matchRoute(pathname: string):
           sessionId: string;
           terminalId: string;
       }
+    | {
+          connectionId: string;
+          name: "terminal-connection";
+          sessionId: string;
+      }
     | { name: "user-input"; requestId: string; sessionId: string }
     | { name: "external-tool-call"; externalToolCallId: string; sessionId: string }
     | { name: "secret"; secretId: string; sessionId: string }
@@ -1185,6 +1257,13 @@ function matchRoute(pathname: string):
             name: "terminal",
             sessionId,
             terminalId: decodeURIComponent(parts[3]),
+        };
+    }
+    if (parts.length === 4 && parts[2] === "terminal-connections" && parts[3] !== undefined) {
+        return {
+            connectionId: decodeURIComponent(parts[3]),
+            name: "terminal-connection",
+            sessionId,
         };
     }
     if (parts.length === 4 && parts[2] === "user-input" && parts[3] !== undefined) {
@@ -1276,6 +1355,7 @@ function isSessionMutation(routeName: string, method: string | undefined): boole
                 "terminals",
             ].includes(routeName)) ||
         (method === "POST" && routeName === "workflow-stop") ||
+        (["DELETE", "PUT"].includes(method ?? "") && routeName === "terminal-connection") ||
         (method === "DELETE" && routeName === "background-process") ||
         (["DELETE", "PATCH", "POST"].includes(method ?? "") && routeName === "goal") ||
         (method === "POST" && routeName === "user-input") ||

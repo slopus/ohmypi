@@ -592,6 +592,54 @@ describe("InMemorySession", () => {
         });
     });
 
+    it("tracks unread attention only when the root session opts in", async () => {
+        const store = new InMemorySessionStore();
+        const session = store.create({
+            cwd: "/tmp/rig-session-test",
+            trackUnread: true,
+        });
+        const request = {
+            requestId: "question-unread",
+            questions: [
+                {
+                    header: "Database",
+                    id: "database",
+                    multiSelect: false,
+                    options: [
+                        { label: "PostgreSQL", description: "Use a server database." },
+                        { label: "SQLite", description: "Use a local database." },
+                    ],
+                    question: "Which database should be used?",
+                },
+            ],
+        };
+
+        const pending = session.requestUserInput(request);
+
+        expect(session.snapshot()).toMatchObject({
+            trackUnread: true,
+            unread: { reason: "attention_needed" },
+        });
+        expect(session.markRead()).toBe(true);
+        expect(session.snapshot().unread).toBeUndefined();
+        expect(session.markRead()).toBe(false);
+
+        session.answerUserInput("question-unread", { answers: { database: ["SQLite"] } });
+        await expect(pending).resolves.toEqual({ answers: { database: ["SQLite"] } });
+
+        const untracked = store.create({ cwd: "/tmp/rig-session-test" });
+        const untrackedPending = untracked.requestUserInput({
+            ...request,
+            requestId: "question-untracked",
+        });
+        expect(untracked.snapshot().trackUnread).toBe(false);
+        expect(untracked.snapshot().unread).toBeUndefined();
+        untracked.answerUserInput("question-untracked", {
+            answers: { database: ["PostgreSQL"] },
+        });
+        await untrackedPending;
+    });
+
     it("cancels a pending question when its run is aborted", async () => {
         const store = new InMemorySessionStore();
         const session = store.create({ cwd: "/tmp/rig-session-test" });

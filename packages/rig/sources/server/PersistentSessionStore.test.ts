@@ -1859,6 +1859,41 @@ describe("PersistentSessionStore", () => {
         }
     });
 
+    it("persists lifecycle and unread session behavior across daemon restarts", async () => {
+        const { cleanup, databasePath } = await createDatabasePath();
+        try {
+            const store = new PersistentSessionStore({ databasePath });
+            const state = sessionState({
+                archiveOnIdle: true,
+                trackUnread: true,
+                unread: { reason: "turn_finished", since: 1_700_000_000_000 },
+            });
+            store.saveSession(state);
+            store.close();
+
+            const restoredStore = new PersistentSessionStore({ databasePath });
+            try {
+                expect(restoredStore.get(state.id)?.snapshot()).toMatchObject({
+                    archiveOnIdle: true,
+                    trackUnread: true,
+                    unread: state.unread,
+                });
+                expect(restoredStore.list()).toMatchObject([
+                    {
+                        archiveOnIdle: true,
+                        id: state.id,
+                        trackUnread: true,
+                        unread: state.unread,
+                    },
+                ]);
+            } finally {
+                restoredStore.close();
+            }
+        } finally {
+            await cleanup();
+        }
+    });
+
     it("persists completed structured question events without reviving the prompt", async () => {
         const { cleanup, databasePath } = await createDatabasePath();
         try {

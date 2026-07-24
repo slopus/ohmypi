@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { describe, expect, it, vi } from "vitest";
 
 import { ProtocolHttpClient } from "../client/ProtocolHttpClient.js";
-import { createEventIdFactory, type SessionEvent } from "../protocol/index.js";
+import { createEventIdFactory, type SessionEvent, type SessionSummary } from "../protocol/index.js";
 import { modelOpenaiGpt55, modelOpenaiGpt56Sol } from "@slopus/rig-execution";
 import { InMemorySessionStore } from "./InMemorySessionStore.js";
 import type { PersistedSessionState } from "./InMemorySession.js";
@@ -1493,6 +1493,87 @@ describe("createProtocolHttpServer", () => {
         }
     });
 
+    it("reports disconnected settled sessions as idle or archived and restores live status", async () => {
+        const store = new PersistentSessionStore({ databasePath: ":memory:" });
+        store.saveSession(completedPrimaryState("idle-session", false));
+        store.saveSession(completedPrimaryState("archived-session", true));
+        const { client, close } = await startServer({ store });
+        let idleTerminal:
+            | Awaited<ReturnType<ProtocolHttpClient["connectSessionTerminal"]>>
+            | undefined;
+        let archivedTerminal:
+            | Awaited<ReturnType<ProtocolHttpClient["connectSessionTerminal"]>>
+            | undefined;
+        try {
+            expect(await listedStatus(client, "idle-session")).toBe("idle");
+            expect(await listedStatus(client, "archived-session")).toBe("archived");
+
+            idleTerminal = await client.connectSessionTerminal("idle-session");
+            archivedTerminal = await client.connectSessionTerminal("archived-session");
+            expect(await listedStatus(client, "idle-session")).toBe("completed");
+            expect(await listedStatus(client, "archived-session")).toBe("completed");
+
+            await idleTerminal.close();
+            idleTerminal = undefined;
+            await archivedTerminal.close();
+            archivedTerminal = undefined;
+            expect(await listedStatus(client, "idle-session")).toBe("idle");
+            expect(await listedStatus(client, "archived-session")).toBe("archived");
+        } finally {
+            await idleTerminal?.close();
+            await archivedTerminal?.close();
+            await close();
+            store.close();
+        }
+    });
+
+    it("keeps unread state for background clients and clears it when any client is focused", async () => {
+        const store = new PersistentSessionStore({ databasePath: ":memory:" });
+        store.saveSession({
+            ...completedPrimaryState("unread-session", false),
+            trackUnread: true,
+            unread: { reason: "attention_needed", since: 123 },
+        });
+        const { client, close } = await startServer({ store });
+        let background:
+            | Awaited<ReturnType<ProtocolHttpClient["connectSessionTerminal"]>>
+            | undefined;
+        let foreground:
+            | Awaited<ReturnType<ProtocolHttpClient["connectSessionTerminal"]>>
+            | undefined;
+        try {
+            background = await client.connectSessionTerminal("unread-session", {
+                focused: false,
+            });
+            expect(await listedSession(client, "unread-session")).toMatchObject({
+                unread: { reason: "attention_needed", since: 123 },
+            });
+
+            foreground = await client.connectSessionTerminal("unread-session", {
+                focused: true,
+            });
+            expect((await listedSession(client, "unread-session"))?.unread).toBeUndefined();
+            expect(store.get("unread-session")?.snapshot().unread).toBeUndefined();
+
+            const session = store.get("unread-session");
+            const pending = session?.requestUserInput({
+                requestId: "focused-question",
+                questions: [],
+            });
+            expect(session?.snapshot().unread?.reason).toBe("attention_needed");
+            await foreground.close();
+            foreground = undefined;
+            expect(session?.snapshot().unread).toBeUndefined();
+            session?.answerUserInput("focused-question", { answers: {} });
+            await pending;
+        } finally {
+            await background?.close();
+            await foreground?.close();
+            await close();
+            store.close();
+        }
+    });
+
     it("forks a completed session into a new resumable session", async () => {
         const { client, close } = await startServer();
         try {
@@ -1806,6 +1887,42 @@ function readOnlySubagentState(): PersistedSessionState {
         titleStatus: "ready",
         tools: [],
     };
+}
+
+function completedPrimaryState(id: string, archiveOnIdle: boolean): PersistedSessionState {
+    return {
+        agent: { depth: 0, rootSessionId: id, type: "primary" },
+        agentId: `${id}-agent`,
+        archiveOnIdle,
+        cwd: "/tmp/rig-protocol-test",
+        id,
+        messages: [],
+        modelId: modelOpenaiGpt55.id,
+        models: [],
+        nextTaskId: 1,
+        permissionMode: "workspace_write",
+        providerId: "codex",
+        queuedRuns: [],
+        status: "completed",
+        tasks: [],
+        titleStatus: "ready",
+        tools: [],
+    };
+}
+
+async function listedStatus(
+    client: ProtocolHttpClient,
+    sessionId: string,
+): Promise<string | undefined> {
+    return (await client.listSessions()).sessions.find((session) => session.id === sessionId)
+        ?.status;
+}
+
+async function listedSession(
+    client: ProtocolHttpClient,
+    sessionId: string,
+): Promise<SessionSummary | undefined> {
+    return (await client.listSessions()).sessions.find((session) => session.id === sessionId);
 }
 
 function pausedGoalState(): PersistedSessionState {

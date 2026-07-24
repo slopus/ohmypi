@@ -396,10 +396,12 @@ describe("CodingAssistantApp", () => {
             printToConsole: false,
         });
         const onUserActivity = vi.fn();
+        const onTerminalFocusChange = vi.fn();
         const app = new CodingAssistantApp({
             agent,
             cwd: harness.context.fs.cwd,
             onUserActivity,
+            onTerminalFocusChange,
             processManager: new NativeProcessManager(),
             tui: fakeTui(),
             version: "1.2.3",
@@ -442,6 +444,10 @@ describe("CodingAssistantApp", () => {
 
         app.handleInput("h");
         expect(onUserActivity).toHaveBeenCalledOnce();
+        app.handleInput("\x1b[O");
+        app.handleInput("\x1b[I");
+        expect(onTerminalFocusChange).toHaveBeenNthCalledWith(1, false);
+        expect(onTerminalFocusChange).toHaveBeenNthCalledWith(2, true);
         const typedInput = app.render(80).join("\n");
         expect(typedInput).toContain("\x1b[39m");
         expect(typedInput).toContain("\x1b[38;5;202m\x1b[1m›\x1b[22m\x1b[39m");

@@ -21,6 +21,7 @@ import type {
     CompactSessionResponse,
     CreateSessionRequest,
     CreateSessionResponse,
+    DisconnectSessionTerminalResponse,
     EventId,
     ForkSessionResponse,
     GetCurrentProviderQuotaResponse,
@@ -49,6 +50,8 @@ import type {
     SearchFilesResponse,
     SecretSessionResponse,
     SessionEvent,
+    SessionTerminalHeartbeatRequest,
+    SessionTerminalHeartbeatResponse,
     ShutdownServerResponse,
     StartInspectorResponse,
     SetGoalRequest,
@@ -79,6 +82,7 @@ import { connectRemoteTerminalWebSocket } from "./connectRemoteTerminalWebSocket
 import { RemoteTerminalAttachment } from "./RemoteTerminalAttachment.js";
 import { RemoteTerminalClientReplica } from "./RemoteTerminalClientReplica.js";
 import { waitForGymSessionEventBarrier } from "./waitForGymSessionEventBarrier.js";
+import { SessionTerminalConnection } from "./SessionTerminalConnection.js";
 
 export interface ProtocolHttpClientOptions {
     socketPath: string;
@@ -294,6 +298,52 @@ export class ProtocolHttpClient {
 
     createSession(request: CreateSessionRequest): Promise<CreateSessionResponse> {
         return this.#requestJson("POST", "/sessions", request);
+    }
+
+    async connectSessionTerminal(
+        sessionId: string,
+        options: { focused?: boolean; targetPid?: number } = {},
+    ): Promise<SessionTerminalConnection> {
+        const connectionId = randomUUID();
+        let focused = options.focused === true;
+        const targetPid = options.targetPid ?? process.pid;
+        const heartbeat = () =>
+            this.heartbeatSessionTerminal(sessionId, {
+                connectionId,
+                focused,
+                targetPid,
+            }).then(() => undefined);
+        await heartbeat();
+        return new SessionTerminalConnection({
+            connectionId,
+            disconnect: () =>
+                this.disconnectSessionTerminal(sessionId, connectionId).then(() => undefined),
+            heartbeat,
+            setFocused: (nextFocused) => {
+                focused = nextFocused;
+            },
+        });
+    }
+
+    disconnectSessionTerminal(
+        sessionId: string,
+        connectionId: string,
+    ): Promise<DisconnectSessionTerminalResponse> {
+        return this.#requestJson(
+            "DELETE",
+            `/sessions/${encodeURIComponent(sessionId)}/terminal-connections/${encodeURIComponent(connectionId)}`,
+        );
+    }
+
+    heartbeatSessionTerminal(
+        sessionId: string,
+        request: SessionTerminalHeartbeatRequest,
+    ): Promise<SessionTerminalHeartbeatResponse> {
+        return this.#requestJson(
+            "PUT",
+            `/sessions/${encodeURIComponent(sessionId)}/terminal-connections/${encodeURIComponent(request.connectionId)}`,
+            request,
+        );
     }
 
     createRemoteTerminal(

@@ -29,6 +29,34 @@ describe("formatSessionSummaries", () => {
         expect(lines[0]?.length).toBeLessThanOrEqual(24);
         expect(lines[1]?.length).toBeLessThanOrEqual(24);
     });
+
+    it("renders archived session status in human-readable English", () => {
+        const lines = formatSessionSummaries([sessionSummary({ status: "archived" })], {
+            columns: 120,
+            rows: 2,
+        });
+
+        expect(lines[1]).toMatch(/^Archived\s+/);
+    });
+
+    it("shows unread attention ahead of the lifecycle status", () => {
+        const attention = formatSessionSummaries(
+            [
+                sessionSummary({
+                    status: "archived",
+                    unread: { reason: "attention_needed", since: 1_700_000_001_000 },
+                }),
+                sessionSummary({
+                    id: "session-2",
+                    unread: { reason: "turn_finished", since: 1_700_000_002_000 },
+                }),
+            ],
+            { columns: 120, rows: 3 },
+        );
+
+        expect(attention[1]).toMatch(/^Attention\s+/);
+        expect(attention[2]).toMatch(/^Finished\s+/);
+    });
 });
 
 function sessionSummary(overrides: Partial<SessionSummary> = {}): SessionSummary {

@@ -52,6 +52,7 @@ import type {
     SessionInterruption,
     SessionStatus,
     SessionSummary,
+    SessionUnreadState,
     ShellCommandFinishedEvent,
     StopBackgroundProcessResponse,
     SubagentSummary,
@@ -62,6 +63,7 @@ import type {
     SteerMessageResponse,
     UpdateSessionRequest,
 } from "../protocol/index.js";
+import { sessionUnreadStateAfterEvent } from "./sessionUnreadStateAfterEvent.js";
 import type { Model, Provider, ServiceTier, StopReason } from "@slopus/rig-execution";
 import type { ProviderQuota } from "@slopus/rig-providers";
 import { createEncryptedAgentTransportScope } from "../executor/createEncryptedAgentTransportScope.js";
@@ -186,6 +188,9 @@ export interface PersistedSessionState {
     activeRunId?: string;
     agent: SessionAgentMetadata;
     agentId: string;
+    archiveOnIdle?: boolean;
+    trackUnread?: boolean;
+    unread?: SessionUnreadState;
     appendSystemPrompt?: string;
     cwd: string;
     docker?: DockerExecutionConfig;
@@ -411,6 +416,7 @@ export class InMemorySession {
     #executor: Executor | undefined;
     #secrets: SessionSecretContext;
     #status: SessionStatus = "idle";
+    #unread: SessionUnreadState | undefined;
     #suspendedRunIds = new Set<string>();
     #systemPrompt: string | undefined;
     #suspendOnAbort = false;
@@ -438,6 +444,8 @@ export class InMemorySession {
         this.#persistence = options.persistence;
         this.#request = {
             ...options.request,
+            archiveOnIdle: options.restore?.archiveOnIdle ?? options.request.archiveOnIdle ?? false,
+            trackUnread: options.restore?.trackUnread ?? options.request.trackUnread ?? false,
             ...(options.request.secretIds === undefined
                 ? {}
                 : { secretIds: [...options.request.secretIds] }),
@@ -528,6 +536,8 @@ export class InMemorySession {
                 : [...options.restore.contextMessages];
         this.#models = this.#modelsForProvider(this.#providerId);
         this.#status = options.restore?.status ?? "idle";
+        this.#unread =
+            options.restore?.unread === undefined ? undefined : { ...options.restore.unread };
         this.#activeSince = options.restore?.activeSince;
         this.#elapsedMs = options.restore?.elapsedMs ?? 0;
         this.#lastMessageAt = options.restore?.lastMessageAt;
@@ -2048,6 +2058,13 @@ export class InMemorySession {
         return this.#agentMetadata.type === "subagent";
     }
 
+    markRead(): boolean {
+        if (this.isSubagent() || this.#unread === undefined) return false;
+        this.#unread = undefined;
+        this.#append("session_updated", { session: this.snapshot() });
+        return true;
+    }
+
     recordSubagentChanged(subagent: SubagentSummary): void {
         this.#append("subagent_changed", { subagent });
         this.#restartMetadataSettlement();
@@ -2067,6 +2084,7 @@ export class InMemorySession {
                 ? { appendSystemPrompt: this.#appendSystemPrompt }
                 : {}),
             cwd: this.#request.cwd,
+            trackUnread: false,
             ...(this.#effort !== undefined ? { effort: this.#effort } : {}),
             ...(this.#serviceTier !== undefined ? { serviceTier: this.#serviceTier } : {}),
             ...(this.#instructions !== undefined ? { instructions: this.#instructions } : {}),
@@ -2093,6 +2111,9 @@ export class InMemorySession {
         return {
             id: this.id,
             agentId: this.#agentId,
+            archiveOnIdle: this.#request.archiveOnIdle === true,
+            trackUnread: this.#request.trackUnread === true,
+            ...(this.#unread === undefined ? {} : { unread: { ...this.#unread } }),
             ...(this.#appendSystemPrompt !== undefined
                 ? { appendSystemPrompt: this.#appendSystemPrompt }
                 : {}),
@@ -2147,6 +2168,9 @@ export class InMemorySession {
     summary(): SessionSummary {
         return {
             id: this.id,
+            archiveOnIdle: this.#request.archiveOnIdle === true,
+            trackUnread: this.#request.trackUnread === true,
+            ...(this.#unread === undefined ? {} : { unread: { ...this.#unread } }),
             cwd: this.#request.cwd,
             environment: summarizeDockerExecution(this.#request.docker),
             providerId: this.#providerId,
@@ -2184,6 +2208,9 @@ export class InMemorySession {
             ...(this.#activeSince === undefined ? {} : { activeSince: this.#activeSince }),
             agent: this.agentMetadata(),
             agentId: this.#agentId,
+            archiveOnIdle: this.#request.archiveOnIdle === true,
+            trackUnread: this.#request.trackUnread === true,
+            ...(this.#unread === undefined ? {} : { unread: { ...this.#unread } }),
             ...(this.#appendSystemPrompt !== undefined
                 ? { appendSystemPrompt: this.#appendSystemPrompt }
                 : {}),
@@ -3324,6 +3351,9 @@ export class InMemorySession {
             sessionId: this.id,
             type,
         } as Extract<SessionEvent, { type: TType }>;
+        if (!this.isSubagent() && this.#request.trackUnread === true) {
+            this.#unread = sessionUnreadStateAfterEvent(this.#unread, event);
+        }
         this.events.append(event);
         this.#saveSession();
         return event;

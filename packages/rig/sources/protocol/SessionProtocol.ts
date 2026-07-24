@@ -39,6 +39,15 @@ export type SessionStatus =
     | "suspended"
     | "error";
 
+export type SessionSummaryStatus = SessionStatus | "archived";
+
+export type SessionUnreadReason = "attention_needed" | "turn_finished";
+
+export interface SessionUnreadState {
+    reason: SessionUnreadReason;
+    since: number;
+}
+
 export type SessionTitleStatus = "idle" | "generating" | "ready" | "error";
 
 export type { SessionExecutionEnvironment } from "../execution/SessionExecutionEnvironment.js";
@@ -135,6 +144,9 @@ export type UpdateDaemonConfigResponse = GetDaemonConfigResponse;
 export interface ProtocolSession {
     id: string;
     agentId: string;
+    archiveOnIdle?: boolean;
+    trackUnread?: boolean;
+    unread?: SessionUnreadState;
     appendSystemPrompt?: string;
     cwd: string;
     providerId: string;
@@ -193,6 +205,9 @@ export interface SubagentSummary {
 
 export interface SessionSummary {
     id: string;
+    archiveOnIdle?: boolean;
+    trackUnread?: boolean;
+    unread?: SessionUnreadState;
     cwd: string;
     providerId: string;
     modelId: string;
@@ -200,7 +215,7 @@ export interface SessionSummary {
     effort?: string;
     serviceTier?: ServiceTier;
     environment?: SessionExecutionEnvironment;
-    status: SessionStatus;
+    status: SessionSummaryStatus;
     title?: string;
     titleError?: string;
     titleStatus: SessionTitleStatus;
@@ -216,6 +231,8 @@ export interface SessionSummary {
 export interface CreateSessionRequest {
     apiKey?: string;
     appendSystemPrompt?: string;
+    archiveOnIdle?: boolean;
+    trackUnread?: boolean;
     cwd: string;
     effort?: string;
     serviceTier?: ServiceTier;
@@ -429,6 +446,20 @@ export interface SubmitMessageResponse {
 
 export interface RecordSessionActivityResponse {
     recorded: true;
+}
+
+export interface SessionTerminalHeartbeatRequest {
+    connectionId: string;
+    focused: boolean;
+    targetPid: number;
+}
+
+export interface SessionTerminalHeartbeatResponse {
+    connected: true;
+}
+
+export interface DisconnectSessionTerminalResponse {
+    disconnected: boolean;
 }
 
 export interface RunShellCommandRequest {

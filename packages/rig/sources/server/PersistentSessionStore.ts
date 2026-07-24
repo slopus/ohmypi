@@ -15,6 +15,7 @@ import type {
     SessionAgentMetadata,
     SessionInterruption,
     SessionSummary,
+    SessionUnreadReason,
     SubagentSummary,
     SessionTitleStatus,
 } from "../protocol/index.js";
@@ -385,6 +386,10 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
                 `
                 SELECT
                     id,
+                    archive_on_idle,
+                    track_unread,
+                    unread_reason,
+                    unread_since_ms,
                     cwd,
                     docker_json,
                     secret_ids_json,
@@ -426,8 +431,20 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
             const lastMessageAt = readOptionalNumber(row, "last_message_at_ms");
             const interruptionJson = readOptionalString(row, "interruption_json");
             const dockerJson = readOptionalString(row, "docker_json");
+            const unreadReason = readOptionalString(row, "unread_reason");
+            const unreadSince = readOptionalNumber(row, "unread_since_ms");
             return {
                 id: readString(row, "id"),
+                archiveOnIdle: readNumber(row, "archive_on_idle") !== 0,
+                trackUnread: readNumber(row, "track_unread") !== 0,
+                ...(unreadReason !== undefined && unreadSince !== undefined
+                    ? {
+                          unread: {
+                              reason: unreadReason as SessionUnreadReason,
+                              since: unreadSince,
+                          },
+                      }
+                    : {}),
                 cwd: readString(row, "cwd"),
                 providerId: readString(row, "provider_id"),
                 modelId: readString(row, "model_id"),
@@ -766,6 +783,10 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
                     parent_tool_call_id,
                     task_name,
                     description,
+                    archive_on_idle,
+                    track_unread,
+                    unread_reason,
+                    unread_since_ms,
                     cwd,
                     docker_json,
                     secret_ids_json,
@@ -804,7 +825,7 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
                     created_at_ms,
                     updated_at_ms
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                     agent_id = excluded.agent_id,
                     session_kind = excluded.session_kind,
@@ -814,6 +835,10 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
                     parent_tool_call_id = excluded.parent_tool_call_id,
                     task_name = excluded.task_name,
                     description = excluded.description,
+                    archive_on_idle = excluded.archive_on_idle,
+                    track_unread = excluded.track_unread,
+                    unread_reason = excluded.unread_reason,
+                    unread_since_ms = excluded.unread_since_ms,
                     cwd = excluded.cwd,
                     docker_json = excluded.docker_json,
                     secret_ids_json = excluded.secret_ids_json,
@@ -862,6 +887,10 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
                 state.agent.parentToolCallId ?? null,
                 state.agent.taskName ?? null,
                 state.agent.description ?? null,
+                state.archiveOnIdle === true ? 1 : 0,
+                state.trackUnread === true ? 1 : 0,
+                state.unread?.reason ?? null,
+                state.unread?.since ?? null,
                 state.cwd,
                 state.docker === undefined ? null : JSON.stringify(state.docker),
                 JSON.stringify(state.secretIds ?? []),
@@ -1354,6 +1383,10 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
         }
 
         const effort = readOptionalString(row, "effort");
+        const archiveOnIdle = readNumber(row, "archive_on_idle") !== 0;
+        const trackUnread = readNumber(row, "track_unread") !== 0;
+        const unreadReason = readOptionalString(row, "unread_reason");
+        const unreadSince = readOptionalNumber(row, "unread_since_ms");
         const serviceTier = readOptionalString(row, "service_tier");
         const dockerJson = readOptionalString(row, "docker_json");
         const secretIdsJson = readOptionalString(row, "secret_ids_json");
@@ -1392,6 +1425,16 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
             ...(activeSince !== undefined ? { activeSince } : {}),
             agent,
             agentId: readString(row, "agent_id"),
+            archiveOnIdle,
+            trackUnread,
+            ...(unreadReason !== undefined && unreadSince !== undefined
+                ? {
+                      unread: {
+                          reason: unreadReason as SessionUnreadReason,
+                          since: unreadSince,
+                      },
+                  }
+                : {}),
             ...(appendSystemPrompt !== undefined ? { appendSystemPrompt } : {}),
             ...(systemPrompt !== undefined ? { systemPrompt } : {}),
             cwd: readString(row, "cwd"),
@@ -1446,6 +1489,8 @@ export class PersistentSessionStore implements SessionStore, InMemorySessionPers
             ...(restore.appendSystemPrompt !== undefined
                 ? { appendSystemPrompt: restore.appendSystemPrompt }
                 : {}),
+            archiveOnIdle: restore.archiveOnIdle === true,
+            trackUnread: restore.trackUnread === true,
             cwd: restore.cwd,
             ...(restore.docker === undefined ? {} : { docker: restore.docker }),
             ...(restore.effort !== undefined ? { effort: restore.effort } : {}),

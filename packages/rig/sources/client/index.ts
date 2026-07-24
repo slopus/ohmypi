@@ -15,5 +15,6 @@ export {
 } from "./ProtocolHttpClient.js";
 export { RemoteTerminalAttachment } from "./RemoteTerminalAttachment.js";
 export { RemoteTerminalClientReplica } from "./RemoteTerminalClientReplica.js";
+export { SessionTerminalConnection } from "./SessionTerminalConnection.js";
 export { RemoteAgent, type RemoteAgentOptions } from "./RemoteAgent.js";
 export { RemoteAgentRunError } from "./RemoteAgentRunError.js";

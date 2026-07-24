@@ -1,4 +1,4 @@
-import type { SessionStatus, SessionSummary } from "../protocol/index.js";
+import type { SessionSummary, SessionSummaryStatus } from "../protocol/index.js";
 
 export function formatSessionSummaries(
     sessions: readonly SessionSummary[],
@@ -25,7 +25,7 @@ export function formatSessionSummaries(
 
 function formatSessionSummary(session: SessionSummary): string {
     return [
-        padRight(humanizeStatus(session.status), 10),
+        padRight(humanizeSessionStatus(session), 10),
         padRight(formatTimestamp(session.lastMessageAt), 17),
         padRight(session.id, 23),
         titleText(session),
@@ -45,7 +45,14 @@ function formatTimestamp(value: number | undefined): string {
     return `${month}-${day} ${hour}:${minute}`;
 }
 
-function humanizeStatus(status: SessionStatus): string {
+function humanizeSessionStatus(session: SessionSummary): string {
+    if (session.unread?.reason === "attention_needed") return "Attention";
+    if (session.unread?.reason === "turn_finished") return "Finished";
+    return humanizeStatus(session.status);
+}
+
+function humanizeStatus(status: SessionSummaryStatus): string {
+    if (status === "archived") return "Archived";
     if (status === "idle") return "Idle";
     if (status === "queued") return "Queued";
     if (status === "running") return "Running";

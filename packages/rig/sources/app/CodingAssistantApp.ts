@@ -183,6 +183,7 @@ export interface CodingAssistantAppOptions {
     tui: TUI;
     idFactory?: () => string;
     onDefaultModelChange?: (preference: DefaultModelPreference) => void | Promise<void>;
+    onTerminalFocusChange?: (focused: boolean) => void;
     onUserActivity?: () => void;
     onSettingsChange?: (settings: AppSettings) => void | Promise<void>;
     onStopWorkflow?: (runId: string) => void | Promise<void>;
@@ -345,6 +346,7 @@ export class CodingAssistantApp implements Component, Focusable {
         | ((preference: DefaultModelPreference) => void | Promise<void>)
         | undefined;
     readonly #onSettingsChange: ((settings: AppSettings) => void | Promise<void>) | undefined;
+    readonly #onTerminalFocusChange: ((focused: boolean) => void) | undefined;
     readonly #onUserActivity: (() => void) | undefined;
     readonly #onStopWorkflow: ((runId: string) => void | Promise<void>) | undefined;
     readonly #watchSubagentEvents: CodingAssistantAppOptions["watchSubagentEvents"];
@@ -484,6 +486,7 @@ export class CodingAssistantApp implements Component, Focusable {
         this.#now = options.now ?? Date.now;
         this.#onDefaultModelChange = options.onDefaultModelChange;
         this.#onSettingsChange = options.onSettingsChange;
+        this.#onTerminalFocusChange = options.onTerminalFocusChange;
         this.#onUserActivity = options.onUserActivity;
         this.#onStopWorkflow = options.onStopWorkflow;
         this.#watchSubagentEvents = options.watchSubagentEvents;
@@ -6339,6 +6342,7 @@ export class CodingAssistantApp implements Component, Focusable {
     #setTerminalFocused(focused: boolean): void {
         if (this.#terminalFocused === focused) return;
         this.#terminalFocused = focused;
+        this.#onTerminalFocusChange?.(focused);
         this.#editor.focused = this.#focused && focused;
         if (focused && this.#focused) {
             this.#cursorVisible = true;

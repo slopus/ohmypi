@@ -3,7 +3,11 @@ import { basename } from "node:path";
 import { TUI } from "@earendil-works/pi-tui";
 
 import { createNodeAgentContext } from "../agent/index.js";
-import { ensureLocalProtocolServer, RemoteAgent } from "../client/index.js";
+import {
+    ensureLocalProtocolServer,
+    RemoteAgent,
+    type SessionTerminalConnection,
+} from "../client/index.js";
 import {
     createProjectConfigSecurityNotice,
     createProjectConfigSecurityNoticeTitle,
@@ -13,11 +17,10 @@ import {
 import { createProjectMcpSecurityNotice, loadMcpServerConfigEntries } from "../mcp/index.js";
 import { NativeProcessManager } from "../processes/index.js";
 import type { PermissionMode } from "../permissions/index.js";
-import type { SessionEvent } from "../protocol/index.js";
+import type { CreateSessionRequest, SessionEvent } from "../protocol/index.js";
 import { resolveDockerExecutionConfig } from "../execution/index.js";
 import type { DockerExecutionConfig } from "../execution/index.js";
 import { CodingAssistantApp } from "./CodingAssistantApp.js";
-import { type CreateCodingAssistantAgentOptions } from "../runtime/createCodingAssistantAgent.js";
 import { createSerialTaskQueue } from "./createSerialTaskQueue.js";
 import { createStopOnceHandler } from "./createStopOnceHandler.js";
 import { createStartupStatusCardModel } from "./createStartupStatusCardModel.js";
@@ -64,7 +67,9 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
         loadedConfig.sources.local.values,
     );
     const projectMcpNotice = createProjectMcpSecurityNotice(mcpConfigEntries);
-    const agentOptions: CreateCodingAssistantAgentOptions = {
+    const agentOptions: CreateSessionRequest = {
+        archiveOnIdle: true,
+        trackUnread: true,
         cwd,
         modelId: loadedConfig.config.defaults.modelId,
         permissionMode: loadedConfig.config.defaults.permissionMode,
@@ -122,7 +127,8 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
     terminal.write("\x1b[?1004h");
     const terminalBackground = tui.queryTerminalBackgroundColor({ timeoutMs: 250 });
 
-    const { history, localServer, modelCatalog, session } = await (async () => {
+    const { history, localServer, modelCatalog, session, sessionTerminal } = await (async () => {
+        let sessionTerminal: SessionTerminalConnection | undefined;
         try {
             const connection = await ensureLocalProtocolServer({
                 confirmRestart: (request) => startup.confirmDaemonRestart(request),
@@ -142,6 +148,10 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
             if (options.resumeSessionId !== undefined) {
                 ensureSessionCanResume(openedSession.session);
             }
+            sessionTerminal = await connection.client.connectSessionTerminal(
+                openedSession.session.id,
+                { focused: true },
+            );
             startup.setStatus("Loading transcript.");
             const loadedHistory =
                 options.resumeSessionId === undefined
@@ -155,269 +165,279 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
                 localServer: connection,
                 modelCatalog: modelsResponse.catalog,
                 session: openedSession,
+                sessionTerminal,
             };
         } catch (error) {
+            await sessionTerminal?.close().catch(() => undefined);
             startup.stop();
             terminal.write("\x1b[?1004l");
             tui.stop();
             throw error;
         }
     })();
-    const processManager = new NativeProcessManager();
-    const theme = resolveTerminalTheme(loadedConfig.config.theme, await terminalBackground);
-    const sessionCwd = session.session.cwd;
-    if (session.session.title !== undefined) {
-        terminal.setTitle(`Rig - ${sanitizeTerminalTitle(session.session.title)}`);
-    }
-    const [subagents, currentProviderQuotaResponse] = await Promise.all([
-        localServer.client.listSubagents(session.session.id),
-        resolveStartupProviderQuota(() =>
-            localServer.client.getCurrentProviderQuota(session.session.id),
-        ),
-    ]).catch((error: unknown) => {
-        startup.stop();
-        terminal.write("\x1b[?1004l");
-        tui.stop();
-        throw error;
-    });
-    const context = createNodeAgentContext({
-        cwd: sessionCwd,
-        permissionMode: session.session.permissionMode,
-        processManager,
-    });
-    const agent = new RemoteAgent({
-        client: localServer.client,
-        context,
-        debug: options.debug === true,
-        modelCatalog,
-        session: session.session,
-    });
-    const resumeCommand = `rig resume ${session.session.id}`;
-    const version = readPackageVersion();
-    const activeAgentLabel = sessionAgentFooterLabel(session.session.agent);
-    const startupUsage = providerQuotaToStartupStatusUsage(
-        currentProviderQuotaResponse?.currentProviderId === session.session.providerId
-            ? currentProviderQuotaResponse.quota
-            : undefined,
-    );
-    const initialNotices = [
-        ...(options.debug === true
-            ? [
-                  {
-                      text: `Each request will write private JSON records to ${getDebugRootDirectory(sessionCwd)}. These files include prompts, model responses, tool arguments, and tool results.`,
-                      title: "Debug logging enabled",
-                  },
-              ]
-            : []),
-        ...(projectConfigNotice === undefined
-            ? []
-            : [
-                  {
-                      text: projectConfigNotice,
-                      title: createProjectConfigSecurityNoticeTitle(
-                          loadedConfig.sources.local.values,
-                      ),
-                  },
-              ]),
-        ...(projectMcpNotice === undefined
-            ? []
-            : [{ text: projectMcpNotice, title: "Project MCP needs trust" }]),
-    ];
-    const tuiInspectorUrl = getNodeInspectorUrl();
-    const app = new CodingAssistantApp({
-        ...(activeAgentLabel === undefined ? {} : { activeAgentLabel }),
-        agent,
-        attachSecret: (id, scope) => agent.attachSecret(id, scope),
-        cwd: sessionCwd,
-        detachSecret: (id, scope) => agent.detachSecret(id, scope),
-        initialSessionEvents: history.events,
-        initialBackgroundProcesses: session.session.backgroundProcesses ?? [],
-        initialMcpServers: session.session.mcpServers,
-        ...(initialNotices.length === 0 ? {} : { initialNotices }),
-        initialSubagents: subagents.subagents,
-        initialProjectSecretIds: session.session.projectSecretIds,
-        initialSessionSecretIds: session.session.sessionSecretIds,
-        initialUserInputs: session.session.pendingUserInputs,
-        initialTasks: session.session.tasks,
-        ...(session.session.lastEventId === undefined
-            ? {}
-            : { initialWorkflowEventId: session.session.lastEventId }),
-        initialWorkflows: session.session.workflows ?? [],
-        workflowsEnabled: session.session.workflowsEnabled !== false,
-        modelLocked: session.session.modelLocked,
-        listSecrets: () => localServer.client.listSecrets().then((response) => response.secrets),
-        onDefaultModelChange: (preference) =>
-            enqueueRuntimeConfigWrite(() =>
-                writeRuntimeConfig(loadedConfig.paths.runtime, {
-                    defaults: {
-                        modelId: preference.modelId,
-                        providerId: preference.providerId,
-                        effort: preference.effort,
-                        permissionMode: agent.permissionMode,
-                        serviceTier: preference.serviceTier,
-                    },
-                    settings: {
-                        compactCompletedTurns,
-                        completionChime,
-                        durableGlobalEventQueue,
-                        showReasoning,
-                        showUsage,
-                    },
-                    ...(runtimeTheme === undefined ? {} : { theme: runtimeTheme }),
-                }),
-            ),
-        onSettingsChange: async (settings) => {
-            compactCompletedTurns = settings.compactCompletedTurns;
-            completionChime = settings.completionChime;
-            durableGlobalEventQueue = settings.durableGlobalEventQueue;
-            showReasoning = settings.showReasoning;
-            showUsage = settings.showUsage;
-            await enqueueRuntimeConfigWrite(() =>
-                writeRuntimeConfig(loadedConfig.paths.runtime, {
-                    defaults: {
-                        modelId: agent.model.id,
-                        providerId: agent.provider.id,
-                        effort: agent.snapshot().effort ?? agent.model.defaultThinkingLevel,
-                        permissionMode: agent.permissionMode,
-                        serviceTier: agent.confirmedServiceTier ?? null,
-                    },
-                    settings,
-                    ...(runtimeTheme === undefined ? {} : { theme: runtimeTheme }),
-                }),
-            );
-            await localServer.client.updateDaemonConfig({
-                settings: { durableGlobalEventQueue },
-            });
-        },
-        onUserActivity: () => {
-            void localServer.client.recordSessionActivity(session.session.id).catch(() => {});
-        },
-        onStopWorkflow: (runId) =>
-            localServer.client.stopWorkflow(session.session.id, runId).then(() => undefined),
-        watchSubagentEvents: (sessionId, signal, onEvent) =>
-            localServer.client.watchSessionEvents({ onEvent, sessionId, signal }),
-        processManager,
-        registerSecret: (registration) =>
-            localServer.client.registerSecret(registration).then((response) => response.secret),
-        respondUserInput: (requestId, response) =>
-            localServer.client
-                .answerUserInput(session.session.id, requestId, response)
-                .then(() => undefined),
-        searchFiles: (query) =>
-            localServer.client
-                .searchFiles(session.session.id, query)
-                .then((response) => response.files),
-        sessionBacked: true,
-        compactCompletedTurns,
-        completionChime,
-        durableGlobalEventQueue,
-        debugInfo: {
-            sessionId: session.session.id,
-            startInspectors: async () => {
-                const server = await localServer.client.startInspector();
-                return {
-                    serverInspectorUrl: server.inspectorUrl,
-                    tuiInspectorUrl: openNodeInspector(),
-                };
-            },
-            stateDirectory: localServer.paths.directory,
-            tuiStderrIsTTY: process.stderr.isTTY === true,
-            ...(tuiInspectorUrl === undefined ? {} : { tuiInspectorUrl }),
-        },
-        showReasoning,
-        showUsage,
-        startupStatus: createStartupStatusCardModel({
-            model: agent.model,
-            resumed: options.resumeSessionId !== undefined,
-            session: session.session,
-            ...(startupUsage === undefined ? {} : { usage: startupUsage }),
-            version,
-        }),
-        theme,
-        tui,
-        unregisterSecret: (id) =>
-            localServer.client.unregisterSecret(id).then((response) => response.removed),
-        version,
-    });
-    let terminalThemeRefresh = 0;
-    const stopWatchingTerminalTheme = tui.onTerminalColorSchemeChange((colorScheme) => {
-        const refresh = ++terminalThemeRefresh;
-        void tui.queryTerminalBackgroundColor({ timeoutMs: 250 }).then((background) => {
-            if (refresh !== terminalThemeRefresh) return;
-            app.setTheme(
-                resolveTerminalTheme(
-                    loadedConfig.config.theme,
-                    background ??
-                        (colorScheme === "light"
-                            ? { r: 0xff, g: 0xff, b: 0xff }
-                            : { r: 0x0d, g: 0x0d, b: 0x0d }),
-                ),
-            );
-        });
-    });
-    startup.stop();
-    const followController = new AbortController();
-    registerRigDebugRoot({
-        agent,
-        app,
-        connection: localServer,
-        eventFollowerController: followController,
-        kind: "tui",
-        sessionId: session.session.id,
-        terminal,
-        tui,
-    });
-    const observedChimeEvents = new Set<string>();
-    const lastHistoryEventId = history.events.at(-1)?.id ?? session.session.lastEventId;
-    void localServer.client.watchSessionEvents({
-        ...(lastHistoryEventId !== undefined ? { after: lastHistoryEventId } : {}),
-        onEvent: (event) => {
-            if (event.type === "session_title_changed" && event.data.title !== undefined) {
-                terminal.setTitle(`Rig - ${sanitizeTerminalTitle(event.data.title)}`);
-            }
-            const shouldChime =
-                !observedChimeEvents.has(event.id) &&
-                (event.type === "user_input_requested" ||
-                    (event.type === "session_title_changed" &&
-                        event.data.status === "ready" &&
-                        event.data.metadataUpdatedAt !== undefined));
-            if (shouldChime) {
-                observedChimeEvents.add(event.id);
-                if (completionChime) terminal.write("\x07");
-            }
-            agent.applySessionEvent(event);
-            app.applySessionEvent(event);
-        },
-        sessionId: session.session.id,
-        signal: followController.signal,
-    });
-
-    const requestStop = createStopOnceHandler(
-        () => app.stop(),
-        (error) => {
-            console.error(error);
-            process.exitCode = 1;
-        },
-    );
-    const stop = () => {
-        void requestStop();
-    };
-    process.on("SIGINT", stop);
-    process.on("SIGTERM", stop);
-
     try {
-        app.start({ tuiAlreadyStarted: true });
-        await app.waitForExit();
+        const processManager = new NativeProcessManager();
+        const theme = resolveTerminalTheme(loadedConfig.config.theme, await terminalBackground);
+        const sessionCwd = session.session.cwd;
+        if (session.session.title !== undefined) {
+            terminal.setTitle(`Rig - ${sanitizeTerminalTitle(session.session.title)}`);
+        }
+        const [subagents, currentProviderQuotaResponse] = await Promise.all([
+            localServer.client.listSubagents(session.session.id),
+            resolveStartupProviderQuota(() =>
+                localServer.client.getCurrentProviderQuota(session.session.id),
+            ),
+        ]).catch((error: unknown) => {
+            startup.stop();
+            terminal.write("\x1b[?1004l");
+            tui.stop();
+            throw error;
+        });
+        const context = createNodeAgentContext({
+            cwd: sessionCwd,
+            permissionMode: session.session.permissionMode,
+            processManager,
+        });
+        const agent = new RemoteAgent({
+            client: localServer.client,
+            context,
+            debug: options.debug === true,
+            modelCatalog,
+            session: session.session,
+        });
+        const resumeCommand = `rig resume ${session.session.id}`;
+        const version = readPackageVersion();
+        const activeAgentLabel = sessionAgentFooterLabel(session.session.agent);
+        const startupUsage = providerQuotaToStartupStatusUsage(
+            currentProviderQuotaResponse?.currentProviderId === session.session.providerId
+                ? currentProviderQuotaResponse.quota
+                : undefined,
+        );
+        const initialNotices = [
+            ...(options.debug === true
+                ? [
+                      {
+                          text: `Each request will write private JSON records to ${getDebugRootDirectory(sessionCwd)}. These files include prompts, model responses, tool arguments, and tool results.`,
+                          title: "Debug logging enabled",
+                      },
+                  ]
+                : []),
+            ...(projectConfigNotice === undefined
+                ? []
+                : [
+                      {
+                          text: projectConfigNotice,
+                          title: createProjectConfigSecurityNoticeTitle(
+                              loadedConfig.sources.local.values,
+                          ),
+                      },
+                  ]),
+            ...(projectMcpNotice === undefined
+                ? []
+                : [{ text: projectMcpNotice, title: "Project MCP needs trust" }]),
+        ];
+        const tuiInspectorUrl = getNodeInspectorUrl();
+        const app = new CodingAssistantApp({
+            ...(activeAgentLabel === undefined ? {} : { activeAgentLabel }),
+            agent,
+            attachSecret: (id, scope) => agent.attachSecret(id, scope),
+            cwd: sessionCwd,
+            detachSecret: (id, scope) => agent.detachSecret(id, scope),
+            initialSessionEvents: history.events,
+            initialBackgroundProcesses: session.session.backgroundProcesses ?? [],
+            initialMcpServers: session.session.mcpServers,
+            ...(initialNotices.length === 0 ? {} : { initialNotices }),
+            initialSubagents: subagents.subagents,
+            initialProjectSecretIds: session.session.projectSecretIds,
+            initialSessionSecretIds: session.session.sessionSecretIds,
+            initialUserInputs: session.session.pendingUserInputs,
+            initialTasks: session.session.tasks,
+            ...(session.session.lastEventId === undefined
+                ? {}
+                : { initialWorkflowEventId: session.session.lastEventId }),
+            initialWorkflows: session.session.workflows ?? [],
+            workflowsEnabled: session.session.workflowsEnabled !== false,
+            modelLocked: session.session.modelLocked,
+            listSecrets: () =>
+                localServer.client.listSecrets().then((response) => response.secrets),
+            onDefaultModelChange: (preference) =>
+                enqueueRuntimeConfigWrite(() =>
+                    writeRuntimeConfig(loadedConfig.paths.runtime, {
+                        defaults: {
+                            modelId: preference.modelId,
+                            providerId: preference.providerId,
+                            effort: preference.effort,
+                            permissionMode: agent.permissionMode,
+                            serviceTier: preference.serviceTier,
+                        },
+                        settings: {
+                            compactCompletedTurns,
+                            completionChime,
+                            durableGlobalEventQueue,
+                            showReasoning,
+                            showUsage,
+                        },
+                        ...(runtimeTheme === undefined ? {} : { theme: runtimeTheme }),
+                    }),
+                ),
+            onSettingsChange: async (settings) => {
+                compactCompletedTurns = settings.compactCompletedTurns;
+                completionChime = settings.completionChime;
+                durableGlobalEventQueue = settings.durableGlobalEventQueue;
+                showReasoning = settings.showReasoning;
+                showUsage = settings.showUsage;
+                await enqueueRuntimeConfigWrite(() =>
+                    writeRuntimeConfig(loadedConfig.paths.runtime, {
+                        defaults: {
+                            modelId: agent.model.id,
+                            providerId: agent.provider.id,
+                            effort: agent.snapshot().effort ?? agent.model.defaultThinkingLevel,
+                            permissionMode: agent.permissionMode,
+                            serviceTier: agent.confirmedServiceTier ?? null,
+                        },
+                        settings,
+                        ...(runtimeTheme === undefined ? {} : { theme: runtimeTheme }),
+                    }),
+                );
+                await localServer.client.updateDaemonConfig({
+                    settings: { durableGlobalEventQueue },
+                });
+            },
+            onTerminalFocusChange: (focused) => {
+                void sessionTerminal.setFocused(focused).catch(() => {});
+            },
+            onUserActivity: () => {
+                void localServer.client.recordSessionActivity(session.session.id).catch(() => {});
+            },
+            onStopWorkflow: (runId) =>
+                localServer.client.stopWorkflow(session.session.id, runId).then(() => undefined),
+            watchSubagentEvents: (sessionId, signal, onEvent) =>
+                localServer.client.watchSessionEvents({ onEvent, sessionId, signal }),
+            processManager,
+            registerSecret: (registration) =>
+                localServer.client.registerSecret(registration).then((response) => response.secret),
+            respondUserInput: (requestId, response) =>
+                localServer.client
+                    .answerUserInput(session.session.id, requestId, response)
+                    .then(() => undefined),
+            searchFiles: (query) =>
+                localServer.client
+                    .searchFiles(session.session.id, query)
+                    .then((response) => response.files),
+            sessionBacked: true,
+            compactCompletedTurns,
+            completionChime,
+            durableGlobalEventQueue,
+            debugInfo: {
+                sessionId: session.session.id,
+                startInspectors: async () => {
+                    const server = await localServer.client.startInspector();
+                    return {
+                        serverInspectorUrl: server.inspectorUrl,
+                        tuiInspectorUrl: openNodeInspector(),
+                    };
+                },
+                stateDirectory: localServer.paths.directory,
+                tuiStderrIsTTY: process.stderr.isTTY === true,
+                ...(tuiInspectorUrl === undefined ? {} : { tuiInspectorUrl }),
+            },
+            showReasoning,
+            showUsage,
+            startupStatus: createStartupStatusCardModel({
+                model: agent.model,
+                resumed: options.resumeSessionId !== undefined,
+                session: session.session,
+                ...(startupUsage === undefined ? {} : { usage: startupUsage }),
+                version,
+            }),
+            theme,
+            tui,
+            unregisterSecret: (id) =>
+                localServer.client.unregisterSecret(id).then((response) => response.removed),
+            version,
+        });
+        let terminalThemeRefresh = 0;
+        const stopWatchingTerminalTheme = tui.onTerminalColorSchemeChange((colorScheme) => {
+            const refresh = ++terminalThemeRefresh;
+            void tui.queryTerminalBackgroundColor({ timeoutMs: 250 }).then((background) => {
+                if (refresh !== terminalThemeRefresh) return;
+                app.setTheme(
+                    resolveTerminalTheme(
+                        loadedConfig.config.theme,
+                        background ??
+                            (colorScheme === "light"
+                                ? { r: 0xff, g: 0xff, b: 0xff }
+                                : { r: 0x0d, g: 0x0d, b: 0x0d }),
+                    ),
+                );
+            });
+        });
+        startup.stop();
+        const followController = new AbortController();
+        registerRigDebugRoot({
+            agent,
+            app,
+            connection: localServer,
+            eventFollowerController: followController,
+            kind: "tui",
+            sessionId: session.session.id,
+            terminal,
+            tui,
+        });
+        const observedChimeEvents = new Set<string>();
+        const lastHistoryEventId = history.events.at(-1)?.id ?? session.session.lastEventId;
+        void localServer.client.watchSessionEvents({
+            ...(lastHistoryEventId !== undefined ? { after: lastHistoryEventId } : {}),
+            onEvent: (event) => {
+                if (event.type === "session_title_changed" && event.data.title !== undefined) {
+                    terminal.setTitle(`Rig - ${sanitizeTerminalTitle(event.data.title)}`);
+                }
+                const shouldChime =
+                    !observedChimeEvents.has(event.id) &&
+                    (event.type === "user_input_requested" ||
+                        (event.type === "session_title_changed" &&
+                            event.data.status === "ready" &&
+                            event.data.metadataUpdatedAt !== undefined));
+                if (shouldChime) {
+                    observedChimeEvents.add(event.id);
+                    if (completionChime) terminal.write("\x07");
+                }
+                agent.applySessionEvent(event);
+                app.applySessionEvent(event);
+            },
+            sessionId: session.session.id,
+            signal: followController.signal,
+        });
+
+        const requestStop = createStopOnceHandler(
+            () => app.stop(),
+            (error) => {
+                console.error(error);
+                process.exitCode = 1;
+            },
+        );
+        const stop = () => {
+            void requestStop();
+        };
+        process.on("SIGINT", stop);
+        process.on("SIGTERM", stop);
+
+        try {
+            app.start({ tuiAlreadyStarted: true });
+            await app.waitForExit();
+        } finally {
+            stopWatchingTerminalTheme();
+            process.off("SIGINT", stop);
+            process.off("SIGTERM", stop);
+            followController.abort();
+            terminal.write("\x1b[?1004l");
+            await processManager.killAll({ forceAfterMs: 500 });
+            console.error("");
+            console.error(`Session: ${session.session.id}`);
+            console.error(`Resume: ${resumeCommand}`);
+        }
     } finally {
-        stopWatchingTerminalTheme();
-        process.off("SIGINT", stop);
-        process.off("SIGTERM", stop);
-        followController.abort();
-        terminal.write("\x1b[?1004l");
-        await processManager.killAll({ forceAfterMs: 500 });
-        console.error("");
-        console.error(`Session: ${session.session.id}`);
-        console.error(`Resume: ${resumeCommand}`);
+        await sessionTerminal.close().catch(() => undefined);
     }
 }
 
