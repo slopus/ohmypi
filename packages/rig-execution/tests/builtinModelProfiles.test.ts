@@ -23,6 +23,16 @@ describe("builtinModelProfiles", () => {
         });
     });
 
+    it("gives Opus 5 its own system prompt distinct from Opus 4.8", () => {
+        const profiles = builtinModelProfiles("claude", "claude");
+        const opus5 = profiles.find((candidate) => candidate.id === "anthropic/opus-5")?.prompt;
+        const opus48 = profiles.find((candidate) => candidate.id === "anthropic/opus-4-8")?.prompt;
+
+        expect(opus5).toContain("mid-conversation system turns");
+        expect(opus48).not.toContain("mid-conversation system turns");
+        expect(opus5).not.toBe(opus48);
+    });
+
     it("preserves each Grok model's supported default effort", () => {
         const profiles = builtinModelProfiles("grok", "grok");
 
