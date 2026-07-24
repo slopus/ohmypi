@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 
 import {
     Executor,
+    modelAnthropicOpus5,
     modelAnthropicOpus48,
     modelOpenaiGpt56Luna,
     modelOpenaiGpt56Sol,
@@ -333,7 +334,7 @@ describe("Amazon Bedrock provider", () => {
         }
     });
 
-    it("only exposes the Anthropic model documented for Bedrock Mantle in GovCloud", () => {
+    it("only exposes the Anthropic models documented for Bedrock Mantle in GovCloud", () => {
         const provider = new Executor([
             bedrockExecution({
                 bearerToken: "bedrock-token",
@@ -341,6 +342,9 @@ describe("Amazon Bedrock provider", () => {
             }),
         ]);
 
-        expect(provider.models.map((model) => model.id)).toEqual([modelAnthropicOpus48.id]);
+        expect(provider.models.map((model) => model.id)).toEqual([
+            modelAnthropicOpus5.id,
+            modelAnthropicOpus48.id,
+        ]);
     });
 });

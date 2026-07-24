@@ -1,5 +1,6 @@
 import {
     modelAnthropicFable5,
+    modelAnthropicOpus5,
     modelAnthropicOpus48,
     modelAnthropicSonnet5,
     modelOpenaiGpt56Luna,
@@ -61,6 +62,14 @@ const ANTHROPIC_SONNET_5_MANTLE_REGIONS = ["eu-north-1", "eu-west-1", "us-east-1
 
 const ANTHROPIC_FABLE_5_MANTLE_REGIONS = ["us-east-1"] as const;
 
+const ANTHROPIC_OPUS_5_MANTLE_REGIONS = [
+    "ap-northeast-1",
+    "eu-north-1",
+    "eu-west-1",
+    "us-east-1",
+    "us-gov-west-1",
+] as const;
+
 const ANTHROPIC_OPUS_4_8_MANTLE_REGIONS = [
     "ap-northeast-1",
     "eu-north-1",
@@ -83,6 +92,14 @@ export const BEDROCK_MODEL_ROUTES: readonly BedrockModelRoute[] = [
         provider: "anthropic",
         transports: [
             { transport: "mantle", regions: ANTHROPIC_FABLE_5_MANTLE_REGIONS },
+            { transport: "runtime", regions: BEDROCK_RUNTIME_COMMERCIAL_REGIONS },
+        ],
+    },
+    {
+        model: modelAnthropicOpus5,
+        provider: "anthropic",
+        transports: [
+            { transport: "mantle", regions: ANTHROPIC_OPUS_5_MANTLE_REGIONS },
             { transport: "runtime", regions: BEDROCK_RUNTIME_COMMERCIAL_REGIONS },
         ],
     },

@@ -36,7 +36,7 @@ describe("Claude auxiliary query", () => {
         expect(captured?.prompt).toBe("Search for current docs.");
         expect(captured?.options).toMatchObject({
             allowedTools: ["WebSearch"],
-            model: "sonnet[1m]",
+            model: "claude-sonnet-5[1m]",
             tools: ["WebSearch"],
             env: {
                 ANTHROPIC_AUTH_TOKEN: "selected-provider-token",

@@ -8,10 +8,11 @@ import { resolveGrokModelId } from "@/vendors/grok/impl/resolveGrokModelId.js";
 
 describe("Rig model IDs", () => {
     it.each([
-        [resolveClaudeModelId, "anthropic/sonnet-5", "sonnet[1m]"],
+        [resolveClaudeModelId, "anthropic/sonnet-5", "claude-sonnet-5[1m]"],
         [resolveClaudeModelId, "anthropic/fable-5", "claude-fable-5[1m]"],
         [resolveClaudeModelId, "anthropic/opus-5", "claude-opus-5[1m]"],
-        [resolveClaudeModelId, "anthropic/opus-4-8", "opus[1m]"],
+        [resolveClaudeModelId, "anthropic/opus-4-8", "claude-opus-4-8[1m]"],
+        [resolveBedrockModelId, "anthropic/opus-5", "anthropic.claude-opus-5"],
         [resolveCodexModelId, "openai/gpt-5.6-sol", "gpt-5.6-sol"],
         [resolveGrokModelId, "xai/grok-4.5", "grok-4.5"],
         [resolveBedrockModelId, "anthropic/sonnet-5", "anthropic.claude-sonnet-5"],

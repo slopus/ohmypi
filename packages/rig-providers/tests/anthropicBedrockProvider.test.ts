@@ -33,6 +33,18 @@ describe("AnthropicBedrockProvider", () => {
         expect(resolveAnthropicBedrockModelId("anthropic/opus-4-8", "ap-southeast-2")).toBe(
             "au.anthropic.claude-opus-4-8",
         );
+        expect(resolveAnthropicBedrockModelId("anthropic/opus-5", "us-east-1")).toBe(
+            "us.anthropic.claude-opus-5",
+        );
+        expect(resolveAnthropicBedrockModelId("anthropic/opus-5", "eu-west-1")).toBe(
+            "eu.anthropic.claude-opus-5",
+        );
+        expect(resolveAnthropicBedrockModelId("anthropic/opus-5", "ap-northeast-1")).toBe(
+            "jp.anthropic.claude-opus-5",
+        );
+        expect(resolveAnthropicBedrockModelId("anthropic/opus-5", "eu-west-1", "mantle")).toBe(
+            "anthropic.claude-opus-5",
+        );
         expect(resolveAnthropicBedrockModelId("anthropic/sonnet-5", "eu-west-1")).toBe(
             "eu.anthropic.claude-sonnet-5",
         );
