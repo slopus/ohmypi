@@ -1,4 +1,5 @@
 import type { Usage } from "@slopus/rig-execution";
+import type { SessionTokenCount } from "../../protocol/index.js";
 
 export interface AttributedSessionUsageGroup {
     kind: "attributed";
@@ -24,6 +25,7 @@ export interface SessionUsageSummary {
     currentContext?: SessionContextUsage;
     groups: readonly SessionUsageGroup[];
     observedQuota: readonly SessionQuotaContribution[];
+    sessionTokenCount: SessionTokenCount;
 }
 
 export interface SessionQuotaContribution {

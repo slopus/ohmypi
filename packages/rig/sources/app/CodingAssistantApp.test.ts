@@ -3336,7 +3336,7 @@ describe("CodingAssistantApp", () => {
         );
     });
 
-    it("includes every descendant's cumulative usage in the opt-in token status", () => {
+    it("includes every descendant's session token count in the opt-in status", () => {
         const model = defineModel({
             defaultThinkingLevel: "off",
             id: "openai/gpt-test",
@@ -3392,6 +3392,7 @@ describe("CodingAssistantApp", () => {
                     id: "subagent-child",
                     modelId: "anthropic/sonnet-5",
                     parentSessionId: "session-1",
+                    sessionTokenCount: { lastContextTokens: 1_000, totalTokens: 1_000 },
                     status: "completed",
                     updatedAt: 2,
                     usage: {
@@ -3417,6 +3418,7 @@ describe("CodingAssistantApp", () => {
                     id: "subagent-nested",
                     modelId: "xai/grok-build",
                     parentSessionId: "subagent-child",
+                    sessionTokenCount: { lastContextTokens: 1_200, totalTokens: 1_200 },
                     status: "completed",
                     updatedAt: 3,
                     usage: {
@@ -3435,6 +3437,7 @@ describe("CodingAssistantApp", () => {
                     },
                 },
             ],
+            initialSessionTokenCount: { lastContextTokens: 1_100, totalTokens: 1_100 },
             initialUsage: parentUsage,
             initialUsageEventId: parentEvent.id,
             processManager: new NativeProcessManager(),
@@ -5270,19 +5273,19 @@ describe("CodingAssistantApp", () => {
             type: "agent_event",
         });
         expect(stripAnsi(app.render(100).join("\n"))).toContain(
-            "1.6k tokens · 8% cache hit · 100% ctx left",
+            "2.2k tokens · 8% cache hit · 100% ctx left",
         );
 
         submit(app, "/usage");
         const report = stripAnsi(app.render(100).join("\n"));
         expect(report).toContain("Input: 1.2k");
         expect(report).toContain("Output: 300");
-        expect(report).toContain("Total processed: 1.6k");
+        expect(report).toContain("Session tokens: 2.2k");
 
         submit(app, "/new");
         await app.waitForIdle();
         submit(app, "/usage");
-        expect(stripAnsi(app.render(100).join("\n"))).toContain("Total processed: 0");
+        expect(stripAnsi(app.render(100).join("\n"))).toContain("Session tokens: 0");
     });
 
     it("shows live compaction tokens and elapsed time until the paired finish event", () => {
@@ -5457,6 +5460,7 @@ describe("CodingAssistantApp", () => {
                         },
                     ],
                     observedQuota: [],
+                    sessionTokenCount: { lastContextTokens: 1_370, totalTokens: 1_370 },
                     quotas: [
                         {
                             providerId: "codex",
@@ -5492,17 +5496,16 @@ describe("CodingAssistantApp", () => {
                 .split("\n")
                 .map((row) => row.trimEnd());
             const usageIndex = rows.indexOf("• Usage");
-            expect(rows.slice(usageIndex, usageIndex + 11)).toEqual([
+            expect(rows.slice(usageIndex, usageIndex + 10)).toEqual([
                 "• Usage",
                 "  └ Codex",
                 "      GPT Test",
-                "        1.4k total · 1.2k input · 100 output · 40 cache read ·",
-                "        30 cache write",
+                "        1.2k input · 100 output · 40 cache read · 30 cache write",
                 "        Context: 1.3k / 200k · 99.4% left",
                 "      Account quota",
                 "        5-hour: 68% left · resets in 2h 14m",
                 "        Weekly: unavailable",
-                "    Session total: 1.4k",
+                "    Session tokens: 1.4k",
                 "",
             ]);
             expect(rows.filter((row) => row.includes("└"))).toEqual(["  └ Codex"]);
@@ -5553,6 +5556,7 @@ describe("CodingAssistantApp", () => {
             groups: [],
             observedQuota: [],
             quotas: [],
+            sessionTokenCount: { lastContextTokens: 0, totalTokens: 0 },
         });
         await pendingUsage.promise;
         await Promise.resolve();

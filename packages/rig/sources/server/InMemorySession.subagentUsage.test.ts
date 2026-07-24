@@ -72,6 +72,14 @@ describe("InMemorySession subagent usage", () => {
             input: 1_000,
             totalTokens: 2_200,
         });
+        expect(session.subagentSummary().sessionTokenCount).toEqual({
+            lastContextTokens: 1_100,
+            totalTokens: 1_100,
+        });
+        expect(session.state().sessionTokenCount).toEqual({
+            lastContextTokens: 1_100,
+            totalTokens: 1_100,
+        });
         expect(session.subagentSummary().totalTokens).toBe(1_100);
     });
 });

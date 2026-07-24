@@ -231,7 +231,11 @@ describe("aggregateSessionUsage", () => {
             { type: "subagent" },
         );
 
-        expect(result).toEqual({ groups: [], observedQuota: [] });
+        expect(result).toEqual({
+            groups: [],
+            observedQuota: [],
+            sessionTokenCount: { lastContextTokens: 35, totalTokens: 35 },
+        });
     });
 });
 

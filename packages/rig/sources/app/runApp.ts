@@ -273,6 +273,9 @@ export async function runApp(options: RunAppOptions = {}): Promise<RunAppResult>
             ...(session.session.cumulativeUsage === undefined
                 ? {}
                 : { initialUsage: session.session.cumulativeUsage }),
+            ...(session.session.sessionTokenCount === undefined
+                ? {}
+                : { initialSessionTokenCount: session.session.sessionTokenCount }),
             initialMcpServers: session.session.mcpServers,
             ...(initialNotices.length === 0 ? {} : { initialNotices }),
             initialSubagents: subagents.subagents,

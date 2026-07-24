@@ -4,11 +4,12 @@ import { describe, expect, it } from "vitest";
 import { formatSessionTokenStatus } from "./formatSessionTokenStatus.js";
 
 describe("formatSessionTokenStatus", () => {
-    it("reports cumulative processed tokens, cache-hit rate, and context headroom", () => {
+    it("counts cached input once through the cache rate without inflating session tokens", () => {
         expect(
             formatSessionTokenStatus({
                 contextTokens: 1_600,
                 contextWindow: 200_000,
+                sessionTokens: 1_300,
                 usage: usage({
                     cacheRead: 1_000,
                     cacheWrite: 200,
@@ -17,13 +18,14 @@ describe("formatSessionTokenStatus", () => {
                     totalTokens: 2_300,
                 }),
             }),
-        ).toBe("2.3k tokens · 50% cache hit · 99% ctx left");
+        ).toBe("1.3k tokens · 50% cache hit · 99% ctx left");
     });
 
     it("excludes output from cache-hit eligibility and handles providers without a context window", () => {
         expect(
             formatSessionTokenStatus({
                 contextTokens: 1_000,
+                sessionTokens: 1_000,
                 usage: usage({
                     cacheRead: 0,
                     cacheWrite: 0,

@@ -63,8 +63,7 @@ export function formatSessionUsageSummary(
         lines.push("");
         lines.push("Observed remaining may include other account activity.");
     }
-    const total = summary.groups.reduce((sum, group) => sum + group.usage.totalTokens, 0);
-    lines.push(`Session total: ${formatTokens(total)}`);
+    lines.push(`Session tokens: ${formatTokens(summary.sessionTokenCount.totalTokens)}`);
     return lines.join("\n");
 }
 
@@ -103,7 +102,7 @@ function formatModelUsage(group: SessionUsageGroup): string {
         group.providerId === "claude" && group.usage.cost.total > 0
             ? ` · ${formatUsd(group.usage.cost.total)}`
             : "";
-    return `${formatTokens(group.usage.totalTokens)} total · ${formatTokens(group.usage.input)} input · ${formatTokens(group.usage.output)} output · ${formatTokens(group.usage.cacheRead)} cache read · ${formatTokens(group.usage.cacheWrite)} cache write${reasoning}${cost}`;
+    return `${formatTokens(group.usage.input)} input · ${formatTokens(group.usage.output)} output · ${formatTokens(group.usage.cacheRead)} cache read · ${formatTokens(group.usage.cacheWrite)} cache write${reasoning}${cost}`;
 }
 
 function isCurrentContextGroup(

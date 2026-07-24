@@ -117,7 +117,7 @@ describe("account quota observations", () => {
                     text.includes("Weekly: 75% left") &&
                     text.includes("Observed remaining: 5h -7% · week -4% (approx.)") &&
                     text.includes("Observed remaining: 5h -2% · week -2% (approx.)") &&
-                    text.includes("Session total: 300") &&
+                    text.includes("Session tokens: 200") &&
                     !screen.synchronizedOutputActive
                 );
             },
@@ -151,7 +151,7 @@ describe("account quota observations", () => {
         const resumed = await gym.terminal.waitUntil(
             (screen) =>
                 screen.text.lastIndexOf("Usage") > screen.text.lastIndexOf("QUOTA_TURN_1") &&
-                screen.text.includes("Session total: 300"),
+                screen.text.includes("Session tokens: 200"),
             "resumed quota report",
             30_000,
         );
@@ -172,7 +172,7 @@ describe("account quota observations", () => {
             (screen) => {
                 const text = normalizeTerminalText(screen.text);
                 return (
-                    text.includes("Session total: 375") &&
+                    text.includes("Session tokens: 200") &&
                     text.includes("5-hour: 96% left") &&
                     text.includes("Weekly: 98% left") &&
                     text.includes("Observed remaining: 5h -4% · week -3% (approx.)") &&

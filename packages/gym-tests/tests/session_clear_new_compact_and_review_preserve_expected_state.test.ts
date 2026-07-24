@@ -118,11 +118,9 @@ describe("session clear, new, compact, and review preserve expected state", () =
         submit(gym, "/usage");
         const accumulatedUsage = await gym.terminal.waitUntil(
             (snapshot) =>
-                snapshot.text.includes(
-                    "270 total · 200 input · 50 output · 15 cache read · 5 cache write",
-                ) &&
+                snapshot.text.includes("200 input · 50 output · 15 cache read · 5 cache write") &&
                 snapshot.text.includes("5-hour: unavailable") &&
-                snapshot.text.includes("Session total: 270"),
+                snapshot.text.includes("Session tokens: 165"),
             "the accumulated provider usage",
             30_000,
         );
@@ -139,7 +137,7 @@ describe("session clear, new, compact, and review preserve expected state", () =
 
         submit(gym, "/usage");
         const resetUsage = await gym.terminal.waitUntil(
-            (snapshot) => snapshot.text.includes("Session total: 0"),
+            (snapshot) => snapshot.text.includes("Session tokens: 0"),
             "usage reset for the new session",
             30_000,
         );

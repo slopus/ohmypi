@@ -717,6 +717,7 @@ async function handleRequest(
             groups: usage.groups,
             observedQuota: usage.observedQuota,
             quotas,
+            sessionTokenCount: usage.sessionTokenCount,
             ...(usage.currentContext === undefined ? {} : { context: usage.currentContext }),
         });
         return;

@@ -5,6 +5,7 @@ import { formatCompactTokens } from "./formatCompactTokens.js";
 export function formatSessionTokenStatus(options: {
     contextTokens: number;
     contextWindow?: number;
+    sessionTokens: number;
     usage: Usage;
 }): string {
     // Cache writes and uncached input are misses; output tokens are not cache-eligible input.
@@ -16,7 +17,7 @@ export function formatSessionTokenStatus(options: {
             ? 0
             : Math.min(100, Math.round((cacheReadTokens / cacheEligibleTokens) * 100));
     const parts = [
-        `${formatCompactTokens(options.usage.totalTokens)} tokens`,
+        `${formatCompactTokens(options.sessionTokens)} tokens`,
         `${cacheHitPercent}% cache hit`,
     ];
     if (options.contextWindow !== undefined && options.contextWindow > 0) {

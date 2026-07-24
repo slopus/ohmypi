@@ -107,6 +107,7 @@ export type {
     SessionUnreadState,
     ServiceTierChangedEvent,
     SessionTitleChangedEvent,
+    SessionTokenCount,
     SessionUpdatedEvent,
     SessionSummary,
     ShellCommandFinishedEvent,

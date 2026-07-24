@@ -40,6 +40,7 @@ import type {
     RunShellCommandResponse,
     SecretSummary,
     SessionEvent,
+    SessionTokenCount,
     SessionTask,
     SteerMessageResponse,
     SubagentSummary,
@@ -123,6 +124,7 @@ import type { TerminalTheme } from "./TerminalTheme.js";
 import type { StartupStatusCardModel } from "./StartupStatusCardModel.js";
 import { SecretMenuController } from "./SecretMenuController.js";
 import { TemporaryFullscreenController } from "./TemporaryFullscreenController.js";
+import { updateSessionTokenCount } from "../sessionTokenCount/updateSessionTokenCount.js";
 import { renderFullscreenComponent } from "./renderFullscreenComponent.js";
 
 const RESET = "\x1b[0m";
@@ -172,6 +174,7 @@ export interface CodingAssistantAppOptions {
     initialMcpServers?: readonly McpServerSummary[];
     initialNotices?: readonly { text: string; title: string }[];
     initialSessionEvents?: readonly SessionEvent[];
+    initialSessionTokenCount?: SessionTokenCount;
     initialSubagents?: readonly SubagentSummary[];
     initialProjectSecretIds?: readonly string[];
     initialSessionSecretIds?: readonly string[];
@@ -473,6 +476,7 @@ export class CodingAssistantApp implements Component, Focusable {
     #usageRequestVersion = 0;
     #skipInitialUsageReplay = false;
     #latestContextTokens = 0;
+    #sessionTokenCount: SessionTokenCount = { lastContextTokens: 0, totalTokens: 0 };
     #activeCompactionId: string | undefined;
     #compactionStartedAtMs: number | undefined;
     #lastUserInputAtMs: number | undefined;
@@ -583,6 +587,9 @@ export class CodingAssistantApp implements Component, Focusable {
         this.#replayingInitialSessionEvents = true;
         if (options.initialUsage !== undefined) {
             this.#usage = structuredClone(options.initialUsage);
+        }
+        if (options.initialSessionTokenCount !== undefined) {
+            this.#sessionTokenCount = structuredClone(options.initialSessionTokenCount);
         }
         try {
             let reachedInitialSnapshot = options.initialWorkflowEventId === undefined;
@@ -1043,6 +1050,9 @@ export class CodingAssistantApp implements Component, Focusable {
             this.#toolStatusByCallId.clear();
             this.#usage = zeroUsage();
             this.#latestContextTokens = 0;
+            this.#sessionTokenCount = updateSessionTokenCount(this.#sessionTokenCount, {
+                type: "reset",
+            });
             this.#subagents = [];
             this.#lastUserInputAtMs = undefined;
             this.#workflows = [];
@@ -2297,7 +2307,7 @@ export class CodingAssistantApp implements Component, Focusable {
                 `Output: ${formatTokens(this.#usage.output)}`,
                 `Cache read: ${formatTokens(this.#usage.cacheRead)}`,
                 `Cache write: ${formatTokens(this.#usage.cacheWrite)}`,
-                `Total processed: ${formatTokens(this.#usage.totalTokens)}`,
+                `Session tokens: ${formatTokens(this.#sessionTokenCount.totalTokens)}`,
             ].join("\n"),
         });
     }
@@ -2573,6 +2583,9 @@ export class CodingAssistantApp implements Component, Focusable {
                     this.#toolStatusByCallId.clear();
                     this.#usage = zeroUsage();
                     this.#latestContextTokens = 0;
+                    this.#sessionTokenCount = updateSessionTokenCount(this.#sessionTokenCount, {
+                        type: "reset",
+                    });
                     this.#lastUserInputAtMs = undefined;
                     this.#abortNotified = false;
                     this.#statusText = "Idle";
@@ -3328,6 +3341,12 @@ export class CodingAssistantApp implements Component, Focusable {
             this.#statusText = `Compacting context · ${formatTokens(event.estimatedTokensBefore)} tokens`;
         } else if (event.type === "context_compacted") {
             this.#latestContextTokens = event.estimatedTokensAfter;
+            if (!this.#skipInitialUsageReplay) {
+                this.#sessionTokenCount = updateSessionTokenCount(this.#sessionTokenCount, {
+                    type: "compaction",
+                    contextTokens: event.estimatedTokensAfter,
+                });
+            }
             this.#appendEntry({
                 role: "event",
                 title: "Context compacted",
@@ -3460,6 +3479,10 @@ export class CodingAssistantApp implements Component, Focusable {
         if (message.usage !== undefined) {
             if (!this.#skipInitialUsageReplay) {
                 this.#usage = addUsage(this.#usage, message.usage);
+                this.#sessionTokenCount = updateSessionTokenCount(this.#sessionTokenCount, {
+                    type: "usage",
+                    usage: message.usage,
+                });
             }
             this.#latestContextTokens = message.usage.totalTokens;
         }
@@ -4174,11 +4197,17 @@ export class CodingAssistantApp implements Component, Focusable {
                 subagent.usage === undefined ? total : addUsage(total, subagent.usage),
             this.#usage,
         );
+        const sessionTokens = this.#subagents.reduce(
+            (total, subagent) =>
+                total + (subagent.sessionTokenCount?.totalTokens ?? subagent.totalTokens ?? 0),
+            this.#sessionTokenCount.totalTokens,
+        );
         return formatSessionTokenStatus({
             contextTokens: this.#latestContextTokens,
             ...(this.#agent.model.contextWindow === undefined
                 ? {}
                 : { contextWindow: this.#agent.model.contextWindow }),
+            sessionTokens,
             usage,
         });
     }

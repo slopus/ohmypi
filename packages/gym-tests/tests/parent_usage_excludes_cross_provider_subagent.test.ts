@@ -66,9 +66,9 @@ describe("parent session usage", () => {
         submit(gym, "Delegate the usage-heavy audit.");
         await gym.terminal.waitForText("PARENT_ACKNOWLEDGED_CHILD", 30_000);
         submit(gym, "/usage");
-        const report = await gym.terminal.waitForText("Session total: 175", 30_000);
-        expect(report.text).toContain("175 total · 0 input · 175 output");
-        expect(report.text).not.toMatch(/Claude\s+\S+\s+\d+ total/u);
+        const report = await gym.terminal.waitForText("Session tokens: 100", 30_000);
+        expect(report.text).toContain("0 input · 175 output");
+        expect(report.text).not.toMatch(/Claude\s+\S+\s+\d+ input/u);
         await gym.terminal.screenshot(`${artifacts}/parent-excludes-cross-provider-subagent.png`);
     }, 120_000);
 });

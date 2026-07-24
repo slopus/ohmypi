@@ -43,6 +43,11 @@ export type SessionSummaryStatus = SessionStatus | "archived";
 
 export type SessionUnreadReason = "attention_needed" | "turn_finished";
 
+export interface SessionTokenCount {
+    lastContextTokens: number;
+    totalTokens: number;
+}
+
 export interface SessionUnreadState {
     reason: SessionUnreadReason;
     since: number;
@@ -179,6 +184,7 @@ export interface ProtocolSession {
     goal?: SessionGoal;
     backgroundProcesses?: readonly BashSessionActivity[];
     cumulativeUsage?: Usage;
+    sessionTokenCount?: SessionTokenCount;
     externalTools?: readonly ExternalToolDefinition[];
     skills?: readonly DurableSkillDefinition[];
     pendingExternalToolCalls?: readonly ExternalToolCall[];
@@ -201,6 +207,7 @@ export interface SubagentSummary {
     status: SessionStatus;
     taskName?: string;
     totalTokens?: number;
+    sessionTokenCount?: SessionTokenCount;
     updatedAt: number;
     usage?: Usage;
 }
@@ -344,6 +351,7 @@ export interface GetSessionUsageResponse {
     context?: SessionContextUsage;
     observedQuota: readonly SessionQuotaContribution[];
     quotas: readonly SessionProviderQuota[];
+    sessionTokenCount: SessionTokenCount;
 }
 
 export interface GetCurrentProviderQuotaResponse {

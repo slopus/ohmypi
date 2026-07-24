@@ -27,7 +27,7 @@ describe("session token and cache status", () => {
         expect(footer(completed)).not.toContain("cache hit");
     }, 120_000);
 
-    it("keeps cumulative processed tokens and cache-hit rate visible in the footer", async () => {
+    it("counts growing session context once while weighting cache hits across requests", async () => {
         const gym = await createGym({
             homeFiles: { ".rig/config.toml": "[settings]\nshow_usage = true\n" },
             inference: [
@@ -57,11 +57,11 @@ describe("session token and cache status", () => {
         const second = await gym.terminal.waitUntil(
             (snapshot) =>
                 snapshot.text.includes("SECOND_USAGE_RECORDED") &&
-                snapshot.text.includes("2.2k tokens · 50% cache hit"),
+                snapshot.text.includes("1.1k tokens · 50% cache hit"),
             "the accumulated token status",
             30_000,
         );
-        expect(footer(second)).toContain("2.2k tokens · 50% cache hit");
+        expect(footer(second)).toContain("1.1k tokens · 50% cache hit");
     }, 120_000);
 });
 

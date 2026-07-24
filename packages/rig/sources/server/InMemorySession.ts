@@ -52,6 +52,7 @@ import type {
     SessionInterruption,
     SessionStatus,
     SessionSummary,
+    SessionTokenCount,
     SessionUnreadState,
     ShellCommandFinishedEvent,
     StopBackgroundProcessResponse,
@@ -64,6 +65,8 @@ import type {
     UpdateSessionRequest,
 } from "../protocol/index.js";
 import { sessionUnreadStateAfterEvent } from "./sessionUnreadStateAfterEvent.js";
+import { aggregateSessionTokenCount } from "../sessionTokenCount/aggregateSessionTokenCount.js";
+import { sessionTokenCountAfterEvent } from "../sessionTokenCount/sessionTokenCountAfterEvent.js";
 import type { Model, Provider, ServiceTier, StopReason, Usage } from "@slopus/rig-execution";
 import type { ProviderQuota } from "@slopus/rig-providers";
 import { createEncryptedAgentTransportScope } from "../executor/createEncryptedAgentTransportScope.js";
@@ -225,6 +228,7 @@ export interface PersistedSessionState {
     titleError?: string;
     titleStatus: SessionTitleStatus;
     totalTokens?: number;
+    sessionTokenCount?: SessionTokenCount;
     usage?: Usage;
     tools: readonly string[];
     externalToolCalls?: readonly ExternalToolCall[];
@@ -436,6 +440,7 @@ export class InMemorySession {
     #titleError: string | undefined;
     #titleStatus: SessionTitleStatus = "idle";
     #totalTokens = 0;
+    #sessionTokenCount: SessionTokenCount = { lastContextTokens: 0, totalTokens: 0 };
     #usage: Usage = zeroUsage();
     #tools: readonly string[] = [];
     #workflowRuns = new Map<string, InternalWorkflowRun>();
@@ -615,6 +620,7 @@ export class InMemorySession {
         if (options.lastEventId !== undefined) eventLogOptions.lastEventId = options.lastEventId;
         if (options.onAppendEvent !== undefined) eventLogOptions.onAppend = options.onAppendEvent;
         this.events = new SessionEventLog(eventLogOptions);
+        this.#sessionTokenCount = aggregateSessionTokenCount(this.events.since(undefined) ?? []);
 
         this.#latestMetadataBoundaryRunId = findLatestForegroundRunBoundary(
             this.events.since(undefined) ?? [],
@@ -2163,6 +2169,7 @@ export class InMemorySession {
             workflowsEnabled: this.#workflowsEnabled,
             workflows: this.listWorkflows(),
             backgroundProcesses: this.#runtime?.context.bash.activeSessions?.() ?? [],
+            sessionTokenCount: structuredClone(this.#sessionTokenCount),
             ...(this.#usage.totalTokens === 0
                 ? {}
                 : { cumulativeUsage: structuredClone(this.#usage) }),
@@ -2259,6 +2266,7 @@ export class InMemorySession {
             ...(this.#titleError !== undefined ? { titleError: this.#titleError } : {}),
             titleStatus: this.#titleStatus,
             totalTokens: this.#totalTokens,
+            sessionTokenCount: structuredClone(this.#sessionTokenCount),
             usage: structuredClone(this.#usage),
             tools: this.#tools,
             externalToolCalls: this.externalToolCalls(),
@@ -2627,6 +2635,7 @@ export class InMemorySession {
                 : {}),
             ...(prompt === undefined ? {} : { prompt }),
             status: this.#status,
+            sessionTokenCount: structuredClone(this.#sessionTokenCount),
             ...(this.#agentMetadata.taskName !== undefined
                 ? { taskName: this.#agentMetadata.taskName }
                 : {}),
@@ -3371,7 +3380,16 @@ export class InMemorySession {
         if (!this.isSubagent() && this.#request.trackUnread === true) {
             this.#unread = sessionUnreadStateAfterEvent(this.#unread, event);
         }
-        this.events.append(event);
+        const previousSessionTokenCount = this.#sessionTokenCount;
+        this.#sessionTokenCount =
+            sessionTokenCountAfterEvent(this.#sessionTokenCount, event) ??
+            previousSessionTokenCount;
+        try {
+            this.events.append(event);
+        } catch (error) {
+            this.#sessionTokenCount = previousSessionTokenCount;
+            throw error;
+        }
         this.#saveSession();
         return event;
     }

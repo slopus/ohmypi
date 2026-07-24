@@ -109,7 +109,7 @@ describe("automatic conversation compaction", () => {
         const refreshed = await gym.terminal.waitUntil(
             (candidate) =>
                 candidate.text.includes("Context: 130 / 500 · 74% left") &&
-                candidate.text.includes("Session total: 580"),
+                candidate.text.includes("Session tokens: 580"),
             "authoritative context after compaction inference",
             30_000,
         );

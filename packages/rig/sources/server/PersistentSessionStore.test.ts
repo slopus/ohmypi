@@ -2634,6 +2634,10 @@ describe("PersistentSessionStore", () => {
                     title: "Inspect the persistence layer",
                     titleStatus: "ready",
                     totalTokens: 12_345,
+                    sessionTokenCount: {
+                        lastContextTokens: 12_345,
+                        totalTokens: 18_000,
+                    },
                     usage: {
                         cacheRead: 9_000,
                         cacheWrite: 1_000,
@@ -2683,6 +2687,10 @@ describe("PersistentSessionStore", () => {
                         status: "completed",
                         taskName: "inspect_persistence",
                         totalTokens: 12_345,
+                        sessionTokenCount: {
+                            lastContextTokens: 12_345,
+                            totalTokens: 18_000,
+                        },
                         usage: expect.objectContaining({
                             cacheRead: 9_000,
                             cacheWrite: 1_000,

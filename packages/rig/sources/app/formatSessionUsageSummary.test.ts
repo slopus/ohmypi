@@ -20,7 +20,7 @@ describe("formatSessionUsageSummary", () => {
             [
                 "Codex",
                 "  GPT-5.6",
-                "    1.4k total · 1.2k input · 100 output · 40 cache read · 30 cache write · 20 reasoning",
+                "    1.2k input · 100 output · 40 cache read · 30 cache write · 20 reasoning",
                 "    Context: 1.3k / 200k · 99.4% left",
                 "  Account quota",
                 "    5-hour: 68% left · resets in 2h 14m",
@@ -28,7 +28,7 @@ describe("formatSessionUsageSummary", () => {
                 "    Observed remaining: 5h -3.5% · week -1% (approx.)",
                 "",
                 "Observed remaining may include other account activity.",
-                "Session total: 1.4k",
+                "Session tokens: 1.4k",
             ].join("\n"),
         );
     });
@@ -86,7 +86,7 @@ describe("formatSessionUsageSummary", () => {
         ];
 
         const text = formatSessionUsageSummary(value, [{ model: codex, providerId: "codex" }]);
-        expect(text).toContain("Claude Code\n  Sonnet 4 6\n    120 total · 100 input · 20 output");
+        expect(text).toContain("Claude Code\n  Sonnet 4 6\n    100 input · 20 output");
         expect(text).toContain("· $0.12");
         expect(text).toContain("Observed remaining: week -2% (approx.)");
         expect(text).toContain("Observed remaining may include other account activity.");
@@ -125,10 +125,11 @@ describe("formatSessionUsageSummary", () => {
                 usage: usage(1_000_000, 0, 0, 0, 1_000_000),
             },
         ];
+        value.sessionTokenCount = { lastContextTokens: 1_000_000, totalTokens: 1_000_000 };
 
         const text = formatSessionUsageSummary(value, [{ model: codex, providerId: "codex" }]);
-        expect(text).toContain("1m total · 1m input · 0 output");
-        expect(text).toContain("Session total: 1m");
+        expect(text).toContain("1m input · 0 output");
+        expect(text).toContain("Session tokens: 1m");
     });
 
     it("renders current context before the selected model has a usage group", () => {
@@ -141,7 +142,7 @@ describe("formatSessionUsageSummary", () => {
         const text = formatSessionUsageSummary(value, [{ model: codex, providerId: "codex" }]);
 
         expect(text).toContain("Codex\n  GPT-5.6\n    Context: ~600 / 200k · 99.7% left");
-        expect(text).toContain("Session total: 0");
+        expect(text).toContain("Session tokens: 1.4k");
     });
 
     it.each([
@@ -187,6 +188,7 @@ function summary(): GetSessionUsageResponse {
                 },
             },
         ],
+        sessionTokenCount: { lastContextTokens: 1_370, totalTokens: 1_370 },
         quotas: [
             {
                 providerId: "codex",

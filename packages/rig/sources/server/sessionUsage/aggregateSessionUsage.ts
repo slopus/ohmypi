@@ -9,6 +9,7 @@ import {
     type SessionUsageSummary,
 } from "./types.js";
 import { zeroUsage } from "./zeroUsage.js";
+import { aggregateSessionTokenCount } from "../../sessionTokenCount/aggregateSessionTokenCount.js";
 
 interface ActiveModel {
     modelId: string;
@@ -21,7 +22,10 @@ export function aggregateSessionUsage(
     events: readonly SessionEvent[],
     metadata: SessionUsageMetadata,
 ): SessionUsageSummary {
-    if (metadata.type === "subagent") return { groups: [], observedQuota: [] };
+    const sessionTokenCount = aggregateSessionTokenCount(events);
+    if (metadata.type === "subagent") {
+        return { groups: [], observedQuota: [], sessionTokenCount };
+    }
 
     let groups: SessionUsageGroup[] = [];
     let attributedGroupIndexes = new Map<string, number>();
@@ -127,5 +131,6 @@ export function aggregateSessionUsage(
         ...(currentContext === undefined ? {} : { currentContext }),
         groups,
         observedQuota: aggregateQuotaContributions(events),
+        sessionTokenCount,
     };
 }
