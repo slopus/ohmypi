@@ -100,11 +100,25 @@ export interface RunAgentLoopOptions {
 export type AgentLoopEvent =
     | AssistantMessageEvent
     | {
+          type: "context_compaction_started";
+          compactionId: string;
+          estimatedTokensBefore: number;
+          reason: "context_window" | "manual" | "threshold";
+      }
+    | {
           type: "context_compacted";
+          compactionId: string;
           compactedMessageCount: number;
+          elapsedMs: number;
           estimatedTokensAfter: number;
           estimatedTokensBefore: number;
-          reason: "context_window" | "threshold";
+          reason: "context_window" | "manual" | "threshold";
+      }
+    | {
+          type: "context_compaction_finished";
+          compactionId: string;
+          elapsedMs: number;
+          status: "cancelled" | "completed" | "failed";
       }
     | {
           type: "inference_iteration_start";

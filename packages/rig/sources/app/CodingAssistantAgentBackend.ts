@@ -51,7 +51,10 @@ export interface CodingAssistantAgentBackend {
     ): Promise<ReadBackgroundProcessResponse | undefined>;
     abort?(options?: AbortRunOptions): Promise<AbortRunResponse>;
     attachSecret?(secretId: string, scope?: SecretAttachmentScope): Promise<void>;
-    compact(signal?: AbortSignal): Promise<AgentCompactionResult>;
+    compact(
+        signal?: AbortSignal,
+        onEvent?: AgentRunOptions["onEvent"],
+    ): Promise<AgentCompactionResult>;
     changeGoalStatus?(status: GoalStatus): Promise<void>;
     clearGoal?(): Promise<void>;
     detachSecret?(secretId: string, scope?: SecretAttachmentScope): Promise<void>;

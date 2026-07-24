@@ -233,7 +233,10 @@ export class RemoteAgent implements CodingAssistantAgentBackend {
         this.#replaceSession(response.session);
     }
 
-    async compact(): Promise<AgentCompactionResult> {
+    async compact(
+        _signal?: AbortSignal,
+        _onEvent?: AgentRunOptions["onEvent"],
+    ): Promise<AgentCompactionResult> {
         const response = await this.#client.compact(this.#session.id);
         this.#replaceSession(response.session);
         return response.result;

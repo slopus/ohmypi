@@ -313,7 +313,9 @@ function contextCompacted(id: string, estimatedTokensAfter: number): SessionEven
         createdAt: 1,
         data: {
             event: {
+                compactionId: `compaction-${id}`,
                 compactedMessageCount: 2,
+                elapsedMs: 25,
                 estimatedTokensAfter,
                 estimatedTokensBefore: 100,
                 reason: "threshold",

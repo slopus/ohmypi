@@ -769,6 +769,25 @@ describe("InMemorySession abort", () => {
 
         await expect(compacting).rejects.toThrow("compaction was stopped");
         await expect(shutdown).resolves.toBeUndefined();
+        const compactionEvents = session.events
+            .since(undefined)
+            ?.flatMap((event) =>
+                event.type === "agent_event" && event.data.event.type.startsWith("context_compact")
+                    ? [event.data.event]
+                    : [],
+            );
+        expect(compactionEvents?.map((event) => event.type)).toEqual([
+            "context_compaction_started",
+            "context_compaction_finished",
+        ]);
+        expect(compactionEvents?.[1]).toMatchObject({
+            status: "cancelled",
+            type: "context_compaction_finished",
+        });
+        expect(compactionEvents?.[0]).toHaveProperty(
+            "compactionId",
+            (compactionEvents?.[1] as { compactionId?: string } | undefined)?.compactionId,
+        );
         expect(session.summary()).toMatchObject({
             interruption: { reason: "shutdown" },
             status: "error",

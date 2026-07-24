@@ -27,6 +27,7 @@ export async function compactConversation(options: {
     reportedTokens?: number;
     force: boolean;
     preserveLatestUserMessage: boolean;
+    onCompactionStart?: (event: { estimatedTokensBefore: number }) => void | Promise<void>;
     signal?: AbortSignal;
     serviceTier?: ServiceTier;
     startDate?: string;
@@ -54,6 +55,7 @@ export async function compactConversation(options: {
         return unchanged(options.messages, estimatedTokensBefore);
     }
 
+    await options.onCompactionStart?.({ estimatedTokensBefore });
     const summary = await requestCompactionSummary({
         context: await options.createProviderContext([...systemMessages, ...messagesToCompact]),
         inputTokens: resolveCompactionInputTokens(

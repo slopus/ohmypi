@@ -1059,6 +1059,7 @@ describe("Agent", () => {
         });
         const compactionThinking: (string | undefined)[] = [];
         const compactionServiceTiers: (string | undefined)[] = [];
+        const compactionEvents: AgentLoopEvent[] = [];
         const provider = defineProvider({
             id: "codex",
             models: [model],
@@ -1089,8 +1090,12 @@ describe("Agent", () => {
             effort: "high",
             serviceTier: "fast",
             printToConsole: false,
+            onEvent: (event) => {
+                if (event.type.startsWith("context_compact")) compactionEvents.push(event);
+            },
         });
         await agent.send("Do the work.");
+        compactionEvents.length = 0;
         const visibleMessages = agent.snapshot().messages;
 
         const result = await agent.compact();
@@ -1109,6 +1114,30 @@ describe("Agent", () => {
         ]);
         expect(compactionThinking).toEqual(["high"]);
         expect(compactionServiceTiers).toEqual(["fast"]);
+        expect(compactionEvents.map((event) => event.type)).toEqual([
+            "context_compaction_started",
+            "context_compacted",
+            "context_compaction_finished",
+        ]);
+        expect(compactionEvents[0]).toMatchObject({
+            estimatedTokensBefore: expect.any(Number),
+            reason: "manual",
+            type: "context_compaction_started",
+        });
+        expect(compactionEvents[1]).toMatchObject({
+            elapsedMs: expect.any(Number),
+            reason: "manual",
+            type: "context_compacted",
+        });
+        expect(compactionEvents[2]).toMatchObject({
+            elapsedMs: expect.any(Number),
+            status: "completed",
+            type: "context_compaction_finished",
+        });
+        expect(compactionEvents[0]).toHaveProperty(
+            "compactionId",
+            (compactionEvents[2] as { compactionId?: string }).compactionId,
+        );
     });
 
     it("discards steering received during manual compaction", async () => {
@@ -1158,6 +1187,61 @@ describe("Agent", () => {
 
         expect(normalContexts).toHaveLength(2);
         expect(JSON.stringify(normalContexts.at(-1))).not.toContain("stale compaction steering");
+    });
+
+    it("finishes the compaction lifecycle when summary inference fails", async () => {
+        const model = defineModel({
+            id: "openai/gpt-test",
+            name: "GPT Test",
+            thinkingLevels: ["off"],
+            defaultThinkingLevel: "off",
+        });
+        const provider = defineProvider({
+            id: "codex",
+            models: [model],
+            stream(_model, context) {
+                const isCompaction = isCompactionContext(context);
+                return streamFor({
+                    role: "assistant",
+                    content: isCompaction ? [] : [{ type: "text", text: "done" }],
+                    api: "test",
+                    provider: "codex",
+                    model: model.id,
+                    usage: zeroUsage(),
+                    stopReason: isCompaction ? "error" : "stop",
+                    ...(isCompaction ? { errorMessage: "summary failed" } : {}),
+                    timestamp: 1,
+                });
+            },
+        });
+        const compactionEvents: AgentLoopEvent[] = [];
+        const harness = createJustBashToolHarness();
+        const agent = new Agent({
+            provider,
+            modelId: model.id,
+            context: harness.context,
+            printToConsole: false,
+            onEvent: (event) => {
+                if (event.type.startsWith("context_compact")) compactionEvents.push(event);
+            },
+        });
+        await agent.send("Do the work.");
+        compactionEvents.length = 0;
+
+        await expect(agent.compact()).rejects.toThrow("summary failed");
+
+        expect(compactionEvents.map((event) => event.type)).toEqual([
+            "context_compaction_started",
+            "context_compaction_finished",
+        ]);
+        expect(compactionEvents[1]).toMatchObject({
+            status: "failed",
+            type: "context_compaction_finished",
+        });
+        expect(compactionEvents[0]).toHaveProperty(
+            "compactionId",
+            (compactionEvents[1] as { compactionId?: string }).compactionId,
+        );
     });
 
     it("resets transcript and queued messages", async () => {

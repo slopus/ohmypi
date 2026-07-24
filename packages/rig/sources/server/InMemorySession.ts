@@ -2013,12 +2013,15 @@ export class InMemorySession {
         const compactSignal =
             signal === undefined ? controller.signal : AbortSignal.any([signal, controller.signal]);
         const previousStatus = this.#status;
+        const compactionRunId = `compaction:${createId()}`;
         this.#compactionActive = true;
         this.#status = "running";
         this.#restartMetadataSettlement();
         this.#saveSession();
         try {
-            const result = await this.#ensureRuntime().agent.compact(compactSignal);
+            const result = await this.#ensureRuntime().agent.compact(compactSignal, (event) =>
+                this.#appendCompactionAgentEvent(compactionRunId, event),
+            );
             this.#syncContextMessages();
             return result;
         } finally {
@@ -3345,6 +3348,12 @@ export class InMemorySession {
         if (event.type === "context_compacted" && this.isSubagent()) {
             this.#agentManager?.recordChanged(this);
         }
+    }
+
+    #appendCompactionAgentEvent(runId: string, event: AgentLoopEvent): void {
+        if (!this.#compactionActive) return;
+        if (event.type === "context_compacted") this.#totalTokens = event.estimatedTokensAfter;
+        this.#append("agent_event", { event, runId });
     }
 
     #appendAgentMessage(runId: string, message: Message): void {

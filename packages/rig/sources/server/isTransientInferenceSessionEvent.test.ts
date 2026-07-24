@@ -71,11 +71,33 @@ describe("isTransientInferenceSessionEvent", () => {
         expect(
             isTransientInferenceSessionEvent(
                 agentEvent({
+                    compactionId: "compaction-1",
                     compactedMessageCount: 2,
+                    elapsedMs: 25,
                     estimatedTokensAfter: 100,
                     estimatedTokensBefore: 1_000,
                     reason: "threshold",
                     type: "context_compacted",
+                }),
+            ),
+        ).toBe(false);
+        expect(
+            isTransientInferenceSessionEvent(
+                agentEvent({
+                    compactionId: "compaction-1",
+                    estimatedTokensBefore: 1_000,
+                    reason: "threshold",
+                    type: "context_compaction_started",
+                }),
+            ),
+        ).toBe(false);
+        expect(
+            isTransientInferenceSessionEvent(
+                agentEvent({
+                    compactionId: "compaction-1",
+                    elapsedMs: 25,
+                    status: "completed",
+                    type: "context_compaction_finished",
                 }),
             ),
         ).toBe(false);

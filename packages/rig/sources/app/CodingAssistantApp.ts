@@ -462,6 +462,8 @@ export class CodingAssistantApp implements Component, Focusable {
     #usage: Usage = zeroUsage();
     #usageRequestVersion = 0;
     #latestContextTokens = 0;
+    #activeCompactionId: string | undefined;
+    #compactionStartedAtMs: number | undefined;
     #lastUserInputAtMs: number | undefined;
     #userInputRequests: UserInputRequest[] = [];
     #workflows: readonly WorkflowRun[];
@@ -797,7 +799,7 @@ export class CodingAssistantApp implements Component, Focusable {
         }
 
         if (event.type === "agent_event") {
-            this.#applyAgentEvent(event.data.event);
+            this.#applyAgentEvent(event.data.event, event.createdAt);
             return;
         }
 
@@ -2481,19 +2483,25 @@ export class CodingAssistantApp implements Component, Focusable {
 
         this.#compacting = true;
         this.#statusText = "Compacting conversation";
+        this.#startActivityAnimation();
         this.#requestRender();
         try {
-            const result = await this.#agent.compact();
-            this.#appendEntry({
-                role: "event",
-                title: "Compaction",
-                text: result.compacted
-                    ? `Compacted ${result.compactedMessageCount} older messages. The full transcript remains visible.`
-                    : "There is not enough conversation history to compact yet.",
-            });
+            const result = await this.#agent.compact(
+                undefined,
+                this.#sessionBacked ? undefined : (event) => this.#applyAgentEvent(event),
+            );
+            if (!result.compacted) {
+                this.#appendEntry({
+                    role: "event",
+                    title: "Compaction",
+                    text: "There is not enough conversation history to compact yet.",
+                });
+            }
         } finally {
             this.#compacting = false;
             this.#statusText = "Idle";
+            this.#stopActivityAnimation();
+            this.#requestRender();
         }
     }
 
@@ -3184,7 +3192,7 @@ export class CodingAssistantApp implements Component, Focusable {
         this.#applyAgentEvent(event);
     }
 
-    #applyAgentEvent(event: AgentLoopEvent): void {
+    #applyAgentEvent(event: AgentLoopEvent, createdAt = this.#now()): void {
         if (event.type === "inference_iteration_start") {
             this.#statusText = "Running";
             this.#streamEntryId = undefined;
@@ -3248,13 +3256,27 @@ export class CodingAssistantApp implements Component, Focusable {
                 this.#toolStatusByCallId.set(event.toolCallId, this.#singleLine(event.status));
                 this.#refreshToolActivityStatus();
             }
+        } else if (event.type === "context_compaction_started") {
+            this.#activeCompactionId = event.compactionId;
+            this.#compactionStartedAtMs = createdAt;
+            this.#statusText = `Compacting context · ${formatTokens(event.estimatedTokensBefore)} tokens`;
         } else if (event.type === "context_compacted") {
             this.#latestContextTokens = event.estimatedTokensAfter;
             this.#appendEntry({
                 role: "event",
                 title: "Context compacted",
-                text: `Summarized ${event.compactedMessageCount} older messages; ${formatTokens(event.estimatedTokensBefore)} → ${formatTokens(event.estimatedTokensAfter)} tokens.`,
+                text: `Summarized ${event.compactedMessageCount} older messages; ${formatTokens(event.estimatedTokensBefore)} → ${formatTokens(event.estimatedTokensAfter)} tokens. The full transcript remains visible.`,
             });
+        } else if (event.type === "context_compaction_finished") {
+            if (this.#activeCompactionId === event.compactionId) {
+                this.#activeCompactionId = undefined;
+                this.#compactionStartedAtMs = undefined;
+                this.#statusText = this.#running
+                    ? "Working"
+                    : this.#compacting
+                      ? "Compacting conversation"
+                      : "Idle";
+            }
         } else if (event.type === "tool_batch_rejected") {
             const rejectedIds = new Set(event.toolCallIds);
             this.#entries = this.#entries.filter(
@@ -5312,11 +5334,12 @@ export class CodingAssistantApp implements Component, Focusable {
     }
 
     #activityElapsedText(): string | undefined {
-        if (this.#activityStartedAtMs === undefined) {
+        const startedAt = this.#compactionStartedAtMs ?? this.#activityStartedAtMs;
+        if (startedAt === undefined) {
             return undefined;
         }
 
-        return formatActivityElapsedTime(this.#now() - this.#activityStartedAtMs);
+        return formatActivityElapsedTime(this.#now() - startedAt);
     }
 
     #recordUserInput(createdAt: number): void {
@@ -6287,6 +6310,11 @@ export class CodingAssistantApp implements Component, Focusable {
     }
 
     #setRunning(running: boolean): void {
+        const wasRunning = this.#running;
         this.#running = running;
+        if (!running || !wasRunning) {
+            this.#activeCompactionId = undefined;
+            this.#compactionStartedAtMs = undefined;
+        }
     }
 }

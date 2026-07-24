@@ -4,6 +4,7 @@ import {
     compactConversation,
     type CompactConversationResult,
 } from "./compaction/compactConversation.js";
+import { runCompactionWithEvents } from "./compaction/runCompactionWithEvents.js";
 import type { AgentContext } from "./context/AgentContext.js";
 import { runAgentLoop, type AgentLoopEvent, type AgentLoopResult } from "./loop.js";
 import { toProviderMessages } from "./loop.js";
@@ -335,7 +336,10 @@ export class Agent {
         this.#steeringController.abort();
     }
 
-    async compact(signal?: AbortSignal): Promise<AgentCompactionResult> {
+    async compact(
+        signal?: AbortSignal,
+        onEvent?: AgentRunOptions["onEvent"],
+    ): Promise<AgentCompactionResult> {
         if (this.#activeRunId !== undefined) {
             throw new Error("Wait for the active response to finish before compacting.");
         }
@@ -345,8 +349,10 @@ export class Agent {
         this.#status = "running";
         try {
             const result = await this.#compactContext({
+                eventOptions: onEvent === undefined ? {} : { onEvent },
                 force: true,
                 preserveLatestUserMessage: false,
+                reason: "manual",
                 ...(signal !== undefined ? { signal } : {}),
             });
             this.#status = "idle";
@@ -382,24 +388,14 @@ export class Agent {
 
         try {
             try {
-                const compaction = await this.#compactContext({
+                await this.#compactContext({
+                    eventOptions: options,
                     force: false,
                     preserveLatestUserMessage: true,
                     provider,
+                    reason: "threshold",
                     ...(options.signal !== undefined ? { signal: options.signal } : {}),
                 });
-                if (compaction.compacted) {
-                    await this.#handleEvent(
-                        {
-                            type: "context_compacted",
-                            compactedMessageCount: compaction.compactedMessageCount,
-                            estimatedTokensAfter: compaction.estimatedTokensAfter,
-                            estimatedTokensBefore: compaction.estimatedTokensBefore,
-                            reason: "threshold",
-                        },
-                        options,
-                    );
-                }
             } catch (error) {
                 // The main loop still gets a chance to report an abort or the provider's
                 // context-limit error when automatic compaction is unavailable.
@@ -431,29 +427,19 @@ export class Agent {
                 compactContext: async (messages, compaction) => {
                     try {
                         const result = await this.#compactMessages({
+                            eventOptions: options,
                             messages,
                             createProviderContext: compaction.createProviderContext,
                             force: compaction.force,
                             preserveLatestUserMessage: true,
                             provider,
+                            reason: compaction.force ? "context_window" : "threshold",
                             ...(compaction.reportedTokens === undefined
                                 ? {}
                                 : { reportedTokens: compaction.reportedTokens }),
                             ...(options.signal === undefined ? {} : { signal: options.signal }),
                         });
                         contextCompactedDuringRun ||= result.compacted;
-                        if (result.compacted) {
-                            await this.#handleEvent(
-                                {
-                                    type: "context_compacted",
-                                    compactedMessageCount: result.compactedMessageCount,
-                                    estimatedTokensAfter: result.estimatedTokensAfter,
-                                    estimatedTokensBefore: result.estimatedTokensBefore,
-                                    reason: compaction.force ? "context_window" : "threshold",
-                                },
-                                options,
-                            );
-                        }
                         return result;
                     } catch (error) {
                         if (!options.signal?.aborted) {
@@ -568,15 +554,19 @@ export class Agent {
     }
 
     async #compactContext(options: {
+        eventOptions: AgentRunOptions;
         force: boolean;
         preserveLatestUserMessage: boolean;
         provider?: Provider;
+        reason: "context_window" | "manual" | "threshold";
         signal?: AbortSignal;
     }): Promise<AgentCompactionResult> {
         const result = await this.#compactMessages({
             messages: this.#contextMessages ?? this.#messages,
+            eventOptions: options.eventOptions,
             force: options.force,
             preserveLatestUserMessage: options.preserveLatestUserMessage,
+            reason: options.reason,
             ...(options.provider === undefined ? {} : { provider: options.provider }),
             ...(options.signal !== undefined ? { signal: options.signal } : {}),
         });
@@ -595,64 +585,84 @@ export class Agent {
     async #compactMessages(options: {
         messages: readonly Message[];
         createProviderContext?: (messages: readonly Message[]) => Promise<Context>;
+        eventOptions: AgentRunOptions;
         force: boolean;
         preserveLatestUserMessage: boolean;
         provider?: Provider;
+        reason: "context_window" | "manual" | "threshold";
         reportedTokens?: number;
         signal?: AbortSignal;
     }): Promise<CompactConversationResult> {
-        return compactConversation({
-            provider: options.provider ?? this.provider,
-            model: this.#model,
-            messages: options.messages,
-            createProviderContext:
-                options.createProviderContext ??
-                (async (messages) => {
-                    const providerPrompt = await createProviderPrompt({
-                        ...(this.#appendSystemPrompt !== undefined
-                            ? { appendSystemPrompt: this.#appendSystemPrompt }
-                            : {}),
-                        ...(this.#systemPrompt !== undefined
-                            ? { systemPrompt: this.#systemPrompt }
-                            : {}),
-                        provider: options.provider ?? this.provider,
-                        model: this.#model,
-                        ...(this.#instructions !== undefined
-                            ? { instructions: this.#instructions }
-                            : {}),
-                        messages,
-                        context: this.context,
-                        ...(this.#effort === undefined ? {} : { effort: this.#effort }),
-                        tools: this.#tools,
-                        durableSkills: this.#durableSkills,
-                    });
-                    const providerMessages = toProviderMessages(messages, {
-                        model: this.#model,
-                        now: this.#now,
-                        providerId: (options.provider ?? this.provider).id,
-                    });
-                    const preparedMessages = await prepareProviderMessageImages(
-                        providerMessages,
-                        resolveModelImageProfile(this.#model),
-                    );
-                    const providerTools = this.#tools.map(toExecutorTool);
-                    return {
-                        ...providerPrompt,
-                        messages: preparedMessages,
-                        ...(providerTools.length === 0 ? {} : { tools: providerTools }),
-                    };
+        return runCompactionWithEvents({
+            compact: (onCompactionStart) =>
+                compactConversation({
+                    provider: options.provider ?? this.provider,
+                    model: this.#model,
+                    messages: options.messages,
+                    createProviderContext:
+                        options.createProviderContext ??
+                        (async (messages) => {
+                            const providerPrompt = await createProviderPrompt({
+                                ...(this.#appendSystemPrompt !== undefined
+                                    ? { appendSystemPrompt: this.#appendSystemPrompt }
+                                    : {}),
+                                ...(this.#systemPrompt !== undefined
+                                    ? { systemPrompt: this.#systemPrompt }
+                                    : {}),
+                                provider: options.provider ?? this.provider,
+                                model: this.#model,
+                                ...(this.#instructions !== undefined
+                                    ? { instructions: this.#instructions }
+                                    : {}),
+                                messages,
+                                context: this.context,
+                                ...(this.#effort === undefined ? {} : { effort: this.#effort }),
+                                tools: this.#tools,
+                                durableSkills: this.#durableSkills,
+                            });
+                            const providerMessages = toProviderMessages(messages, {
+                                model: this.#model,
+                                now: this.#now,
+                                providerId: (options.provider ?? this.provider).id,
+                            });
+                            const preparedMessages = await prepareProviderMessageImages(
+                                providerMessages,
+                                resolveModelImageProfile(this.#model),
+                            );
+                            const providerTools = this.#tools.map(toExecutorTool);
+                            return {
+                                ...providerPrompt,
+                                messages: preparedMessages,
+                                ...(providerTools.length === 0 ? {} : { tools: providerTools }),
+                            };
+                        }),
+                    idFactory: this.#idFactory,
+                    now: this.#now,
+                    force: options.force,
+                    preserveLatestUserMessage: options.preserveLatestUserMessage,
+                    startDate: this.#startDate,
+                    onCompactionStart,
+                    ...(options.reportedTokens === undefined
+                        ? {}
+                        : { reportedTokens: options.reportedTokens }),
+                    ...(this.#effort !== undefined ? { thinking: this.#effort } : {}),
+                    ...(this.#serviceTier !== undefined ? { serviceTier: this.#serviceTier } : {}),
+                    ...(options.signal !== undefined ? { signal: options.signal } : {}),
                 }),
             idFactory: this.#idFactory,
             now: this.#now,
-            force: options.force,
-            preserveLatestUserMessage: options.preserveLatestUserMessage,
-            startDate: this.#startDate,
-            ...(options.reportedTokens === undefined
-                ? {}
-                : { reportedTokens: options.reportedTokens }),
-            ...(this.#effort !== undefined ? { thinking: this.#effort } : {}),
-            ...(this.#serviceTier !== undefined ? { serviceTier: this.#serviceTier } : {}),
-            ...(options.signal !== undefined ? { signal: options.signal } : {}),
+            onEvent: async (event) => {
+                try {
+                    await this.#handleEvent(event, options.eventOptions);
+                } catch (error) {
+                    this.#console.error?.(
+                        `[agent:${this.id}] compaction lifecycle observer failed`,
+                        error,
+                    );
+                }
+            },
+            reason: options.reason,
+            ...(options.signal === undefined ? {} : { signal: options.signal }),
         });
     }
 

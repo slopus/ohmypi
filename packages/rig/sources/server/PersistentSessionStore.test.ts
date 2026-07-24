@@ -516,7 +516,9 @@ describe("PersistentSessionStore", () => {
             });
             const compacted = sessionEvent(session.id, "context-compacted", "agent_event", {
                 event: {
+                    compactionId: "compaction-1",
                     compactedMessageCount: 4,
+                    elapsedMs: 25,
                     estimatedTokensAfter: 600,
                     estimatedTokensBefore: 4_200,
                     reason: "threshold",

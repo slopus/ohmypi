@@ -1354,7 +1354,9 @@ describe("createProtocolHttpServer", () => {
                 createdAt: 1_700_000_000_002,
                 data: {
                     event: {
+                        compactionId: "compaction-1",
                         compactedMessageCount: 8,
+                        elapsedMs: 25,
                         estimatedTokensAfter: 600,
                         estimatedTokensBefore: 4_200,
                         reason: "threshold",

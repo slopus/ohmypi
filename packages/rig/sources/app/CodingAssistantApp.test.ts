@@ -3474,10 +3474,81 @@ describe("CodingAssistantApp", () => {
         await compaction.value;
 
         const rendered = stripAnsi(app.render(80).join("\n"));
-        expect(rendered).toContain("Compacted 2 older messages.");
-        expect(rendered).toContain("The full transcript remains visible.");
+        expect(rendered).toContain("Context compacted");
+        expect(rendered).toContain("Summarized 2 older messages;");
+        expect(rendered).toMatch(/The full\s+transcript remains visible\./u);
         expect(agent.snapshot().messages).toHaveLength(2);
         expect(agent.snapshot().contextMessages).toHaveLength(1);
+    });
+
+    it("animates manual conversation compaction only while it is running", async () => {
+        vi.useFakeTimers();
+        try {
+            const model = defineModel({
+                id: "openai/gpt-test",
+                name: "GPT Test",
+                thinkingLevels: ["off"],
+                defaultThinkingLevel: "off",
+            });
+            const started = deferred<void>();
+            const release = deferred<void>();
+            const provider = defineProvider({
+                id: "codex",
+                models: [model],
+                stream() {
+                    return streamTextStart(
+                        "A concise continuation brief.",
+                        started.resolve,
+                        release.promise,
+                    );
+                },
+            });
+            const harness = createJustBashToolHarness();
+            const agent = new Agent({
+                provider,
+                modelId: model.id,
+                context: harness.context,
+                messages: [
+                    {
+                        role: "user",
+                        id: "user-1",
+                        blocks: [{ type: "text", text: "Do the work." }],
+                    },
+                    {
+                        role: "agent",
+                        id: "agent-1",
+                        blocks: [{ type: "text", text: "The work is done." }],
+                    },
+                ],
+                printToConsole: false,
+            });
+            const tui = fakeTui();
+            const app = new CodingAssistantApp({
+                agent,
+                cwd: harness.context.fs.cwd,
+                processManager: new NativeProcessManager(),
+                tui,
+            });
+            const compact = vi.spyOn(agent, "compact");
+
+            submit(app, "/compact");
+            const compaction = compact.mock.results[0];
+            expect(compaction?.type).toBe("return");
+            if (compaction?.type !== "return") throw new Error("Compaction did not start.");
+            await started.promise;
+
+            vi.mocked(tui.requestRender).mockClear();
+            vi.advanceTimersByTime(530);
+            expect(tui.requestRender).toHaveBeenCalled();
+
+            release.resolve();
+            await compaction.value;
+            vi.mocked(tui.requestRender).mockClear();
+            vi.advanceTimersByTime(530);
+            expect(tui.requestRender).not.toHaveBeenCalled();
+        } finally {
+            vi.useRealTimers();
+        }
     });
 
     it("rejects overlapping submissions while conversation compaction is running", async () => {
@@ -5030,7 +5101,9 @@ describe("CodingAssistantApp", () => {
             createdAt: 3,
             data: {
                 event: {
+                    compactionId: "compaction-1",
                     compactedMessageCount: 4,
+                    elapsedMs: 25,
                     estimatedTokensAfter: 600,
                     estimatedTokensBefore: 4_200,
                     reason: "threshold",
@@ -5054,6 +5127,124 @@ describe("CodingAssistantApp", () => {
         await app.waitForIdle();
         submit(app, "/usage");
         expect(stripAnsi(app.render(100).join("\n"))).toContain("Total processed: 0");
+    });
+
+    it("shows live compaction tokens and elapsed time until the paired finish event", () => {
+        const model = defineModel({
+            id: "openai/gpt-test",
+            name: "GPT Test",
+            thinkingLevels: ["off"],
+            defaultThinkingLevel: "off",
+        });
+        const provider = defineProvider({
+            id: "codex",
+            models: [model],
+            stream: () => streamText("unused"),
+        });
+        const harness = createJustBashToolHarness();
+        let now = 1_000;
+        const app = new CodingAssistantApp({
+            agent: new Agent({
+                provider,
+                modelId: model.id,
+                context: harness.context,
+                printToConsole: false,
+            }),
+            cwd: harness.context.fs.cwd,
+            now: () => now,
+            processManager: new NativeProcessManager(),
+            sessionBacked: true,
+            tui: fakeTui(),
+        });
+        const apply = (id: string, event: AgentLoopEvent) =>
+            app.applySessionEvent({
+                createdAt: now,
+                data: { event, runId: "run-1" },
+                id,
+                sessionId: "session-1",
+                type: "agent_event",
+            });
+
+        app.applySessionEvent({
+            createdAt: now,
+            data: { runId: "run-1" },
+            id: "run-started",
+            sessionId: "session-1",
+            type: "run_started",
+        });
+        apply("compaction-started", {
+            compactionId: "compaction-1",
+            estimatedTokensBefore: 4_200,
+            reason: "threshold",
+            type: "context_compaction_started",
+        });
+        expect(stripAnsi(app.render(100).join("\n"))).toContain(
+            "Compacting context · 4.2k tokens (0s · esc to interrupt)",
+        );
+
+        now = 3_500;
+        expect(stripAnsi(app.render(100).join("\n"))).toContain(
+            "Compacting context · 4.2k tokens (2s · esc to interrupt)",
+        );
+
+        apply("context-compacted", {
+            compactionId: "compaction-1",
+            compactedMessageCount: 4,
+            elapsedMs: 2_500,
+            estimatedTokensAfter: 600,
+            estimatedTokensBefore: 4_200,
+            reason: "threshold",
+            type: "context_compacted",
+        });
+        apply("compaction-finished", {
+            compactionId: "compaction-1",
+            elapsedMs: 2_500,
+            status: "completed",
+            type: "context_compaction_finished",
+        });
+        const finished = stripAnsi(app.render(100).join("\n"));
+        expect(finished).toContain("Context compacted");
+        expect(finished).not.toContain("Compacting context");
+
+        app.applySessionEvent({
+            createdAt: now,
+            data: {
+                modelLocked: true,
+                runId: "run-1",
+                stopReason: "stop",
+            },
+            id: "run-finished",
+            sessionId: "session-1",
+            type: "run_finished",
+        });
+
+        apply("stale-compaction-started", {
+            compactionId: "stale-compaction",
+            estimatedTokensBefore: 9_000,
+            reason: "threshold",
+            type: "context_compaction_started",
+        });
+        app.applySessionEvent({
+            createdAt: now,
+            data: { runId: "run-2" },
+            id: "next-run-started",
+            sessionId: "session-1",
+            type: "run_started",
+        });
+        const nextRun = stripAnsi(app.render(100).join("\n"));
+        expect(nextRun).toContain("Working");
+        expect(nextRun).not.toContain("Compacting context ·");
+        app.applySessionEvent({
+            createdAt: now,
+            data: {
+                modelLocked: true,
+                runId: "run-2",
+                stopReason: "stop",
+            },
+            id: "next-run-finished",
+            sessionId: "session-1",
+            type: "run_finished",
+        });
     });
 
     it("renders the durable backend usage summary for session-backed agents", async () => {

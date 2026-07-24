@@ -22,6 +22,8 @@ describe("automatic conversation compaction", () => {
     it("shows a durable transcript row when a small context window triggers compaction", async () => {
         const firstResponseStarted = deferred<void>();
         const releaseFirstResponse = deferred<void>();
+        const compactionStarted = deferred<void>();
+        const releaseCompaction = deferred<void>();
         let firstInferenceContext: GymInferenceRequest["context"] | undefined;
         const gym = await createGym({
             cols: 92,
@@ -52,6 +54,8 @@ describe("automatic conversation compaction", () => {
                         role: firstInferenceContext?.messages[0]?.role,
                         content: firstInferenceContext?.messages[0]?.content,
                     });
+                    compactionStarted.resolve();
+                    await releaseCompaction.promise;
                     return {
                         content: [{ text: "The earlier context was summarized.", type: "text" }],
                     };
@@ -75,6 +79,18 @@ describe("automatic conversation compaction", () => {
         gym.terminal.press("tab");
         await gym.terminal.waitForText("↳ queued Continue from that work.", 30_000);
         releaseFirstResponse.resolve();
+
+        await compactionStarted.promise;
+        const compacting = await gym.terminal.waitUntil(
+            (candidate) =>
+                /Compacting context · [\d.]+k? tokens \(\d+s · esc to interrupt\)/u.test(
+                    candidate.text,
+                ),
+            "live compaction progress with token and elapsed-time counters",
+            30_000,
+        );
+        expect(compacting.text).not.toContain("Context compacted");
+        releaseCompaction.resolve();
 
         const snapshot = await gym.terminal.waitUntil(
             (candidate) =>
