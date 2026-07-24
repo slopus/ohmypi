@@ -995,6 +995,101 @@ describe("CodingAssistantApp", () => {
         expect(steer).not.toHaveBeenCalled();
     });
 
+    it("keeps an immediate post-Escape submit queued when the local run settles before the session event", async () => {
+        const model = defineModel({
+            id: "openai/gpt-test",
+            name: "GPT Test",
+            thinkingLevels: ["off"],
+            defaultThinkingLevel: "off",
+        });
+        const provider = defineProvider({
+            id: "codex",
+            models: [model],
+            stream() {
+                return streamText("unused");
+            },
+        });
+        const harness = createJustBashToolHarness();
+        const firstRun = deferred<{
+            contextMessages: [];
+            messages: [];
+            runId: string;
+            stopReason: "aborted";
+        }>();
+        const send = vi
+            .fn()
+            .mockImplementationOnce(() => firstRun.promise)
+            .mockResolvedValue({
+                contextMessages: [],
+                messages: [],
+                runId: "follow-up-agent-run",
+                stopReason: "stop" as const,
+            });
+        const abort = vi.fn(async () => ({ aborted: true }));
+        const steer = vi.fn(async () => undefined);
+        const agent = Object.assign(
+            new Agent({
+                provider,
+                modelId: model.id,
+                context: harness.context,
+                printToConsole: false,
+            }),
+            { abort, send, steer },
+        );
+        const app = new CodingAssistantApp({
+            agent,
+            cwd: harness.context.fs.cwd,
+            processManager: new NativeProcessManager(),
+            sessionBacked: true,
+            tui: fakeTui(),
+        });
+
+        submit(app, "Start the locally tracked run.");
+        await vi.waitFor(() => expect(send).toHaveBeenCalledOnce());
+        app.applySessionEvent({
+            createdAt: 1,
+            data: { runId: "interrupted-run" },
+            id: "event-started",
+            sessionId: "session-1",
+            type: "run_started",
+        });
+
+        app.handleInput("\x1b");
+        submit(app, "Retain this immediate follow-up");
+        firstRun.resolve({
+            contextMessages: [],
+            messages: [],
+            runId: "interrupted-agent-run",
+            stopReason: "aborted",
+        });
+        await new Promise<void>((resolve) => setImmediate(resolve));
+
+        expect(send).toHaveBeenCalledOnce();
+        expect(stripAnsi(app.render(100).join("\n"))).toContain(
+            "↳ queued Retain this immediate follow-up",
+        );
+
+        app.applySessionEvent({
+            createdAt: 2,
+            data: {
+                agentRunId: "interrupted-agent-run",
+                modelLocked: true,
+                runId: "interrupted-run",
+                stopReason: "aborted",
+            },
+            id: "event-finished",
+            sessionId: "session-1",
+            type: "run_finished",
+        });
+
+        await vi.waitFor(() => expect(send).toHaveBeenCalledTimes(2));
+        expect(send.mock.calls[1]?.[0]).toBe("Retain this immediate follow-up");
+        expect(steer).not.toHaveBeenCalled();
+        expect(stripAnsi(app.render(100).join("\n")).split("Session interrupted").length - 1).toBe(
+            1,
+        );
+    });
+
     it("keeps a running draft recoverable after clearing it before interrupting", async () => {
         const model = defineModel({
             id: "openai/gpt-test",

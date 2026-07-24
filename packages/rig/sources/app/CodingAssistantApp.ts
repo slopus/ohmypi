@@ -2560,6 +2560,7 @@ export class CodingAssistantApp implements Component, Focusable {
             this.#activeRun !== undefined ||
             this.#compacting ||
             this.#interruptRequestInFlight ||
+            this.#interruptSettlementRunId !== undefined ||
             this.#running ||
             this.#pendingPrompts.length === 0
         ) {
@@ -2575,6 +2576,9 @@ export class CodingAssistantApp implements Component, Focusable {
 
     async #drainQueue(): Promise<void> {
         while (!this.#stopped) {
+            if (this.#interruptRequestInFlight || this.#interruptSettlementRunId !== undefined) {
+                break;
+            }
             const prompt = this.#pendingPrompts[0];
             if (prompt === undefined) {
                 break;
@@ -2808,7 +2812,7 @@ export class CodingAssistantApp implements Component, Focusable {
         );
     }
 
-    #clearSteeringInterrupt(runId: string): void {
+    #clearSteeringInterrupt(runId: string, options: { startDrain?: boolean } = {}): void {
         if (this.#steeringInterruptIntent?.runId === runId) {
             this.#steeringInterruptIntent = undefined;
         }
@@ -2818,7 +2822,7 @@ export class CodingAssistantApp implements Component, Focusable {
         if (this.#running && this.#activeSessionRunId === runId) {
             this.#statusText = "Running";
         }
-        this.#startDrainQueue();
+        if (options.startDrain !== false) this.#startDrainQueue();
         this.#requestRender();
     }
 
@@ -3074,7 +3078,7 @@ export class CodingAssistantApp implements Component, Focusable {
         ) {
             this.#restoreRejectedSteeringSubmissions(runId);
         }
-        this.#clearSteeringInterrupt(runId);
+        this.#clearSteeringInterrupt(runId, { startDrain: false });
     }
 
     #discardLocalSteeringSubmissionsForBoundary(): void {
@@ -3111,6 +3115,11 @@ export class CodingAssistantApp implements Component, Focusable {
         }
 
         const controller = this.#abortController;
+        if (this.#sessionBacked && this.#activeSessionRunId !== undefined) {
+            // The run-specific stream can settle before the shared session event stream.
+            // Keep queued input behind the durable terminal event so it starts as a new turn.
+            this.#interruptSettlementRunId = this.#activeSessionRunId;
+        }
         this.#runToken += 1;
         controller.abort();
         this.#abortController = undefined;
