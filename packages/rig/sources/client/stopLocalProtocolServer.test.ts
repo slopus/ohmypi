@@ -10,10 +10,10 @@ vi.mock("./waitForSocketRemoval.js", () => ({
     waitForSocketRemoval: mocks.waitForSocketRemoval,
 }));
 
-import { stopLocalProtocolServer } from "./stopLocalProtocolServer.js";
-
 describe("stopLocalProtocolServer", () => {
     it("waits thirty seconds for the old daemon to release its socket", async () => {
+        vi.resetModules();
+        const { stopLocalProtocolServer } = await import("./stopLocalProtocolServer.js");
         mocks.waitForSocketRemoval.mockResolvedValue(true);
         const client = {
             shutdown: vi.fn().mockResolvedValue({
